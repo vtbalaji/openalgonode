@@ -55,6 +55,12 @@ export async function GET(request: NextRequest) {
     }
 
     const data = docSnap.data();
+    if (!data) {
+      return NextResponse.json(
+        { error: 'API keys not found' },
+        { status: 404 }
+      );
+    }
     const encryptedApiKey = data.apiKey;
 
     // Decrypt API key

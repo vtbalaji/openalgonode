@@ -68,6 +68,12 @@ export async function POST(request: NextRequest) {
     }
 
     const configData = docSnap.data();
+    if (!configData) {
+      return NextResponse.json(
+        { error: 'Broker configuration not found' },
+        { status: 404 }
+      );
+    }
     const apiKey = decryptData(configData.apiKey);
     const apiSecret = decryptData(configData.apiSecret);
 

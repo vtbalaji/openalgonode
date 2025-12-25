@@ -56,6 +56,12 @@ export async function GET(request: NextRequest) {
     }
 
     const configData = docSnap.data();
+    if (!configData) {
+      return NextResponse.json(
+        { error: 'Broker configuration not found' },
+        { status: 404 }
+      );
+    }
 
     // Check if broker is authenticated
     if (!configData.accessToken || configData.status !== 'active') {

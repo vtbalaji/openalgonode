@@ -100,7 +100,7 @@ export async function validateApiKey(
   const data = doc.data() as Omit<ApiKey, 'id'>;
 
   // Check expiry
-  if (data.expiresAt && new Date(data.expiresAt.toDate()) < new Date()) {
+  if (data.expiresAt && new Date(data.expiresAt) < new Date()) {
     return null; // Expired
   }
 

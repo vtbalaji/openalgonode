@@ -118,6 +118,12 @@ export async function GET(request: NextRequest) {
     }
 
     const data = docSnap.data();
+    if (!data) {
+      return NextResponse.json(
+        { error: 'Broker configuration not found' },
+        { status: 404 }
+      );
+    }
     return NextResponse.json(
       {
         broker: data.broker,

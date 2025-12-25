@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -12,7 +12,7 @@ import {
 import { auth } from '@/lib/firebase';
 import { createUserProfile } from '@/lib/firebaseUtils';
 
-export default function LoginPage() {
+function LoginPageContent() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -65,7 +65,7 @@ export default function LoginPage() {
     try {
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
-      await createUserProfile(result.user.uid, result.user.email || '', result.user.displayName);
+      await createUserProfile(result.user.uid, result.user.email || '', result.user.displayName || undefined);
       router.push('/');
     } catch (err: any) {
       setError(err.message || 'Google sign-in failed');
@@ -181,5 +181,13 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <LoginPageContent />
+    </Suspense>
   );
 }

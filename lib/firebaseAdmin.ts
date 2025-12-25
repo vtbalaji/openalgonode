@@ -33,7 +33,7 @@ if (!admin.apps.length) {
     throw error;
   }
 } else {
-  app = admin.apps[0];
+  app = admin.apps[0]!;
 }
 
 // Export Firestore and Auth instances from the initialized app

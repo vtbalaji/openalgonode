@@ -188,6 +188,208 @@ export async function cancelOrder(
 }
 
 /**
+ * Modify an order
+ */
+export async function modifyOrder(
+  accessToken: string,
+  orderId: string,
+  orderPayload: OrderPayload
+): Promise<{ order_id: string; [key: string]: any }> {
+  try {
+    // Convert order payload to URL-encoded form
+    const formData = new URLSearchParams({
+      tradingsymbol: orderPayload.tradingsymbol,
+      exchange: orderPayload.exchange,
+      transaction_type: orderPayload.transaction_type,
+      order_type: orderPayload.order_type,
+      quantity: orderPayload.quantity.toString(),
+      product: orderPayload.product,
+      price: (orderPayload.price || '0').toString(),
+      trigger_price: (orderPayload.trigger_price || '0').toString(),
+      disclosed_quantity: (orderPayload.disclosed_quantity || '0').toString(),
+      validity: orderPayload.validity || 'DAY',
+    });
+
+    const response = await fetch(`${ZERODHA_BASE_URL}/orders/regular/${orderId}`, {
+      method: 'PUT',
+      headers: {
+        'X-Kite-Version': '3',
+        'Authorization': `token ${accessToken}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: formData.toString(),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to modify order');
+    }
+
+    const data = await response.json();
+    if (!data.data?.order_id) {
+      throw new Error('No order ID returned from Zerodha API');
+    }
+
+    return data.data;
+  } catch (error) {
+    console.error('Modify order error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get trade book (list of executed trades)
+ */
+export async function getTradeBook(accessToken: string): Promise<any[]> {
+  try {
+    const response = await fetch(`${ZERODHA_BASE_URL}/trades`, {
+      method: 'GET',
+      headers: {
+        'X-Kite-Version': '3',
+        'Authorization': `token ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to fetch trade book');
+    }
+
+    const data = await response.json();
+    return data.data || [];
+  } catch (error) {
+    console.error('Get trade book error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get positions (open positions)
+ */
+export async function getPositions(accessToken: string): Promise<any> {
+  try {
+    const response = await fetch(`${ZERODHA_BASE_URL}/portfolio/positions`, {
+      method: 'GET',
+      headers: {
+        'X-Kite-Version': '3',
+        'Authorization': `token ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to fetch positions');
+    }
+
+    const data = await response.json();
+    return data.data || { net: [], day: [] };
+  } catch (error) {
+    console.error('Get positions error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get holdings (long-term portfolio)
+ */
+export async function getHoldings(accessToken: string): Promise<any[]> {
+  try {
+    const response = await fetch(`${ZERODHA_BASE_URL}/portfolio/holdings`, {
+      method: 'GET',
+      headers: {
+        'X-Kite-Version': '3',
+        'Authorization': `token ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to fetch holdings');
+    }
+
+    const data = await response.json();
+    return data.data || [];
+  } catch (error) {
+    console.error('Get holdings error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get user margins (available funds)
+ */
+export async function getMargins(accessToken: string): Promise<any> {
+  try {
+    const response = await fetch(`${ZERODHA_BASE_URL}/user/margins`, {
+      method: 'GET',
+      headers: {
+        'X-Kite-Version': '3',
+        'Authorization': `token ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to fetch margins');
+    }
+
+    const data = await response.json();
+    return data.data || {};
+  } catch (error) {
+    console.error('Get margins error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Close position by placing counter order
+ */
+export async function closePosition(
+  accessToken: string,
+  symbol: string,
+  exchange: string,
+  product: 'MIS' | 'CNC' | 'NRML'
+): Promise<{ order_id: string; [key: string]: any }> {
+  try {
+    // Get current positions to find the quantity
+    const positions = await getPositions(accessToken);
+    const allPositions = [...(positions.net || []), ...(positions.day || [])];
+
+    const position = allPositions.find(
+      (p: any) => p.tradingsymbol === symbol && p.exchange === exchange && p.product === product
+    );
+
+    if (!position) {
+      throw new Error(`No open position found for ${symbol} in ${exchange}`);
+    }
+
+    const netQuantity = position.quantity;
+    if (netQuantity === 0) {
+      throw new Error(`Position for ${symbol} already closed`);
+    }
+
+    // Determine action (opposite of current position)
+    const action = netQuantity > 0 ? 'SELL' : 'BUY';
+    const quantity = Math.abs(netQuantity);
+
+    // Place market order to close position
+    const orderPayload: OrderPayload = {
+      tradingsymbol: symbol,
+      exchange: exchange,
+      transaction_type: action,
+      order_type: 'MARKET',
+      quantity: quantity,
+      product: product,
+    };
+
+    return await placeOrder(accessToken, orderPayload);
+  } catch (error) {
+    console.error('Close position error:', error);
+    throw error;
+  }
+}
+
+/**
  * Transform OpenAlgo order format to Zerodha format
  */
 export function transformOrderData(openAlgoOrder: {

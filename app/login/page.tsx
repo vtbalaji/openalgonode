@@ -86,9 +86,11 @@ function LoginPageContent() {
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
       <div className="w-full max-w-md">
         <div className="rounded-lg bg-white p-8 shadow-lg">
-          <h1 className="mb-2 text-3xl font-bold text-gray-900">OpenAlgoNode</h1>
+          <h2 className="mb-2 text-2xl font-bold text-gray-900">
+            {isSignUp ? 'Create an account' : 'Welcome back'}
+          </h2>
           <p className="mb-8 text-gray-600">
-            {isSignUp ? 'Create an account' : 'Sign in to your account'}
+            {isSignUp ? 'Sign up to start trading' : 'Sign in to your account'}
           </p>
 
           {error && (

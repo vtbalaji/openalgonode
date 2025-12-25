@@ -1,6 +1,6 @@
-# OpenAlgoNode - Trading Platform
+# Algo Trading Platform
 
-A modern, full-stack trading application built with Next.js, React, Firebase, and TypeScript. Place orders on Zerodha (and other brokers) with a beautiful, responsive UI.
+A modern, full-stack algorithmic trading application built with Next.js, React, Firebase, and TypeScript. Place orders on Zerodha (and other brokers) with a beautiful, responsive UI.
 
 ## 🚀 Features
 

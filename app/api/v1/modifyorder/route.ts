@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateApiKey, requirePermission } from '@/lib/apiKeyAuth';
 import { ModifyOrderRequest, OrderResponse } from '@/lib/types/openalgo';
+import { adminDb } from '@/lib/firebaseAdmin';
+import CryptoJS from 'crypto-js';
+
+const ENCRYPTION_KEY = process.env.NEXT_PUBLIC_ENCRYPTION_KEY || 'default-insecure-key';
+
+function decryptData(encryptedData: string): string {
+  const bytes = CryptoJS.AES.decrypt(encryptedData, ENCRYPTION_KEY);
+  return bytes.toString(CryptoJS.enc.Utf8);
+}
 
 /**
  * POST /api/v1/modifyorder
@@ -17,7 +26,7 @@ export async function POST(request: NextRequest) {
       return authResult.response;
     }
 
-    const { permissions } = authResult.context;
+    const { userId, broker, permissions } = authResult.context;
 
     // Check permission
     const permissionError = requirePermission(permissions, 'modifyorder');
@@ -26,7 +35,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate required fields
-    if (!body.orderid || !body.quantity || !body.price) {
+    if (!body.orderid || !body.quantity || body.price === undefined) {
       return NextResponse.json(
         {
           status: 'error',
@@ -36,13 +45,85 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // TODO: Implement modify order logic
-    const response: OrderResponse = {
-      status: 'error',
-      message: 'Modify order API is not yet implemented',
-    };
+    // Get broker auth token from Firestore
+    const brokerConfigRef = adminDb
+      .collection('users')
+      .doc(userId)
+      .collection('brokerConfig')
+      .doc(broker);
 
-    return NextResponse.json(response, { status: 501 });
+    const docSnap = await brokerConfigRef.get();
+
+    if (!docSnap.exists) {
+      return NextResponse.json(
+        {
+          status: 'error',
+          message: 'Broker configuration not found',
+        },
+        { status: 404 }
+      );
+    }
+
+    const configData = docSnap.data();
+
+    // Check if broker is authenticated
+    if (!configData?.accessToken || configData.status !== 'active') {
+      return NextResponse.json(
+        {
+          status: 'error',
+          message: 'Broker not authenticated. Please authenticate first.',
+        },
+        { status: 401 }
+      );
+    }
+
+    const accessToken = decryptData(configData.accessToken);
+
+    // Modify order based on broker
+    if (broker === 'zerodha') {
+      const { modifyOrder, transformOrderData } = await import('@/lib/zerodhaClient');
+
+      // Transform OpenAlgo format to Zerodha format
+      const orderData = {
+        symbol: body.symbol,
+        exchange: body.exchange,
+        action: body.action,
+        quantity: body.quantity,
+        product: body.product,
+        pricetype: body.pricetype,
+        price: body.price,
+        trigger_price: body.trigger_price,
+        disclosed_quantity: body.disclosed_quantity,
+      };
+
+      const zerodhaOrder = transformOrderData(orderData);
+
+      try {
+        const result = await modifyOrder(accessToken, body.orderid, zerodhaOrder);
+
+        const response: OrderResponse = {
+          status: 'success',
+          orderid: result.order_id,
+          message: 'Order modified successfully',
+        };
+
+        return NextResponse.json(response, { status: 200 });
+      } catch (error: any) {
+        const response: OrderResponse = {
+          status: 'error',
+          message: error.message || 'Failed to modify order',
+        };
+        return NextResponse.json(response, { status: 400 });
+      }
+    } else {
+      return NextResponse.json(
+        {
+          status: 'error',
+          message: `Broker '${broker}' is not yet supported`,
+        },
+        { status: 400 }
+      );
+    }
   } catch (error) {
     console.error('Error in modifyorder API:', error);
     return NextResponse.json(

@@ -23,17 +23,48 @@ export default function Home() {
 
   if (!user) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-        <div className="w-full max-w-md">
-          <div className="rounded-lg bg-white p-8 shadow-lg">
-            <h1 className="mb-2 text-3xl font-bold text-gray-900">OpenAlgoNode</h1>
-            <p className="mb-8 text-gray-600">A modern trading platform</p>
-            <Link
-              href="/login"
-              className="inline-block w-full rounded-lg bg-blue-600 px-6 py-3 text-center font-medium text-white transition hover:bg-blue-700"
-            >
-              Sign In
-            </Link>
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
+          <div className="text-center">
+            <h1 className="text-5xl font-bold text-gray-900 mb-6">
+              Welcome to Algo Trading Platform
+            </h1>
+            <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
+              A modern, full-stack algorithmic trading platform. Connect your broker, place orders, and track your portfolio in real-time.
+            </p>
+            <div className="flex justify-center space-x-4">
+              <Link
+                href="/login?signup=true"
+                className="px-8 py-3 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-lg transition-colors shadow-lg text-lg"
+              >
+                Get Started
+              </Link>
+              <Link
+                href="/login"
+                className="px-8 py-3 bg-white hover:bg-gray-50 text-gray-900 font-medium rounded-lg transition-colors shadow-lg text-lg border border-gray-300"
+              >
+                Sign In
+              </Link>
+            </div>
+
+            {/* Features Grid */}
+            <div className="mt-20 grid grid-cols-1 md:grid-cols-3 gap-8">
+              <div className="bg-white rounded-lg p-6 shadow-md">
+                <div className="text-4xl mb-4">📈</div>
+                <h3 className="text-xl font-semibold mb-2">Real-time Trading</h3>
+                <p className="text-gray-600">Live market data with WebSocket streaming</p>
+              </div>
+              <div className="bg-white rounded-lg p-6 shadow-md">
+                <div className="text-4xl mb-4">🔐</div>
+                <h3 className="text-xl font-semibold mb-2">Secure & Reliable</h3>
+                <p className="text-gray-600">Bank-level encryption for your credentials</p>
+              </div>
+              <div className="bg-white rounded-lg p-6 shadow-md">
+                <div className="text-4xl mb-4">🚀</div>
+                <h3 className="text-xl font-semibold mb-2">API Access</h3>
+                <p className="text-gray-600">OpenAlgo-compatible REST API</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -42,21 +73,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow">
-        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between">
-            <h1 className="text-3xl font-bold text-gray-900">OpenAlgoNode</h1>
-            <button
-              onClick={handleLogout}
-              className="rounded-lg bg-red-600 px-4 py-2 text-white transition hover:bg-red-700"
-            >
-              Logout
-            </button>
-          </div>
-        </div>
-      </header>
-
       {/* Main Content */}
       <main className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
         <div className="mb-8 rounded-lg bg-white p-6 shadow">
@@ -121,6 +137,34 @@ export default function Home() {
             </div>
             <h3 className="mb-2 text-lg font-semibold text-gray-900">API Keys</h3>
             <p className="text-gray-600">Generate keys for TradingView, Python, etc.</p>
+          </Link>
+
+          {/* Live Prices */}
+          <Link
+            href="/live-prices"
+            className="block rounded-lg bg-white p-6 shadow transition hover:shadow-lg"
+          >
+            <div className="mb-4 inline-block rounded-lg bg-red-100 p-3">
+              <svg className="h-6 w-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+              </svg>
+            </div>
+            <h3 className="mb-2 text-lg font-semibold text-gray-900">Live Prices</h3>
+            <p className="text-gray-600">Real-time market data via WebSocket</p>
+          </Link>
+
+          {/* WebSocket Test */}
+          <Link
+            href="/test-websocket"
+            className="block rounded-lg bg-white p-6 shadow transition hover:shadow-lg border-2 border-orange-200"
+          >
+            <div className="mb-4 inline-block rounded-lg bg-orange-100 p-3">
+              <svg className="h-6 w-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+              </svg>
+            </div>
+            <h3 className="mb-2 text-lg font-semibold text-gray-900">Test WebSocket</h3>
+            <p className="text-gray-600">Diagnostic tool for real-time connection</p>
           </Link>
         </div>
       </main>

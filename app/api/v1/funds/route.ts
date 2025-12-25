@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateApiKey, requirePermission } from '@/lib/apiKeyAuth';
 import { FundsRequest, ApiResponse, FundsData } from '@/lib/types/openalgo';
+import { adminDb } from '@/lib/firebaseAdmin';
+import CryptoJS from 'crypto-js';
+
+const ENCRYPTION_KEY = process.env.NEXT_PUBLIC_ENCRYPTION_KEY || 'default-insecure-key';
+
+function decryptData(encryptedData: string): string {
+  const bytes = CryptoJS.AES.decrypt(encryptedData, ENCRYPTION_KEY);
+  return bytes.toString(CryptoJS.enc.Utf8);
+}
 
 /**
  * POST /api/v1/funds
@@ -12,16 +21,74 @@ export async function POST(request: NextRequest) {
     const authResult = await authenticateApiKey(body.apikey);
     if (!authResult.success) return authResult.response;
 
-    const { permissions } = authResult.context;
+    const { userId, broker, permissions } = authResult.context;
     const permissionError = requirePermission(permissions, 'viewfunds');
     if (permissionError) return permissionError;
 
-    const response: ApiResponse<FundsData> = {
-      status: 'error',
-      message: 'Funds API is not yet implemented',
-    };
-    return NextResponse.json(response, { status: 501 });
+    // Get broker auth token from Firestore
+    const brokerConfigRef = adminDb
+      .collection('users')
+      .doc(userId)
+      .collection('brokerConfig')
+      .doc(broker);
+
+    const docSnap = await brokerConfigRef.get();
+
+    if (!docSnap.exists) {
+      return NextResponse.json(
+        {
+          status: 'error',
+          message: 'Broker configuration not found',
+        },
+        { status: 404 }
+      );
+    }
+
+    const configData = docSnap.data();
+
+    if (!configData?.accessToken || configData.status !== 'active') {
+      return NextResponse.json(
+        {
+          status: 'error',
+          message: 'Broker not authenticated. Please authenticate first.',
+        },
+        { status: 401 }
+      );
+    }
+
+    const accessToken = decryptData(configData.accessToken);
+
+    // Fetch funds/margins based on broker
+    if (broker === 'zerodha') {
+      const { getMargins } = await import('@/lib/zerodhaClient');
+
+      try {
+        const margins = await getMargins(accessToken);
+
+        const response: ApiResponse<FundsData> = {
+          status: 'success',
+          data: margins,
+        };
+
+        return NextResponse.json(response, { status: 200 });
+      } catch (error: any) {
+        const response: ApiResponse<FundsData> = {
+          status: 'error',
+          message: error.message || 'Failed to fetch funds',
+        };
+        return NextResponse.json(response, { status: 400 });
+      }
+    } else {
+      return NextResponse.json(
+        {
+          status: 'error',
+          message: `Broker '${broker}' is not yet supported`,
+        },
+        { status: 400 }
+      );
+    }
   } catch (error) {
+    console.error('Error in funds API:', error);
     return NextResponse.json({ status: 'error', message: 'Internal server error' }, { status: 500 });
   }
 }

@@ -50,8 +50,13 @@ export async function GET(request: NextRequest) {
     return new Response('Broker not authenticated', { status: 401 });
   }
 
-  const accessToken = decryptData(configData.accessToken);
+  const encryptedAccessToken = decryptData(configData.accessToken);
   const apiKey = decryptData(configData.apiKey);
+
+  // Extract access token from combined format (apiKey:accessToken)
+  const accessToken = encryptedAccessToken.includes(':')
+    ? encryptedAccessToken.split(':')[1]
+    : encryptedAccessToken;
 
   // Convert symbols to instrument tokens
   const tokens: number[] = [];

@@ -1,18 +1,74 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb, adminAuth } from '@/lib/firebaseAdmin';
+import CryptoJS from 'crypto-js';
+
+const ENCRYPTION_KEY = process.env.NEXT_PUBLIC_ENCRYPTION_KEY || 'default-insecure-key';
+
+function decryptData(encryptedData: string): string {
+  const bytes = CryptoJS.AES.decrypt(encryptedData, ENCRYPTION_KEY);
+  return bytes.toString(CryptoJS.enc.Utf8);
+}
 
 /**
  * POST /api/admin/sync-zerodha-symbols
  * Fetch symbols from Zerodha API and store in Firebase
- * Body: { accessToken: "api_key:access_token" }
+ * Body: { accessToken?: "api_key:access_token", userId?: "uid", email?: "user@example.com" }
  */
 export async function POST(request: NextRequest) {
   try {
-    const { accessToken } = await request.json();
+    const body = await request.json();
+    let accessToken = body.accessToken;
+    let userId = body.userId;
+
+    // If email provided, find the user ID
+    if (!userId && body.email) {
+      try {
+        const userRecord = await adminAuth.getUserByEmail(body.email);
+        userId = userRecord.uid;
+        console.log(`Found user ${body.email} with ID: ${userId}`);
+      } catch (error: any) {
+        return NextResponse.json(
+          { error: `User not found with email: ${body.email}` },
+          { status: 404 }
+        );
+      }
+    }
+
+    // If not provided directly, try to get from Firebase using auth header
+    if (!accessToken && userId) {
+
+      // Get broker config from Firebase
+      const brokerConfigRef = adminDb
+        .collection('users')
+        .doc(userId)
+        .collection('brokerConfig')
+        .doc('zerodha');
+
+      const docSnap = await brokerConfigRef.get();
+
+      if (!docSnap.exists) {
+        return NextResponse.json(
+          { error: 'Broker configuration not found for user' },
+          { status: 404 }
+        );
+      }
+
+      const configData = docSnap.data();
+
+      if (!configData?.accessToken || configData.status !== 'active') {
+        return NextResponse.json(
+          { error: 'Broker not authenticated for user' },
+          { status: 401 }
+        );
+      }
+
+      // Decrypt the access token
+      accessToken = decryptData(configData.accessToken);
+    }
 
     if (!accessToken) {
       return NextResponse.json(
-        { error: 'Missing accessToken' },
+        { error: 'Missing accessToken or userId' },
         { status: 400 }
       );
     }
@@ -62,9 +118,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Upload to Firebase
-    const batch = adminDb.batch();
+    let batch = adminDb.batch();
     let count = 0;
     let optionsCount = 0;
+    let batchCount = 0;
 
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i].trim();
@@ -121,17 +178,20 @@ export async function POST(request: NextRequest) {
       batch.set(docRef, symbolData, { merge: true });
 
       count++;
+      batchCount++;
       if (segment === 'options' || optionType) optionsCount++;
 
       // Commit in batches of 500
-      if (count % 500 === 0) {
+      if (batchCount >= 500) {
         await batch.commit();
-        // Start a new batch
+        batch = adminDb.batch(); // Create a fresh batch
+        batchCount = 0;
+        console.log(`Committed batch: ${count} symbols synced...`);
       }
     }
 
-    // Final commit
-    if (count % 500 !== 0) {
+    // Final commit - commit remaining items
+    if (batchCount > 0) {
       await batch.commit();
     }
 

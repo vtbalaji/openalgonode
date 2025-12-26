@@ -1,18 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb, adminAuth } from '@/lib/firebaseAdmin';
-import CryptoJS from 'crypto-js';
 import { getCachedBrokerConfig, invalidateBrokerConfig } from '@/lib/brokerConfigUtils';
-
-const ENCRYPTION_KEY = process.env.NEXT_PUBLIC_ENCRYPTION_KEY || 'default-insecure-key';
-
-function encryptData(data: string): string {
-  return CryptoJS.AES.encrypt(data, ENCRYPTION_KEY).toString();
-}
-
-function decryptData(encryptedData: string): string {
-  const bytes = CryptoJS.AES.decrypt(encryptedData, ENCRYPTION_KEY);
-  return bytes.toString(CryptoJS.enc.Utf8);
-}
+import { encryptData, decryptData } from '@/lib/encryptionUtils';
 
 /**
  * POST /api/broker/config
@@ -123,35 +112,15 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Verify that authentication is actually valid
-    let isValid = true;
-    let validationError = null;
-
-    if (data.status === 'active' && data.accessToken) {
-      try {
-        const decrypted = decryptData(data.accessToken);
-        if (!decrypted || decrypted.trim() === '') {
-          isValid = false;
-          validationError = 'Access token is empty. Please re-authenticate.';
-        }
-      } catch (error) {
-        isValid = false;
-        validationError = 'Failed to decrypt access token. Please re-authenticate.';
-      }
-    } else if (data.status === 'active' && !data.accessToken) {
-      isValid = false;
-      validationError = 'No access token found. Please authenticate.';
-    }
-
+    // Return basic config info without decrypting credentials
+    // Credential validation happens during actual API calls (place-order, orderbook, etc.)
     return NextResponse.json(
       {
         broker: data.broker,
         status: data.status,
-        isValid,
-        validationError,
         lastUpdated: data.lastUpdated,
         lastAuthenticated: data.lastAuthenticated || null,
-        credentialsExist: !!data.apiKey && !!data.apiSecret,  // Check if credentials are saved
+        credentialsExist: !!data.apiKey && !!data.apiSecret,
       },
       { status: 200 }
     );

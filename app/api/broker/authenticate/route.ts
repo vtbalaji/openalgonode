@@ -2,18 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminDb, adminAuth } from '@/lib/firebaseAdmin';
 import { authenticateZerodha } from '@/lib/zerodhaClient';
 import { getCachedBrokerConfig, invalidateBrokerConfig } from '@/lib/brokerConfigUtils';
-import CryptoJS from 'crypto-js';
-
-const ENCRYPTION_KEY = process.env.NEXT_PUBLIC_ENCRYPTION_KEY || 'default-insecure-key';
-
-function encryptData(data: string): string {
-  return CryptoJS.AES.encrypt(data, ENCRYPTION_KEY).toString();
-}
-
-function decryptData(encryptedData: string): string {
-  const bytes = CryptoJS.AES.decrypt(encryptedData, ENCRYPTION_KEY);
-  return bytes.toString(CryptoJS.enc.Utf8);
-}
+import { encryptData, decryptData } from '@/lib/encryptionUtils';
 
 /**
  * POST /api/broker/authenticate
@@ -65,8 +54,20 @@ export async function POST(request: NextRequest) {
         { status: 404 }
       );
     }
-    const apiKey = decryptData(configData.apiKey);
-    const apiSecret = decryptData(configData.apiSecret);
+
+    // Decrypt credentials with error handling
+    let apiKey: string;
+    let apiSecret: string;
+    try {
+      apiKey = decryptData(configData.apiKey);
+      apiSecret = decryptData(configData.apiSecret);
+    } catch (error) {
+      console.error('Failed to decrypt credentials:', error);
+      return NextResponse.json(
+        { error: 'Failed to decrypt broker credentials. Please reconfigure your broker.' },
+        { status: 400 }
+      );
+    }
 
     // Authenticate with Zerodha
     let accessToken;

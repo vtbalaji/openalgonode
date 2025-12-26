@@ -22,14 +22,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebaseAdmin';
 import { getCachedBrokerConfig } from '@/lib/brokerConfigUtils';
-import CryptoJS from 'crypto-js';
-
-const ENCRYPTION_KEY = process.env.NEXT_PUBLIC_ENCRYPTION_KEY || 'default-insecure-key';
-
-function decryptData(encryptedData: string): string {
-  const bytes = CryptoJS.AES.decrypt(encryptedData, ENCRYPTION_KEY);
-  return bytes.toString(CryptoJS.enc.Utf8);
-}
+import { decryptData } from '@/lib/encryptionUtils';
 
 export async function POST(request: NextRequest) {
   try {
@@ -71,7 +64,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const accessToken = decryptData(configData.accessToken);
+    // Decrypt access token with error handling
+    let accessToken: string;
+    try {
+      accessToken = decryptData(configData.accessToken);
+    } catch (error) {
+      console.error('Failed to decrypt access token:', error);
+      return NextResponse.json(
+        {
+          status: 'error',
+          message: 'Failed to decrypt credentials. Please re-authenticate.',
+        },
+        { status: 401 }
+      );
+    }
 
     // Import Zerodha client
     const { placeOrder, transformOrderData } = await import('@/lib/zerodhaClient');

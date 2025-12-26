@@ -23,10 +23,10 @@ if (!admin.apps.length) {
       credential: admin.credential.cert(serviceAccountKey),
     });
 
-    console.log('✅ Firebase Admin SDK initialized successfully');
-    console.log('✅ Project ID:', serviceAccountKey.project_id);
+    console.log('Firebase Admin SDK initialized successfully');
+    console.log('Project ID:', serviceAccountKey.project_id);
   } catch (error: any) {
-    console.error('❌ Firebase Admin SDK initialization failed:', error.message);
+    console.error('Firebase Admin SDK initialization failed:', error.message);
     if (error.stack) {
       console.error('Stack:', error.stack);
     }

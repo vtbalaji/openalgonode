@@ -78,25 +78,25 @@ export async function GET(request: NextRequest) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     start(controller) {
-      console.log(`🔌 Client connected for symbols: ${symbols.join(', ')}`);
-      console.log(`📊 Instrument tokens: ${tokens.join(', ')}`);
+      console.log(`Client connected for symbols: ${symbols.join(', ')}`);
+      console.log(`Instrument tokens: ${tokens.join(', ')}`);
 
       const tickerService = getTickerService();
 
       // Initialize ticker if not already initialized
       if (!tickerService.getConnectionStatus()) {
-        console.log('🚀 Initializing WebSocket connection to Zerodha...');
-        console.log(`📍 API Key (first 10 chars): ${apiKey.substring(0, 10)}...`);
-        console.log(`🔑 Access Token (first 10 chars): ${accessToken.substring(0, 10)}...`);
+        console.log('Initializing WebSocket connection to Zerodha...');
+        console.log(`API Key (first 10 chars): ${apiKey.substring(0, 10)}...`);
+        console.log(`Access Token (first 10 chars): ${accessToken.substring(0, 10)}...`);
 
         tickerService.initialize(apiKey, accessToken);
         tickerService.connect();
       } else {
-        console.log('✅ WebSocket already connected, reusing connection');
+        console.log('WebSocket already connected, reusing connection');
       }
 
       // Subscribe to tokens
-      console.log(`📡 Subscribing to tokens: ${tokens.join(', ')}`);
+      console.log(`Subscribing to tokens: ${tokens.join(', ')}`);
       tickerService.subscribe(tokens);
 
       // Send initial connection message

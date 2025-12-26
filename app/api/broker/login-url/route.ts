@@ -69,8 +69,15 @@ export async function GET(request: NextRequest) {
     // Get redirect URL from query params or use default callback
     const redirectUrl = request.nextUrl.searchParams.get('redirect_url');
 
+    // Build full callback URL using request origin (server-side)
+    const origin = request.headers.get('x-forwarded-proto') === 'https'
+      ? `https://${request.headers.get('x-forwarded-host') || request.headers.get('host')}`
+      : `http://${request.headers.get('host')}`;
+
+    const fullCallbackUrl = redirectUrl || `${origin}/callback`;
+
     // Build login URL
-    const loginUrl = buildBrokerLoginUrl(broker, apiKey, redirectUrl || undefined);
+    const loginUrl = buildBrokerLoginUrl(broker, apiKey, fullCallbackUrl);
 
     if (!loginUrl) {
       return NextResponse.json(
@@ -80,13 +87,13 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { loginUrl, redirectUrl: redirectUrl || '/callback' },
+      { loginUrl, redirectUrl: fullCallbackUrl },
       { status: 200 }
     );
-  } catch (error) {
-    console.error('Error generating login URL:', error);
+  } catch (error: any) {
+    console.error('Error generating login URL:', error?.message || error);
     return NextResponse.json(
-      { error: 'Failed to generate login URL' },
+      { error: error?.message || 'Failed to generate login URL' },
       { status: 500 }
     );
   }

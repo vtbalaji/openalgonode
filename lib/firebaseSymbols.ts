@@ -37,8 +37,23 @@ export async function getBrokerSymbols(broker: string): Promise<Map<string, Brok
     const symbols = new Map<string, BrokerSymbol>();
 
     snapshot.forEach((doc) => {
-      const data = doc.data() as BrokerSymbol;
-      symbols.set(data.symbol, data);
+      const data = doc.data();
+      // Handle both old and new compact field formats
+      const symbol = doc.id; // Symbol is the document ID
+      const token = data.t || data.token;
+      const exchange = data.e || data.exchange;
+
+      if (token) {
+        symbols.set(symbol, {
+          token,
+          symbol,
+          exchange,
+          segment: data.segment,
+          expiry: data.x || data.expiry,
+          strikePrice: data.s || data.strikePrice,
+          optionType: data.o || data.optionType,
+        });
+      }
     });
 
     // Update cache

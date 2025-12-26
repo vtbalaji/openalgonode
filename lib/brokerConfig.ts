@@ -112,16 +112,15 @@ export function buildBrokerLoginUrl(
     return null;
   }
 
-  // Use callback page as default redirect URI if not provided
-  const defaultRedirectUri = typeof window !== 'undefined'
-    ? `${window.location.origin}/callback`
-    : '/callback';
-
-  const finalRedirectUri = redirectUri || defaultRedirectUri;
+  // redirectUri must be provided when called from server-side
+  if (!redirectUri) {
+    console.warn('buildBrokerLoginUrl: redirectUri not provided. This should be provided from server-side.');
+    return null;
+  }
 
   let url = config.loginUrlTemplate.replace('{apiKey}', apiKey);
   if (url.includes('{redirectUri}')) {
-    url = url.replace('{redirectUri}', encodeURIComponent(finalRedirectUri));
+    url = url.replace('{redirectUri}', encodeURIComponent(redirectUri));
   }
 
   return url;

@@ -161,19 +161,18 @@ export async function POST(request: NextRequest) {
         .collection('symbols')
         .doc(symbol);
 
+      // Minimal compact storage - only essential fields
       const symbolData: any = {
-        token: parseInt(token),
-        symbol: symbol,
-        exchange: exchange,
-        segment: segment,
-        broker: 'zerodha',
-        updatedAt: new Date().toISOString(),
+        t: parseInt(token),        // token (abbreviated to save space)
+        e: exchange,               // exchange (abbreviated)
       };
 
-      // Add optional fields
-      if (expiry) symbolData.expiry = expiry;
-      if (strikePrice) symbolData.strikePrice = parseFloat(strikePrice);
-      if (optionType) symbolData.optionType = optionType;
+      // Add optional fields only if present (for derivatives)
+      if (segment === 'options' || optionType) {
+        if (expiry) symbolData.x = expiry;           // expiry
+        if (strikePrice) symbolData.s = parseFloat(strikePrice);  // strike
+        if (optionType) symbolData.o = optionType;   // option type
+      }
 
       batch.set(docRef, symbolData, { merge: true });
 

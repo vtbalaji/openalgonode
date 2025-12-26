@@ -78,7 +78,7 @@ class TickerService extends EventEmitter {
   private setupEventHandlers() {
     // Connection opened
     this.ticker.on('connect', () => {
-      console.log('✅ WebSocket connected to Zerodha');
+      console.log('WebSocket connected to Zerodha');
       this.isConnected = true;
       this.emit('connected');
 
@@ -102,39 +102,39 @@ class TickerService extends EventEmitter {
 
     // Order updates
     this.ticker.on('order_update', (order: OrderUpdate) => {
-      console.log('📊 Order update received:', order);
+      console.log('Order update received:', order);
       this.emit('order_update', order);
     });
 
     // Connection closed
     this.ticker.on('disconnect', (error: any) => {
-      console.log('❌ WebSocket disconnected:', error);
+      console.log('WebSocket disconnected:', error);
       this.isConnected = false;
       this.emit('disconnected', error);
     });
 
     // Error occurred
     this.ticker.on('error', (error: any) => {
-      console.error('⚠️ WebSocket error:', error);
+      console.error('WebSocket error:', error);
       this.emit('error', error);
     });
 
     // Connection closed
     this.ticker.on('close', (code: number, reason: string) => {
-      console.log('🔒 WebSocket closed:', code, reason);
+      console.log('WebSocket closed:', code, reason);
       this.isConnected = false;
       this.emit('closed', { code, reason });
     });
 
     // Reconnecting
     this.ticker.on('reconnect', (reconnect_count: number, reconnect_interval: number) => {
-      console.log(`🔄 Reconnecting... (attempt ${reconnect_count}, interval ${reconnect_interval}ms)`);
+      console.log(`Reconnecting... (attempt ${reconnect_count}, interval ${reconnect_interval}ms)`);
       this.emit('reconnecting', { reconnect_count, reconnect_interval });
     });
 
     // No reconnect
     this.ticker.on('noreconnect', () => {
-      console.log('⛔ No more reconnection attempts');
+      console.log('No more reconnection attempts');
       this.emit('no_reconnect');
     });
   }

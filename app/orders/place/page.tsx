@@ -33,6 +33,26 @@ export default function PlaceOrderPage() {
     }
   }, [user, loading, router]);
 
+  // Auto-detect exchange and product based on symbol
+  useEffect(() => {
+    if (!symbol) return;
+
+    const upperSymbol = symbol.toUpperCase();
+    // If symbol ends with PE or CE, it's an option
+    if (upperSymbol.endsWith('PE') || upperSymbol.endsWith('CE')) {
+      setExchange('NFO');
+      setProduct('MIS');
+    } else if (upperSymbol.includes('FUT')) {
+      // If symbol contains FUT, it's a future
+      setExchange('NFO');
+      setProduct('NRML');
+    } else {
+      // Otherwise it's a stock
+      setExchange('NSE');
+      setProduct('MIS');
+    }
+  }, [symbol]);
+
   // Check broker authentication status
   useEffect(() => {
     const checkBrokerAuth = async () => {

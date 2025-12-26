@@ -50,7 +50,7 @@ export function useRealtimePrice({ symbols, broker = 'zerodha' }: UseRealtimePri
     eventSourceRef.current = eventSource;
 
     eventSource.onopen = () => {
-      console.log('✅ Real-time connection established');
+      console.log('Real-time connection established');
       setIsConnected(true);
       setError(null);
     };
@@ -75,7 +75,7 @@ export function useRealtimePrice({ symbols, broker = 'zerodha' }: UseRealtimePri
     };
 
     eventSource.onerror = (err) => {
-      console.error('❌ EventSource error:', err);
+      console.error('EventSource error:', err);
       setIsConnected(false);
       setError('Connection error. Retrying...');
 

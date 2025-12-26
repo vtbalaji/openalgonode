@@ -216,6 +216,20 @@ export default function Home() {
             <h3 className="mb-2 text-lg font-semibold text-gray-900">Test WebSocket</h3>
             <p className="text-gray-600">Diagnostic tool for real-time connection</p>
           </Link>
+
+          {/* API Documentation */}
+          <Link
+            href="/api-docs"
+            className="block rounded-lg bg-white p-6 shadow transition hover:shadow-lg border-2 border-indigo-200"
+          >
+            <div className="mb-4 inline-block rounded-lg bg-indigo-100 p-3">
+              <svg className="h-6 w-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C6.5 6.253 2 10.998 2 17s4.5 10.747 10 10.747c5.5 0 10-4.998 10-10.747S17.5 6.253 12 6.253z" />
+              </svg>
+            </div>
+            <h3 className="mb-2 text-lg font-semibold text-gray-900">API Documentation</h3>
+            <p className="text-gray-600">REST API endpoints and examples</p>
+          </Link>
         </div>
       </main>
     </div>

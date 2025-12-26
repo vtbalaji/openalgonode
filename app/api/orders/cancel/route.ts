@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminDb, adminAuth } from '@/lib/firebaseAdmin';
+import { requirePermission } from '@/lib/apiKeyAuth';
+import { adminDb } from '@/lib/firebaseAdmin';
 import { cancelOrder } from '@/lib/zerodhaClient';
+import { authenticateOrderRequest, authErrorResponse } from '@/lib/orderAuthUtils';
 import CryptoJS from 'crypto-js';
 
 const ENCRYPTION_KEY = process.env.NEXT_PUBLIC_ENCRYPTION_KEY || 'default-insecure-key';
@@ -11,42 +13,22 @@ function decryptData(encryptedData: string): string {
 }
 
 interface CancelOrderRequest {
-  broker?: string;
+  apikey?: string;
   orderid: string;
 }
 
 /**
  * POST /api/orders/cancel
- * Cancel an open order - same pattern as order placement
- * Requires: Authorization header with Firebase ID token
+ * Cancel an open order
+ * Authentication: Supports multiple methods
+ *   1. API key in request body: { apikey: "..." }
+ *   2. Bearer token: Authorization: Bearer <firebase_token>
+ *   3. Basic auth: Authorization: Basic base64(api_key:access_token)
+ *   4. Plain: Authorization: api_key:access_token
  */
 export async function POST(request: NextRequest) {
   try {
-    // Get the Firebase ID token from Authorization header (same as place order)
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json(
-        { error: 'Missing or invalid authorization header' },
-        { status: 401 }
-      );
-    }
-
-    const idToken = authHeader.substring(7);
-
-    // Verify the token
-    let decodedToken;
-    try {
-      decodedToken = await adminAuth.verifyIdToken(idToken);
-    } catch (error) {
-      return NextResponse.json(
-        { error: 'Invalid or expired token' },
-        { status: 401 }
-      );
-    }
-
-    const userId = decodedToken.uid;
     const body: CancelOrderRequest = await request.json();
-    const { broker = 'zerodha' } = body;
 
     if (!body.orderid) {
       return NextResponse.json(
@@ -55,7 +37,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Retrieve broker config from Firestore (same as place order)
+    // Authenticate using utility function
+    const authHeader = request.headers.get('authorization');
+    const authResult = await authenticateOrderRequest(authHeader, body.apikey);
+
+    if (!authResult.success) {
+      return authErrorResponse(authResult.error!);
+    }
+
+    const { userId, broker, permissions } = authResult.context!;
+
+    // Check permission if using API key auth
+    if (body.apikey && permissions) {
+      const permissionError = requirePermission(permissions, 'cancelorder');
+      if (permissionError) {
+        return permissionError;
+      }
+    }
+
+    // Retrieve broker config from Firestore
     const userRef = adminDb.collection('users').doc(userId);
     const brokerConfigRef = userRef.collection('brokerConfig').doc(broker);
     const docSnap = await brokerConfigRef.get();
@@ -83,26 +83,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let accessToken;
-    try {
-      accessToken = decryptData(configData.accessToken);
+    const accessToken = decryptData(configData.accessToken);
 
-      // Validate that accessToken is not empty
-      if (!accessToken || accessToken.trim() === '') {
-        return NextResponse.json(
-          { error: 'Invalid broker authentication. Access token is empty. Please re-authenticate.' },
-          { status: 401 }
-        );
-      }
-    } catch (error) {
-      console.error('Error decrypting access token:', error);
-      return NextResponse.json(
-        { error: 'Failed to decrypt broker credentials. Please re-authenticate.' },
-        { status: 401 }
-      );
-    }
-
-    // Extract access token from combined format if stored as api_key:access_token
+    // Extract access token from combined format if needed
     const token = accessToken.includes(':')
       ? accessToken.split(':')[1]
       : accessToken;

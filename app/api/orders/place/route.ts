@@ -110,18 +110,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Extract access token from combined format if stored as api_key:access_token
-    const token = accessToken.includes(':')
-      ? accessToken.split(':')[1]
-      : accessToken;
-
     // Transform order data to Zerodha format
     const zerodhaOrder = transformOrderData(order);
 
     // Place the order
     let orderResult;
     try {
-      orderResult = await placeOrder(token, zerodhaOrder);
+      orderResult = await placeOrder(accessToken, zerodhaOrder);
     } catch (error: any) {
       return NextResponse.json(
         { error: error.message || 'Failed to place order' },

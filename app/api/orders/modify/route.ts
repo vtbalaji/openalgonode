@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminDb, adminAuth } from '@/lib/firebaseAdmin';
+import { requirePermission } from '@/lib/apiKeyAuth';
+import { adminDb } from '@/lib/firebaseAdmin';
 import { modifyOrder } from '@/lib/zerodhaClient';
+import { authenticateOrderRequest, authErrorResponse } from '@/lib/orderAuthUtils';
 import CryptoJS from 'crypto-js';
 
 const ENCRYPTION_KEY = process.env.NEXT_PUBLIC_ENCRYPTION_KEY || 'default-insecure-key';
@@ -11,7 +13,7 @@ function decryptData(encryptedData: string): string {
 }
 
 interface ModifyOrderRequest {
-  broker?: string;
+  apikey?: string;
   orderid: string;
   quantity?: number;
   price?: number;
@@ -19,6 +21,7 @@ interface ModifyOrderRequest {
   disclosed_quantity?: number;
   order_type?: 'MARKET' | 'LIMIT' | 'SL' | 'SL-M';
   validity?: string;
+  // Additional fields needed for order modification
   tradingsymbol?: string;
   exchange?: string;
   transaction_type?: string;
@@ -27,37 +30,43 @@ interface ModifyOrderRequest {
 
 /**
  * POST /api/orders/modify
- * Modify an open order - same pattern as order placement
- * Requires: Authorization header with Firebase ID token
+ * Modify an open order (quantity, price, trigger price, etc.)
+ * Authentication: Supports multiple methods
+ *   1. API key in request body: { apikey: "..." }
+ *   2. Bearer token: Authorization: Bearer <firebase_token>
+ *   3. Basic auth: Authorization: Basic base64(api_key:access_token)
+ *   4. Plain: Authorization: api_key:access_token
  */
 export async function POST(request: NextRequest) {
   try {
-    // Get the Firebase ID token from Authorization header (same as place order)
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json(
-        { error: 'Missing or invalid authorization header' },
-        { status: 401 }
-      );
-    }
-
-    const idToken = authHeader.substring(7);
-
-    // Verify the token
-    let decodedToken;
-    try {
-      decodedToken = await adminAuth.verifyIdToken(idToken);
-    } catch (error) {
-      return NextResponse.json(
-        { error: 'Invalid or expired token' },
-        { status: 401 }
-      );
-    }
-
-    const userId = decodedToken.uid;
     const body: ModifyOrderRequest = await request.json();
+
+    if (!body.orderid) {
+      return NextResponse.json(
+        { error: 'Missing required field: orderid' },
+        { status: 400 }
+      );
+    }
+
+    // Authenticate using utility function
+    const authHeader = request.headers.get('authorization');
+    const authResult = await authenticateOrderRequest(authHeader, body.apikey);
+
+    if (!authResult.success) {
+      return authErrorResponse(authResult.error!);
+    }
+
+    const { userId, broker, permissions } = authResult.context!;
+
+    // Check permission if using API key auth
+    if (body.apikey && permissions) {
+      const permissionError = requirePermission(permissions, 'modifyorder');
+      if (permissionError) {
+        return permissionError;
+      }
+    }
+
     const {
-      broker = 'zerodha',
       orderid,
       quantity,
       price,
@@ -71,14 +80,7 @@ export async function POST(request: NextRequest) {
       product,
     } = body;
 
-    if (!orderid) {
-      return NextResponse.json(
-        { error: 'Missing required field: orderid' },
-        { status: 400 }
-      );
-    }
-
-    // Retrieve broker config from Firestore (same as place order)
+    // Retrieve broker config from Firestore
     const userRef = adminDb.collection('users').doc(userId);
     const brokerConfigRef = userRef.collection('brokerConfig').doc(broker);
     const docSnap = await brokerConfigRef.get();
@@ -106,27 +108,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Decrypt access token (same as place order)
-    let accessToken;
-    try {
-      accessToken = decryptData(configData.accessToken);
+    const accessToken = decryptData(configData.accessToken);
 
-      // Validate that accessToken is not empty
-      if (!accessToken || accessToken.trim() === '') {
-        return NextResponse.json(
-          { error: 'Invalid broker authentication. Access token is empty. Please re-authenticate.' },
-          { status: 401 }
-        );
-      }
-    } catch (error) {
-      console.error('Error decrypting access token:', error);
-      return NextResponse.json(
-        { error: 'Failed to decrypt broker credentials. Please re-authenticate.' },
-        { status: 401 }
-      );
-    }
-
-    // Extract access token from combined format if stored as api_key:access_token
+    // Extract access token from combined format if needed
     const token = accessToken.includes(':')
       ? accessToken.split(':')[1]
       : accessToken;

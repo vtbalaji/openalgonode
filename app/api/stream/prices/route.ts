@@ -58,12 +58,12 @@ export async function GET(request: NextRequest) {
     ? encryptedAccessToken.split(':')[1]
     : encryptedAccessToken;
 
-  // Convert symbols to instrument tokens
+  // Convert symbols to instrument tokens (from in-memory cache)
   const tokens: number[] = [];
   const symbolToToken: Record<string, number> = {};
 
   for (const symbol of symbols) {
-    const token = await getInstrumentToken(symbol);
+    const token = getInstrumentToken(symbol);
     if (token) {
       tokens.push(token);
       symbolToToken[symbol] = token;
@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (tokens.length === 0) {
-    return new Response(`No valid symbols found. Make sure symbols are synced from Zerodha API.`, { status: 400 });
+    return new Response(`No valid symbols found. Make sure symbol cache is initialized via /api/admin/init-symbol-cache.`, { status: 400 });
   }
 
   // Setup Server-Sent Events

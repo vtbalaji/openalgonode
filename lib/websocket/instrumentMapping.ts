@@ -1,15 +1,11 @@
 /**
  * Instrument Token Mapping Service
  * Maps trading symbols to broker instrument tokens
- * Loads symbols from Firebase instead of hardcoded list
+ * Uses in-memory cache loaded from Zerodha API
+ * No Firebase reads = no quota issues
  */
 
-import {
-  getBrokerSymbols,
-  getBrokerSymbolToken,
-  getBrokerSymbolsList,
-  BrokerSymbol,
-} from '@/lib/firebaseSymbols';
+import { getSymbolCache } from '@/lib/symbolCache';
 
 // Fallback hardcoded tokens for backward compatibility (if Firebase is unavailable)
 const FALLBACK_TOKENS: Record<string, number> = {
@@ -56,17 +52,16 @@ const BROKER = 'zerodha';
 
 /**
  * Get instrument token for a symbol
- * Tries Firebase first, falls back to hardcoded tokens
+ * Uses in-memory cache, falls back to hardcoded tokens
  */
-export async function getInstrumentToken(symbol: string): Promise<number | null> {
+export function getInstrumentToken(symbol: string): number | null {
   const upperSymbol = symbol.toUpperCase().trim();
 
-  try {
-    // Try Firebase first
-    const token = await getBrokerSymbolToken(BROKER, upperSymbol);
-    if (token) return token;
-  } catch (error) {
-    console.warn('Error fetching symbol from Firebase:', error);
+  // Try in-memory cache first
+  const cache = getSymbolCache();
+  const cachedSymbol = cache.getSymbol(upperSymbol);
+  if (cachedSymbol) {
+    return cachedSymbol.token;
   }
 
   // Fallback to hardcoded tokens
@@ -76,16 +71,15 @@ export async function getInstrumentToken(symbol: string): Promise<number | null>
 /**
  * Get symbol from instrument token
  */
-export async function getSymbolFromToken(token: number): Promise<string | null> {
-  try {
-    const symbols = await getBrokerSymbols(BROKER);
-    for (const [symbol, data] of symbols.entries()) {
-      if (data.token === token) {
-        return symbol;
-      }
+export function getSymbolFromToken(token: number): string | null {
+  // Try in-memory cache first
+  const cache = getSymbolCache();
+  const symbols = cache.getAllSymbols();
+
+  for (const symbol of symbols) {
+    if (symbol.token === token) {
+      return symbol.symbol;
     }
-  } catch (error) {
-    console.warn('Error fetching symbols from Firebase:', error);
   }
 
   // Fallback
@@ -100,32 +94,20 @@ export async function getSymbolFromToken(token: number): Promise<string | null> 
 /**
  * Get all available symbols
  */
-export async function getAvailableSymbols(): Promise<string[]> {
-  try {
-    const symbols = await getBrokerSymbolsList(BROKER);
-    return symbols;
-  } catch (error) {
-    console.warn('Error fetching symbols from Firebase, using fallback:', error);
-    return Object.keys(FALLBACK_TOKENS);
+export function getAvailableSymbols(): string[] {
+  const cache = getSymbolCache();
+  if (cache.isReady()) {
+    return cache.getSymbolNames();
   }
+
+  // Fallback to hardcoded tokens
+  return Object.keys(FALLBACK_TOKENS);
 }
 
 /**
  * Check if symbol is supported
  */
-export async function isSymbolSupported(symbol: string): Promise<boolean> {
-  const token = await getInstrumentToken(symbol);
+export function isSymbolSupported(symbol: string): boolean {
+  const token = getInstrumentToken(symbol);
   return token !== null;
-}
-
-/**
- * Get broker symbols (for internal use)
- */
-export async function getBrokerSymbolsInternal(broker: string = BROKER): Promise<Map<string, BrokerSymbol>> {
-  try {
-    return await getBrokerSymbols(broker);
-  } catch (error) {
-    console.warn(`Error fetching symbols for ${broker}:`, error);
-    return new Map();
-  }
 }

@@ -7,7 +7,7 @@ import { NextRequest } from 'next/server';
 import { getTickerService } from '@/lib/websocket/tickerService';
 import { getInstrumentToken } from '@/lib/websocket/instrumentMapping';
 import { getAuth } from 'firebase/auth';
-import { adminDb } from '@/lib/firebaseAdmin';
+import { getCachedBrokerConfig } from '@/lib/brokerConfigUtils';
 import CryptoJS from 'crypto-js';
 
 const ENCRYPTION_KEY = process.env.NEXT_PUBLIC_ENCRYPTION_KEY || 'default-insecure-key';
@@ -31,20 +31,12 @@ export async function GET(request: NextRequest) {
     return new Response('Missing symbols parameter', { status: 400 });
   }
 
-  // Get broker configuration
-  const brokerConfigRef = adminDb
-    .collection('users')
-    .doc(userId)
-    .collection('brokerConfig')
-    .doc(broker);
+  // Get broker configuration from cache
+  const configData = await getCachedBrokerConfig(userId, broker);
 
-  const docSnap = await brokerConfigRef.get();
-
-  if (!docSnap.exists) {
+  if (!configData) {
     return new Response('Broker not configured', { status: 404 });
   }
-
-  const configData = docSnap.data();
 
   if (!configData?.accessToken || configData.status !== 'active') {
     return new Response('Broker not authenticated', { status: 401 });

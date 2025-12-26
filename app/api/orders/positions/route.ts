@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminDb, adminAuth } from '@/lib/firebaseAdmin';
+import { adminAuth } from '@/lib/firebaseAdmin';
 import { getPositions } from '@/lib/zerodhaClient';
+import { getCachedBrokerConfig } from '@/lib/brokerConfigUtils';
 import CryptoJS from 'crypto-js';
 
 const ENCRYPTION_KEY = process.env.NEXT_PUBLIC_ENCRYPTION_KEY || 'default-insecure-key';
@@ -43,19 +44,9 @@ export async function GET(request: NextRequest) {
     const userId = decodedToken.uid;
     const broker = request.nextUrl.searchParams.get('broker') || 'zerodha';
 
-    // Retrieve broker config from Firestore
-    const userRef = adminDb.collection('users').doc(userId);
-    const brokerConfigRef = userRef.collection('brokerConfig').doc(broker);
-    const docSnap = await brokerConfigRef.get();
+    // Retrieve broker config from cache
+    const configData = await getCachedBrokerConfig(userId, broker);
 
-    if (!docSnap.exists) {
-      return NextResponse.json(
-        { error: 'Broker configuration not found' },
-        { status: 404 }
-      );
-    }
-
-    const configData = docSnap.data();
     if (!configData) {
       return NextResponse.json(
         { error: 'Broker configuration not found' },

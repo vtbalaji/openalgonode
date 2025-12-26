@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateApiKey, requirePermission } from '@/lib/apiKeyAuth';
 import { PositionBookRequest, ApiResponse, PositionBookItem } from '@/lib/types/openalgo';
-import { adminDb } from '@/lib/firebaseAdmin';
+import { getCachedBrokerConfig } from '@/lib/brokerConfigUtils';
 import CryptoJS from 'crypto-js';
 
 const ENCRYPTION_KEY = process.env.NEXT_PUBLIC_ENCRYPTION_KEY || 'default-insecure-key';
@@ -25,16 +25,10 @@ export async function POST(request: NextRequest) {
     const permissionError = requirePermission(permissions, 'viewpositions');
     if (permissionError) return permissionError;
 
-    // Get broker auth token from Firestore
-    const brokerConfigRef = adminDb
-      .collection('users')
-      .doc(userId)
-      .collection('brokerConfig')
-      .doc(broker);
+    // Get broker auth token from cache
+    const configData = await getCachedBrokerConfig(userId, broker);
 
-    const docSnap = await brokerConfigRef.get();
-
-    if (!docSnap.exists) {
+    if (!configData) {
       return NextResponse.json(
         {
           status: 'error',
@@ -43,8 +37,6 @@ export async function POST(request: NextRequest) {
         { status: 404 }
       );
     }
-
-    const configData = docSnap.data();
 
     if (!configData?.accessToken || configData.status !== 'active') {
       return NextResponse.json(

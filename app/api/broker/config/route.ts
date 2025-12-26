@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb, adminAuth } from '@/lib/firebaseAdmin';
 import CryptoJS from 'crypto-js';
+import { getCachedBrokerConfig, invalidateBrokerConfig } from '@/lib/brokerConfigUtils';
 
 const ENCRYPTION_KEY = process.env.NEXT_PUBLIC_ENCRYPTION_KEY || 'default-insecure-key';
 
@@ -65,6 +66,8 @@ export async function POST(request: NextRequest) {
       lastUpdated: new Date().toISOString(),
     });
 
+    invalidateBrokerConfig(userId, broker);
+
     return NextResponse.json(
       { success: true, message: 'Broker configuration saved successfully' },
       { status: 200 }
@@ -110,19 +113,9 @@ export async function GET(request: NextRequest) {
     const userId = decodedToken.uid;
     const broker = request.nextUrl.searchParams.get('broker') || 'zerodha';
 
-    // Retrieve from Firestore
-    const userRef = adminDb.collection('users').doc(userId);
-    const brokerConfigRef = userRef.collection('brokerConfig').doc(broker);
-    const docSnap = await brokerConfigRef.get();
+    // Retrieve from cache
+    const data = await getCachedBrokerConfig(userId, broker);
 
-    if (!docSnap.exists) {
-      return NextResponse.json(
-        { error: 'Broker configuration not found' },
-        { status: 404 }
-      );
-    }
-
-    const data = docSnap.data();
     if (!data) {
       return NextResponse.json(
         { error: 'Broker configuration not found' },

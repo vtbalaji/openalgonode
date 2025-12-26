@@ -5,16 +5,22 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { RealtimePriceTicker } from '@/components/RealtimePriceTicker';
-import { getAvailableSymbols } from '@/lib/websocket/instrumentMapping';
 
 export default function LivePricesPage() {
   const [selectedSymbol, setSelectedSymbol] = useState<string>('RELIANCE');
   const [customSymbol, setCustomSymbol] = useState<string>('');
   const [watchlist, setWatchlist] = useState<string[]>(['RELIANCE', 'TCS', 'INFY']);
+  const [availableSymbols, setAvailableSymbols] = useState<string[]>([]);
 
-  const availableSymbols = getAvailableSymbols();
+  useEffect(() => {
+    // Load available symbols from API
+    fetch('/api/symbols/list?broker=zerodha')
+      .then((res) => res.json())
+      .then((data) => setAvailableSymbols(data.symbols || []))
+      .catch(console.error);
+  }, []);
 
   const handleAddSymbol = () => {
     const symbol = customSymbol.toUpperCase().trim();

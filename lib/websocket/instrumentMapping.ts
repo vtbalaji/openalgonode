@@ -1,11 +1,18 @@
 /**
  * Instrument Token Mapping Service
- * Maps trading symbols to Zerodha instrument tokens
+ * Maps trading symbols to broker instrument tokens
+ * Loads symbols from Firebase instead of hardcoded list
  */
 
-// Common NSE stocks instrument tokens (you can expand this)
-export const INSTRUMENT_TOKENS: Record<string, number> = {
-  // NSE Top Stocks
+import {
+  getBrokerSymbols,
+  getBrokerSymbolToken,
+  getBrokerSymbolsList,
+  BrokerSymbol,
+} from '@/lib/firebaseSymbols';
+
+// Fallback hardcoded tokens for backward compatibility (if Firebase is unavailable)
+const FALLBACK_TOKENS: Record<string, number> = {
   'RELIANCE': 738561,
   'TCS': 2953217,
   'HDFCBANK': 341249,
@@ -36,27 +43,54 @@ export const INSTRUMENT_TOKENS: Record<string, number> = {
   'TATASTEEL': 895745,
   'ONGC': 633601,
   'JSWSTEEL': 3001089,
-
-  // Nifty Indices
   'NIFTY 50': 256265,
   'NIFTY BANK': 260105,
   'INDIA VIX': 264969,
 };
 
+// Cache for async operations
+let symbolsCache: Map<string, Map<string, BrokerSymbol>> = new Map();
+let loadingPromise: Promise<Map<string, BrokerSymbol>> | null = null;
+
+const BROKER = 'zerodha';
+
 /**
  * Get instrument token for a symbol
+ * Tries Firebase first, falls back to hardcoded tokens
  */
-export function getInstrumentToken(symbol: string): number | null {
+export async function getInstrumentToken(symbol: string): Promise<number | null> {
   const upperSymbol = symbol.toUpperCase().trim();
-  return INSTRUMENT_TOKENS[upperSymbol] || null;
+
+  try {
+    // Try Firebase first
+    const token = await getBrokerSymbolToken(BROKER, upperSymbol);
+    if (token) return token;
+  } catch (error) {
+    console.warn('Error fetching symbol from Firebase:', error);
+  }
+
+  // Fallback to hardcoded tokens
+  return FALLBACK_TOKENS[upperSymbol] || null;
 }
 
 /**
  * Get symbol from instrument token
  */
-export function getSymbolFromToken(token: number): string | null {
-  for (const [symbol, instrToken] of Object.entries(INSTRUMENT_TOKENS)) {
-    if (instrToken === token) {
+export async function getSymbolFromToken(token: number): Promise<string | null> {
+  try {
+    const symbols = await getBrokerSymbols(BROKER);
+    for (const [symbol, data] of symbols.entries()) {
+      if (data.token === token) {
+        return symbol;
+      }
+    }
+  } catch (error) {
+    console.warn('Error fetching symbols from Firebase:', error);
+  }
+
+  // Fallback
+  for (const [symbol, t] of Object.entries(FALLBACK_TOKENS)) {
+    if (t === token) {
       return symbol;
     }
   }
@@ -66,41 +100,32 @@ export function getSymbolFromToken(token: number): string | null {
 /**
  * Get all available symbols
  */
-export function getAvailableSymbols(): string[] {
-  return Object.keys(INSTRUMENT_TOKENS);
+export async function getAvailableSymbols(): Promise<string[]> {
+  try {
+    const symbols = await getBrokerSymbolsList(BROKER);
+    return symbols;
+  } catch (error) {
+    console.warn('Error fetching symbols from Firebase, using fallback:', error);
+    return Object.keys(FALLBACK_TOKENS);
+  }
 }
 
 /**
  * Check if symbol is supported
  */
-export function isSymbolSupported(symbol: string): boolean {
-  return getInstrumentToken(symbol) !== null;
+export async function isSymbolSupported(symbol: string): Promise<boolean> {
+  const token = await getInstrumentToken(symbol);
+  return token !== null;
 }
 
 /**
- * Fetch and cache full instrument list from Zerodha
- * This should be called periodically to keep tokens updated
+ * Get broker symbols (for internal use)
  */
-export async function fetchInstrumentList(apiKey: string, accessToken: string): Promise<void> {
+export async function getBrokerSymbolsInternal(broker: string = BROKER): Promise<Map<string, BrokerSymbol>> {
   try {
-    const response = await fetch('https://api.kite.trade/instruments', {
-      headers: {
-        'Authorization': `token ${apiKey}:${accessToken}`,
-        'X-Kite-Version': '3',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch instrument list');
-    }
-
-    const csvData = await response.text();
-
-    // Parse CSV and update INSTRUMENT_TOKENS
-    // This is a placeholder - in production, you'd parse the CSV properly
-    console.log('Instrument list fetched successfully');
-
+    return await getBrokerSymbols(broker);
   } catch (error) {
-    console.error('Error fetching instrument list:', error);
+    console.warn(`Error fetching symbols for ${broker}:`, error);
+    return new Map();
   }
 }

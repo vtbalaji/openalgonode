@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
   const symbolToToken: Record<string, number> = {};
 
   for (const symbol of symbols) {
-    const token = getInstrumentToken(symbol);
+    const token = await getInstrumentToken(symbol);
     if (token) {
       tokens.push(token);
       symbolToToken[symbol] = token;
@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (tokens.length === 0) {
-    return new Response('No valid symbols found', { status: 400 });
+    return new Response(`No valid symbols found. Make sure symbols are synced from Zerodha API.`, { status: 400 });
   }
 
   // Setup Server-Sent Events

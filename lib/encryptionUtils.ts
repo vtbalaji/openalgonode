@@ -2,29 +2,38 @@
  * Centralized Encryption/Decryption Utilities
  * All credential encryption/decryption logic in one place
  * Uses AES encryption with key from NEXT_PUBLIC_ENCRYPTION_KEY
+ *
+ * CRITICAL: NEXT_PUBLIC_ENCRYPTION_KEY environment variable MUST be set
+ * If missing, encryption will fail to prevent accidental use of weak keys
  */
 
 import CryptoJS from 'crypto-js';
 
-const ENCRYPTION_KEY = process.env.NEXT_PUBLIC_ENCRYPTION_KEY || 'default-insecure-key';
+// Get encryption key - FAIL if not provided
+const ENCRYPTION_KEY = process.env.NEXT_PUBLIC_ENCRYPTION_KEY;
 
-/**
- * Check if encryption key is using the insecure default
- * Should only happen during development if env var is not set
- */
-export function isUsingDefaultKey(): boolean {
-  return ENCRYPTION_KEY === 'default-insecure-key';
+// Warn in development if key is missing
+if (!ENCRYPTION_KEY) {
+  const message = 'CRITICAL: NEXT_PUBLIC_ENCRYPTION_KEY environment variable is missing! Credentials cannot be encrypted.';
+  console.error(message);
+  if (typeof process !== 'undefined' && process.env.NODE_ENV === 'production') {
+    throw new Error(message);
+  }
 }
 
 /**
  * Encrypt sensitive data (API keys, tokens, secrets)
  * @param data - Plain text to encrypt
  * @returns - AES encrypted string
- * @throws - Error if encryption fails
+ * @throws - Error if encryption fails or key is not configured
  */
 export function encryptData(data: string): string {
   if (!data) {
     throw new Error('Cannot encrypt empty data');
+  }
+
+  if (!ENCRYPTION_KEY) {
+    throw new Error('Encryption key not configured. Set NEXT_PUBLIC_ENCRYPTION_KEY environment variable.');
   }
 
   try {
@@ -45,17 +54,24 @@ export function decryptData(encryptedData: string): string {
     throw new Error('Cannot decrypt empty data');
   }
 
+  if (!ENCRYPTION_KEY) {
+    throw new Error('Encryption key not configured. Set NEXT_PUBLIC_ENCRYPTION_KEY environment variable.');
+  }
+
   try {
     const bytes = CryptoJS.AES.decrypt(encryptedData, ENCRYPTION_KEY);
     const decrypted = bytes.toString(CryptoJS.enc.Utf8);
 
     if (!decrypted || decrypted.trim() === '') {
-      throw new Error('Decrypted data is empty');
+      throw new Error('Decrypted credential is empty or corrupted. Please re-authenticate or reconfigure broker.');
     }
 
     return decrypted;
   } catch (error) {
-    throw new Error(`Decryption failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    // Provide detailed error message for debugging
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Decryption error:', errorMsg);
+    throw new Error(`Failed to decrypt credential: ${errorMsg}`);
   }
 }
 

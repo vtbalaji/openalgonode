@@ -18,6 +18,10 @@ interface Order {
   filled_quantity: number;
   pending_quantity: number;
   created_at: string;
+  product?: string;
+  trigger_price?: number;
+  disclosed_quantity?: number;
+  validity?: string;
   [key: string]: any;
 }
 
@@ -42,6 +46,20 @@ export default function OrderStatusPage() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(true);
+
+  // Modal states
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [isActionLoading, setIsActionLoading] = useState(false);
+  const [actionError, setActionError] = useState('');
+
+  // Edit form state
+  const [editFormData, setEditFormData] = useState({
+    quantity: 0,
+    price: 0,
+    trigger_price: 0,
+  });
 
   useEffect(() => {
     if (!user && !loading) {
@@ -145,6 +163,105 @@ export default function OrderStatusPage() {
     }
   };
 
+  const handleCancelOrder = async () => {
+    if (!selectedOrder) return;
+
+    setIsActionLoading(true);
+    setActionError('');
+
+    try {
+      const idToken = await user?.getIdToken();
+      const response = await fetch('/api/orders/cancel', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${idToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          orderid: selectedOrder.order_id,
+          broker: 'zerodha',
+        }),
+      });
+
+      if (response.ok) {
+        setShowCancelModal(false);
+        setSelectedOrder(null);
+        // Refresh orders
+        await fetchData();
+      } else {
+        const data = await response.json();
+        setActionError(data.error || 'Failed to cancel order');
+      }
+    } catch (err: any) {
+      setActionError(err.message || 'An error occurred');
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
+  const handleModifyOrder = async () => {
+    if (!selectedOrder) return;
+
+    setIsActionLoading(true);
+    setActionError('');
+
+    try {
+      const idToken = await user?.getIdToken();
+      const response = await fetch('/api/orders/modify', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${idToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          orderid: selectedOrder.order_id,
+          broker: 'zerodha',
+          quantity: editFormData.quantity,
+          price: editFormData.price,
+          trigger_price: editFormData.trigger_price,
+          order_type: selectedOrder.order_type,
+          product: selectedOrder.product || 'MIS',
+          validity: selectedOrder.validity || 'DAY',
+          tradingsymbol: selectedOrder.tradingsymbol,
+          exchange: selectedOrder.exchange,
+          transaction_type: selectedOrder.transaction_type,
+          disclosed_quantity: selectedOrder.disclosed_quantity || 0,
+        }),
+      });
+
+      if (response.ok) {
+        setShowEditModal(false);
+        setSelectedOrder(null);
+        // Refresh orders
+        await fetchData();
+      } else {
+        const data = await response.json();
+        setActionError(data.error || 'Failed to modify order');
+      }
+    } catch (err: any) {
+      setActionError(err.message || 'An error occurred');
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
+  const openCancelModal = (order: Order) => {
+    setSelectedOrder(order);
+    setActionError('');
+    setShowCancelModal(true);
+  };
+
+  const openEditModal = (order: Order) => {
+    setSelectedOrder(order);
+    setEditFormData({
+      quantity: order.quantity - (order.filled_quantity || 0),
+      price: order.price || 0,
+      trigger_price: order.trigger_price || 0,
+    });
+    setActionError('');
+    setShowEditModal(true);
+  };
+
   if (loading || isFetching) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -232,6 +349,7 @@ export default function OrderStatusPage() {
                     <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Avg Price</th>
                     <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Status</th>
                     <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Created</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -274,6 +392,28 @@ export default function OrderStatusPage() {
                       <td className="px-6 py-4 text-sm text-gray-500">
                         {new Date(order.order_timestamp || order.created_at).toLocaleString()}
                       </td>
+                      <td className="px-6 py-4 text-sm space-x-2">
+                        {order.status === 'OPEN' || order.status === 'TRIGGER PENDING' ? (
+                          <>
+                            <button
+                              onClick={() => openEditModal(order)}
+                              className="inline-block rounded bg-blue-600 px-3 py-1 text-white text-xs hover:bg-blue-700 disabled:opacity-50"
+                              disabled={isActionLoading}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => openCancelModal(order)}
+                              className="inline-block rounded bg-red-600 px-3 py-1 text-white text-xs hover:bg-red-700 disabled:opacity-50"
+                              disabled={isActionLoading}
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <span className="text-gray-400 text-xs">No actions</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -303,8 +443,8 @@ export default function OrderStatusPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {positions.map((position) => (
-                    <tr key={`${position.tradingsymbol}-${position.exchange}`} className="hover:bg-gray-50">
+                  {positions.map((position, index) => (
+                    <tr key={`${position.tradingsymbol}-${position.exchange}-${index}`} className="hover:bg-gray-50">
                       <td className="px-6 py-4 text-sm font-semibold text-gray-900">{position.tradingsymbol}</td>
                       <td className="px-6 py-4 text-sm text-gray-600">{position.exchange}</td>
                       <td className="px-6 py-4 text-sm font-semibold text-gray-900">{position.quantity}</td>
@@ -370,6 +510,179 @@ export default function OrderStatusPage() {
             </div>
           </div>
         </div>
+
+        {/* Cancel Order Modal */}
+        {showCancelModal && selectedOrder && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+            <div className="rounded-lg bg-white p-6 max-w-sm w-full mx-4 shadow-lg">
+              <h2 className="text-lg font-bold text-gray-900 mb-4">Cancel Order</h2>
+
+              {actionError && (
+                <div className="mb-4 rounded-lg bg-red-50 p-3 text-red-700 text-sm">
+                  {actionError}
+                </div>
+              )}
+
+              <div className="mb-6 space-y-3 text-sm">
+                <p className="text-gray-700">
+                  <span className="font-semibold">Order ID:</span> {selectedOrder.order_id}
+                </p>
+                <p className="text-gray-700">
+                  <span className="font-semibold">Symbol:</span> {selectedOrder.tradingsymbol}
+                </p>
+                <p className="text-gray-700">
+                  <span className="font-semibold">Quantity:</span> {selectedOrder.quantity}
+                </p>
+                <p className="text-gray-700">
+                  <span className="font-semibold">Price:</span> ₹{selectedOrder.price?.toFixed(2)}
+                </p>
+              </div>
+
+              <p className="mb-6 text-gray-600 text-sm">
+                Are you sure you want to cancel this order? This action cannot be undone.
+              </p>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowCancelModal(false)}
+                  disabled={isActionLoading}
+                  className="flex-1 rounded-lg bg-gray-200 px-4 py-2 text-gray-700 hover:bg-gray-300 disabled:opacity-50"
+                >
+                  Keep Order
+                </button>
+                <button
+                  onClick={handleCancelOrder}
+                  disabled={isActionLoading}
+                  className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-white hover:bg-red-700 disabled:opacity-50"
+                >
+                  {isActionLoading ? 'Cancelling...' : 'Cancel Order'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Order Modal */}
+        {showEditModal && selectedOrder && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+            <div className="rounded-lg bg-white p-6 max-w-md w-full mx-4 shadow-lg max-h-96 overflow-y-auto">
+              <h2 className="text-lg font-bold text-gray-900 mb-4">Edit Order</h2>
+
+              {actionError && (
+                <div className="mb-4 rounded-lg bg-red-50 p-3 text-red-700 text-sm">
+                  {actionError}
+                </div>
+              )}
+
+              <div className="mb-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Order ID
+                  </label>
+                  <input
+                    type="text"
+                    value={selectedOrder.order_id}
+                    disabled
+                    className="w-full rounded-lg border border-gray-300 bg-gray-100 px-3 py-2 text-gray-600 text-sm cursor-not-allowed"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Symbol
+                    </label>
+                    <input
+                      type="text"
+                      value={selectedOrder.tradingsymbol}
+                      disabled
+                      className="w-full rounded-lg border border-gray-300 bg-gray-100 px-3 py-2 text-gray-600 text-sm cursor-not-allowed"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Type
+                    </label>
+                    <input
+                      type="text"
+                      value={selectedOrder.transaction_type}
+                      disabled
+                      className="w-full rounded-lg border border-gray-300 bg-gray-100 px-3 py-2 text-gray-600 text-sm cursor-not-allowed"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Quantity (Pending: {selectedOrder.quantity - (selectedOrder.filled_quantity || 0)})
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max={selectedOrder.quantity - (selectedOrder.filled_quantity || 0)}
+                    value={editFormData.quantity}
+                    onChange={(e) =>
+                      setEditFormData({ ...editFormData, quantity: parseInt(e.target.value) || 0 })
+                    }
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Can only modify {selectedOrder.quantity - (selectedOrder.filled_quantity || 0)} unfilled quantity
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Price
+                  </label>
+                  <input
+                    type="number"
+                    step="0.05"
+                    min="0"
+                    value={editFormData.price}
+                    onChange={(e) =>
+                      setEditFormData({ ...editFormData, price: parseFloat(e.target.value) || 0 })
+                    }
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Trigger Price
+                  </label>
+                  <input
+                    type="number"
+                    step="0.05"
+                    min="0"
+                    value={editFormData.trigger_price}
+                    onChange={(e) =>
+                      setEditFormData({ ...editFormData, trigger_price: parseFloat(e.target.value) || 0 })
+                    }
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowEditModal(false)}
+                  disabled={isActionLoading}
+                  className="flex-1 rounded-lg bg-gray-200 px-4 py-2 text-gray-700 hover:bg-gray-300 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleModifyOrder}
+                  disabled={isActionLoading}
+                  className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {isActionLoading ? 'Modifying...' : 'Modify Order'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

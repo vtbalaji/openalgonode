@@ -118,12 +118,18 @@ export function RealtimePriceTicker({ symbol, broker = 'zerodha' }: RealtimePric
         </div>
 
         {/* Volume */}
-        <div className="bg-blue-50 rounded-lg p-4">
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-gray-600">Volume Traded</span>
-            <span className="text-lg font-bold text-blue-600">{priceData.volume.toLocaleString()}</span>
+        {priceData.volume ? (
+          <div className="bg-blue-50 rounded-lg p-4">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-600">Volume Traded</span>
+              <span className="text-lg font-bold text-blue-600">{priceData.volume.toLocaleString()}</span>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="bg-blue-50 rounded-lg p-4 text-gray-500 text-sm">
+            Volume data not available for indices
+          </div>
+        )}
 
         {/* Timestamp */}
         <div className="mt-4 text-xs text-gray-400 text-center">

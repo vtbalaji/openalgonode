@@ -1,15 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth } from '@/lib/firebaseAdmin';
-import { placeOrder, transformOrderData } from '@/lib/zerodhaClient';
-import { getCachedBrokerConfig } from '@/lib/brokerConfigUtils';
-import CryptoJS from 'crypto-js';
-
-const ENCRYPTION_KEY = process.env.NEXT_PUBLIC_ENCRYPTION_KEY || 'default-insecure-key';
-
-function decryptData(encryptedData: string): string {
-  const bytes = CryptoJS.AES.decrypt(encryptedData, ENCRYPTION_KEY);
-  return bytes.toString(CryptoJS.enc.Utf8);
-}
+import { callInternalBrokerEndpoint } from '@/lib/internalRouting';
 
 /**
  * POST /api/orders/place
@@ -64,76 +55,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Retrieve broker config from cache
-    const configData = await getCachedBrokerConfig(userId, broker);
-
-    if (!configData) {
-      return NextResponse.json(
-        { error: 'Broker configuration not found' },
-        { status: 404 }
-      );
-    }
-
-    // Check if broker is authenticated
-    if (!configData.accessToken || configData.status !== 'active') {
-      return NextResponse.json(
-        { error: 'Broker not authenticated. Please authenticate first.' },
-        { status: 401 }
-      );
-    }
-
-    let accessToken;
-    try {
-      accessToken = decryptData(configData.accessToken);
-
-      // Validate that accessToken is not empty
-      if (!accessToken || accessToken.trim() === '') {
-        return NextResponse.json(
-          { error: 'Invalid broker authentication. Access token is empty. Please re-authenticate.' },
-          { status: 401 }
-        );
-      }
-    } catch (error) {
-      console.error('Error decrypting access token:', error);
-      return NextResponse.json(
-        { error: 'Failed to decrypt broker credentials. Please re-authenticate.' },
-        { status: 401 }
-      );
-    }
-
-    // Transform order data to Zerodha format
-    const zerodhaOrder = transformOrderData(order);
-
-    // Place the order
-    let orderResult;
-    try {
-      orderResult = await placeOrder(accessToken, zerodhaOrder);
-    } catch (error: any) {
-      return NextResponse.json(
-        { error: error.message || 'Failed to place order' },
-        { status: 400 }
-      );
-    }
-
-    // Store order in Firestore for reference
-    const ordersRef = userRef.collection('orders');
-    await ordersRef.doc(orderResult.order_id).set({
-      orderId: orderResult.order_id,
+    // Call internal broker endpoint
+    const { data, status } = await callInternalBrokerEndpoint(broker, 'place-order', {
+      userId,
       symbol: order.symbol,
       exchange: order.exchange,
       action: order.action,
       quantity: order.quantity,
       product: order.product,
       pricetype: order.pricetype,
-      status: 'pending',
-      createdAt: new Date(),
-      zerodhaResponse: orderResult,
+      price: order.price,
+      trigger_price: order.trigger_price,
+      disclosed_quantity: order.disclosed_quantity,
     });
+
+    if (status !== 200) {
+      return NextResponse.json(data, { status });
+    }
 
     return NextResponse.json(
       {
         success: true,
-        orderId: orderResult.order_id,
+        orderId: data.order_id,
         message: 'Order placed successfully',
       },
       { status: 200 }

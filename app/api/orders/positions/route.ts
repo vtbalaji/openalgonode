@@ -1,15 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth } from '@/lib/firebaseAdmin';
-import { getPositions } from '@/lib/zerodhaClient';
-import { getCachedBrokerConfig } from '@/lib/brokerConfigUtils';
-import CryptoJS from 'crypto-js';
-
-const ENCRYPTION_KEY = process.env.NEXT_PUBLIC_ENCRYPTION_KEY || 'default-insecure-key';
-
-function decryptData(encryptedData: string): string {
-  const bytes = CryptoJS.AES.decrypt(encryptedData, ENCRYPTION_KEY);
-  return bytes.toString(CryptoJS.enc.Utf8);
-}
+import { callInternalBrokerEndpoint } from '@/lib/internalRouting';
 
 /**
  * GET /api/orders/positions
@@ -44,47 +35,23 @@ export async function GET(request: NextRequest) {
     const userId = decodedToken.uid;
     const broker = request.nextUrl.searchParams.get('broker') || 'zerodha';
 
-    // Retrieve broker config from cache
-    const configData = await getCachedBrokerConfig(userId, broker);
+    // Call internal broker endpoint
+    const { data, status } = await callInternalBrokerEndpoint(broker, 'positions', {
+      userId,
+    });
 
-    if (!configData) {
-      return NextResponse.json(
-        { error: 'Broker configuration not found' },
-        { status: 404 }
-      );
+    if (status !== 200) {
+      return NextResponse.json(data, { status });
     }
 
-    // Check if broker is authenticated
-    if (!configData.accessToken || configData.status !== 'active') {
-      return NextResponse.json(
-        { error: 'Broker not authenticated. Please authenticate first.' },
-        { status: 401 }
-      );
-    }
-
-    const accessToken = decryptData(configData.accessToken);
-
-    // Get positions from Zerodha
-    let positions;
-    try {
-      const positionsData = await getPositions(accessToken);
-
-      // Combine both net and day positions
-      const allPositions = [...(positionsData.net || []), ...(positionsData.day || [])];
-
-      positions = allPositions;
-    } catch (error: any) {
-      return NextResponse.json(
-        { error: error.message || 'Failed to fetch positions' },
-        { status: 400 }
-      );
-    }
+    // Combine both net and day positions if available
+    const allPositions = [...(data.net || []), ...(data.day || [])];
 
     return NextResponse.json(
       {
         success: true,
-        positions: positions || [],
-        count: positions?.length || 0,
+        positions: allPositions || [],
+        count: allPositions?.length || 0,
       },
       { status: 200 }
     );

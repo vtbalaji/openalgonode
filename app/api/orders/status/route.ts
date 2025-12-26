@@ -1,15 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth } from '@/lib/firebaseAdmin';
-import { getOrderBook } from '@/lib/zerodhaClient';
-import { getCachedBrokerConfig } from '@/lib/brokerConfigUtils';
-import CryptoJS from 'crypto-js';
-
-const ENCRYPTION_KEY = process.env.NEXT_PUBLIC_ENCRYPTION_KEY || 'default-insecure-key';
-
-function decryptData(encryptedData: string): string {
-  const bytes = CryptoJS.AES.decrypt(encryptedData, ENCRYPTION_KEY);
-  return bytes.toString(CryptoJS.enc.Utf8);
-}
+import { callInternalBrokerEndpoint } from '@/lib/internalRouting';
 
 /**
  * GET /api/orders/status
@@ -44,42 +35,20 @@ export async function GET(request: NextRequest) {
     const userId = decodedToken.uid;
     const broker = request.nextUrl.searchParams.get('broker') || 'zerodha';
 
-    // Get broker config from cache (reduces Firebase reads)
-    const configData = await getCachedBrokerConfig(userId, broker);
+    // Route to internal broker endpoint
+    const { data, status } = await callInternalBrokerEndpoint(broker, 'orderbook', {
+      userId,
+    });
 
-    if (!configData) {
-      return NextResponse.json(
-        { error: 'Broker configuration not found' },
-        { status: 404 }
-      );
-    }
-
-    // Check if broker is authenticated
-    if (!configData.accessToken || configData.status !== 'active') {
-      return NextResponse.json(
-        { error: 'Broker not authenticated. Please authenticate first.' },
-        { status: 401 }
-      );
-    }
-
-    const accessToken = decryptData(configData.accessToken);
-
-    // Get order book from Zerodha
-    let orders;
-    try {
-      orders = await getOrderBook(accessToken);
-    } catch (error: any) {
-      return NextResponse.json(
-        { error: error.message || 'Failed to fetch order book' },
-        { status: 400 }
-      );
+    if (status !== 200) {
+      return NextResponse.json(data, { status });
     }
 
     return NextResponse.json(
       {
         success: true,
-        orders: orders || [],
-        count: orders?.length || 0,
+        orders: data.data || [],
+        count: data.count || 0,
       },
       { status: 200 }
     );

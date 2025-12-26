@@ -1,20 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateApiKey, requirePermission } from '@/lib/apiKeyAuth';
 import { PlaceOrderRequest, OrderResponse } from '@/lib/types/openalgo';
-import { adminDb } from '@/lib/firebaseAdmin';
-import { getCachedBrokerConfig } from '@/lib/brokerConfigUtils';
-import CryptoJS from 'crypto-js';
-
-const ENCRYPTION_KEY = process.env.NEXT_PUBLIC_ENCRYPTION_KEY || 'default-insecure-key';
-
-function decryptData(encryptedData: string): string {
-  const bytes = CryptoJS.AES.decrypt(encryptedData, ENCRYPTION_KEY);
-  return bytes.toString(CryptoJS.enc.Utf8);
-}
+import { callInternalBrokerEndpoint } from '@/lib/internalRouting';
 
 /**
  * POST /api/v1/placeorder
- * OpenAlgo-compatible place order endpoint
+ * OpenAlgo-compatible place order endpoint (ROUTER)
+ * Thin router that routes to broker-specific internal endpoints
  * Authentication: API key in request body
  */
 export async function POST(request: NextRequest) {
@@ -46,39 +38,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get broker auth token from cache
-    const configData = await getCachedBrokerConfig(userId, broker);
-
-    if (!configData) {
-      return NextResponse.json(
-        {
-          status: 'error',
-          message: 'Broker configuration not found',
-        },
-        { status: 404 }
-      );
-    }
-
-    // Check if broker is authenticated
-    if (!configData?.accessToken || configData.status !== 'active') {
-      return NextResponse.json(
-        {
-          status: 'error',
-          message: 'Broker not authenticated. Please authenticate first.',
-        },
-        { status: 401 }
-      );
-    }
-
-    const accessToken = decryptData(configData.accessToken);
-
-    // Place order based on broker
-    // For now, we only support Zerodha - will be extended with broker factory
+    // Route to broker-specific internal endpoint
     if (broker === 'zerodha') {
-      const { placeOrder, transformOrderData } = await import('@/lib/zerodhaClient');
-
-      // Transform OpenAlgo format to our internal format, then to Zerodha format
-      const orderData = {
+      const { data, status } = await callInternalBrokerEndpoint('zerodha', 'place-order', {
+        userId,
         symbol: body.symbol,
         exchange: body.exchange,
         action: body.action,
@@ -88,42 +51,10 @@ export async function POST(request: NextRequest) {
         price: body.price || 0,
         trigger_price: body.trigger_price || 0,
         disclosed_quantity: body.disclosed_quantity || 0,
-      };
+        strategy: body.strategy,
+      });
 
-      const zerodhaOrder = transformOrderData(orderData);
-
-      try {
-        const result = await placeOrder(accessToken, zerodhaOrder);
-
-        // Store order in Firestore for reference
-        const ordersRef = adminDb.collection('users').doc(userId).collection('orders');
-        await ordersRef.doc(result.order_id).set({
-          orderId: result.order_id,
-          symbol: body.symbol,
-          exchange: body.exchange,
-          action: body.action,
-          quantity: body.quantity,
-          product: body.product || 'MIS',
-          pricetype: body.pricetype || 'MARKET',
-          strategy: body.strategy,
-          status: 'pending',
-          createdAt: new Date(),
-          zerodhaResponse: result,
-        });
-
-        const response: OrderResponse = {
-          status: 'success',
-          orderid: result.order_id,
-        };
-
-        return NextResponse.json(response, { status: 200 });
-      } catch (error: any) {
-        const response: OrderResponse = {
-          status: 'error',
-          message: error.message || 'Failed to place order',
-        };
-        return NextResponse.json(response, { status: 400 });
-      }
+      return NextResponse.json(data, { status });
     } else {
       return NextResponse.json(
         {
@@ -133,12 +64,12 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-  } catch (error) {
-    console.error('Error in placeorder API:', error);
+  } catch (error: any) {
+    console.error('Error in placeorder router:', error);
     return NextResponse.json(
       {
         status: 'error',
-        message: 'Internal server error',
+        message: error.message || 'Internal server error',
       },
       { status: 500 }
     );

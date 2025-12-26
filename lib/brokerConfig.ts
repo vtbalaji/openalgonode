@@ -22,7 +22,7 @@ export const BROKER_CONFIGS: Record<string, BrokerConfig> = {
     id: 'zerodha',
     name: 'zerodha',
     displayName: 'Zerodha (Kite)',
-    loginUrlTemplate: 'https://kite.trade/connect/login?v=3&api_key={apiKey}',
+    loginUrlTemplate: 'https://kite.trade/connect/login?v=3&api_key={apiKey}&redirect_uri={redirectUri}',
     apiEndpoint: 'https://api.kite.trade',
     requiresApiKey: true,
     requiresApiSecret: true,

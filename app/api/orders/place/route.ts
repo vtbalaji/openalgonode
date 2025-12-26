@@ -91,7 +91,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const accessToken = decryptData(configData.accessToken);
+    let accessToken;
+    try {
+      accessToken = decryptData(configData.accessToken);
+
+      // Validate that accessToken is not empty
+      if (!accessToken || accessToken.trim() === '') {
+        return NextResponse.json(
+          { error: 'Invalid broker authentication. Access token is empty. Please re-authenticate.' },
+          { status: 401 }
+        );
+      }
+    } catch (error) {
+      console.error('Error decrypting access token:', error);
+      return NextResponse.json(
+        { error: 'Failed to decrypt broker credentials. Please re-authenticate.' },
+        { status: 401 }
+      );
+    }
 
     // Transform order data to Zerodha format
     const zerodhaOrder = transformOrderData(order);

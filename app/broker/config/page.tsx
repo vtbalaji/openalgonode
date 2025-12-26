@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getAllBrokers, getBrokerConfig } from '@/lib/brokerConfig';
+import { BrokerAuthStatus } from '@/components/BrokerAuthStatus';
 
 export default function BrokerConfigPage() {
   const { user, loading } = useAuth();
@@ -17,7 +18,11 @@ export default function BrokerConfigPage() {
   const [success, setSuccess] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [authStatus, setAuthStatus] = useState<'active' | 'inactive' | null>(null);
+  const [lastAuthenticatedAt, setLastAuthenticatedAt] = useState<Date | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [isFetching, setIsFetching] = useState(true);
+  const [credentialsExist, setCredentialsExist] = useState(false);
+  const [editMode, setEditMode] = useState(false);
 
   const brokerConfig = getBrokerConfig(selectedBroker);
   const allBrokers = getAllBrokers();
@@ -46,12 +51,35 @@ export default function BrokerConfigPage() {
       if (response.ok) {
         const data = await response.json();
         setAuthStatus(data.status);
+        setValidationError(data.validationError || null);
+        setCredentialsExist(data.credentialsExist || false);
+        setEditMode(false);  // Start in view mode if credentials exist
+
+        if (data.lastAuthenticated) {
+          const dateObj = new Date(data.lastAuthenticated);
+          // Validate the date is valid
+          if (!isNaN(dateObj.getTime())) {
+            setLastAuthenticatedAt(dateObj);
+          } else {
+            setLastAuthenticatedAt(null);
+          }
+        } else {
+          setLastAuthenticatedAt(null);
+        }
       } else {
         setAuthStatus(null);
+        setLastAuthenticatedAt(null);
+        setValidationError(null);
+        setCredentialsExist(false);
+        setEditMode(true);  // Show edit mode if credentials don't exist
       }
     } catch (err) {
       console.error('Error fetching config:', err);
       setAuthStatus(null);
+      setLastAuthenticatedAt(null);
+      setValidationError(null);
+      setCredentialsExist(false);
+      setEditMode(true);
     } finally {
       setIsFetching(false);
     }
@@ -151,6 +179,11 @@ export default function BrokerConfigPage() {
         setSuccess('Authentication successful! You can now place orders.');
         setRequestToken('');
         setAuthStatus('active');
+        setLastAuthenticatedAt(new Date());
+        // Refresh config after a short delay
+        setTimeout(() => {
+          fetchBrokerConfig();
+        }, 1000);
       } else {
         const data = await response.json();
         setError(data.error || 'Authentication failed');
@@ -193,16 +226,28 @@ export default function BrokerConfigPage() {
       {/* Main Content */}
       <main className="mx-auto max-w-2xl px-4 py-12 sm:px-6 lg:px-8">
         {/* Status Card */}
-        <div className={`mb-8 rounded-lg p-6 ${authStatus === 'active' ? 'bg-green-50' : 'bg-yellow-50'}`}>
-          <h2 className={`text-lg font-semibold ${authStatus === 'active' ? 'text-green-900' : 'text-yellow-900'}`}>
-            Status: <span className="capitalize">{authStatus || 'Not configured'}</span>
-          </h2>
-          <p className={`mt-2 ${authStatus === 'active' ? 'text-green-700' : 'text-yellow-700'}`}>
-            {authStatus === 'active'
-              ? 'Your broker is authenticated and ready to use.'
-              : 'Please configure your broker credentials and authenticate.'}
-          </p>
+        <div className="mb-8">
+          <BrokerAuthStatus
+            lastAuthenticatedAt={lastAuthenticatedAt}
+            broker={selectedBroker}
+            onReAuth={handleGetLoginUrl}
+            showDetails={true}
+            compact={false}
+          />
         </div>
+
+        {validationError && (
+          <div className="mb-6 rounded-lg bg-yellow-50 border border-yellow-200 p-4 text-yellow-800">
+            <p className="font-medium mb-2">⚠️ Authentication Issue</p>
+            <p>{validationError}</p>
+            <button
+              onClick={handleGetLoginUrl}
+              className="mt-3 px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded font-medium transition"
+            >
+              Re-authenticate Now
+            </button>
+          </div>
+        )}
 
         {error && (
           <div className="mb-6 rounded-lg bg-red-50 p-4 text-red-700">
@@ -218,8 +263,30 @@ export default function BrokerConfigPage() {
 
         {/* Configuration Form */}
         <div className="mb-8 rounded-lg bg-white p-6 shadow">
-          <h2 className="mb-6 text-2xl font-semibold text-gray-900">Step 1: Save API Credentials</h2>
-          <form onSubmit={handleSaveConfig} className="space-y-4">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-semibold text-gray-900">Step 1: Save API Credentials</h2>
+            {credentialsExist && (
+              <button
+                type="button"
+                onClick={() => setEditMode(!editMode)}
+                className={`px-4 py-2 rounded font-medium transition ${
+                  editMode
+                    ? 'bg-gray-300 hover:bg-gray-400 text-gray-900'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                }`}
+              >
+                {editMode ? 'Cancel' : 'Edit Credentials'}
+              </button>
+            )}
+          </div>
+
+          {credentialsExist && !editMode && (
+            <div className="mb-6 rounded-lg bg-blue-50 border border-blue-200 p-4">
+              <p className="text-blue-900">✅ API credentials are already configured</p>
+            </div>
+          )}
+
+          <form onSubmit={handleSaveConfig} className="space-y-4" style={{ display: credentialsExist && !editMode ? 'none' : 'block' }}>
             {/* Broker Selection */}
             <div>
               <label className="block text-sm font-medium text-gray-700">Select Broker</label>
@@ -238,27 +305,45 @@ export default function BrokerConfigPage() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700">API Key</label>
-              <input
-                type="text"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-blue-500 focus:outline-none"
-                placeholder={`Your ${brokerConfig?.displayName} API Key`}
-                required
-              />
+              {credentialsExist && !editMode ? (
+                <input
+                  type="text"
+                  value="••••••••••••••••"
+                  disabled
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-600 bg-gray-100 cursor-not-allowed"
+                />
+              ) : (
+                <input
+                  type="text"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-blue-500 focus:outline-none"
+                  placeholder={`Your ${brokerConfig?.displayName} API Key`}
+                  required
+                />
+              )}
             </div>
 
             {brokerConfig?.requiresApiSecret && (
               <div>
                 <label className="block text-sm font-medium text-gray-700">API Secret</label>
-                <input
-                  type="password"
-                  value={apiSecret}
-                  onChange={(e) => setApiSecret(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-blue-500 focus:outline-none"
-                  placeholder={`Your ${brokerConfig?.displayName} API Secret`}
-                  required
-                />
+                {credentialsExist && !editMode ? (
+                  <input
+                    type="password"
+                    value="••••••••••••••••"
+                    disabled
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-600 bg-gray-100 cursor-not-allowed"
+                  />
+                ) : (
+                  <input
+                    type="password"
+                    value={apiSecret}
+                    onChange={(e) => setApiSecret(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-blue-500 focus:outline-none"
+                    placeholder={`Your ${brokerConfig?.displayName} API Secret`}
+                    required
+                  />
+                )}
               </div>
             )}
 
@@ -267,7 +352,7 @@ export default function BrokerConfigPage() {
               disabled={isLoading}
               className="w-full rounded-lg bg-blue-600 px-6 py-2 font-medium text-white transition hover:bg-blue-700 disabled:opacity-50"
             >
-              {isLoading ? 'Saving...' : 'Save Credentials'}
+              {isLoading ? 'Saving...' : editMode && credentialsExist ? 'Update Credentials' : 'Save Credentials'}
             </button>
           </form>
         </div>

@@ -8,6 +8,11 @@ function encryptData(data: string): string {
   return CryptoJS.AES.encrypt(data, ENCRYPTION_KEY).toString();
 }
 
+function decryptData(encryptedData: string): string {
+  const bytes = CryptoJS.AES.decrypt(encryptedData, ENCRYPTION_KEY);
+  return bytes.toString(CryptoJS.enc.Utf8);
+}
+
 /**
  * POST /api/broker/config
  * Save broker configuration (API key and secret)
@@ -124,12 +129,36 @@ export async function GET(request: NextRequest) {
         { status: 404 }
       );
     }
+
+    // Verify that authentication is actually valid
+    let isValid = true;
+    let validationError = null;
+
+    if (data.status === 'active' && data.accessToken) {
+      try {
+        const decrypted = decryptData(data.accessToken);
+        if (!decrypted || decrypted.trim() === '') {
+          isValid = false;
+          validationError = 'Access token is empty. Please re-authenticate.';
+        }
+      } catch (error) {
+        isValid = false;
+        validationError = 'Failed to decrypt access token. Please re-authenticate.';
+      }
+    } else if (data.status === 'active' && !data.accessToken) {
+      isValid = false;
+      validationError = 'No access token found. Please authenticate.';
+    }
+
     return NextResponse.json(
       {
         broker: data.broker,
         status: data.status,
+        isValid,
+        validationError,
         lastUpdated: data.lastUpdated,
         lastAuthenticated: data.lastAuthenticated || null,
+        credentialsExist: !!data.apiKey && !!data.apiSecret,  // Check if credentials are saved
       },
       { status: 200 }
     );

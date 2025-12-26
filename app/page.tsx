@@ -3,10 +3,49 @@
 import { useAuth } from '@/lib/AuthContext';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { BrokerAuthStatus } from '@/components/BrokerAuthStatus';
 
 export default function Home() {
   const { user, loading, logout } = useAuth();
   const router = useRouter();
+  const [lastAuthenticatedAt, setLastAuthenticatedAt] = useState<Date | null>(null);
+  const [brokerStatus, setBrokerStatus] = useState<'active' | 'inactive' | null>(null);
+
+  useEffect(() => {
+    if (user) {
+      fetchBrokerConfig();
+    }
+  }, [user]);
+
+  const fetchBrokerConfig = async () => {
+    try {
+      const idToken = await user?.getIdToken();
+      const response = await fetch('/api/broker/config?broker=zerodha', {
+        headers: {
+          'Authorization': `Bearer ${idToken}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setBrokerStatus(data.status);
+        if (data.lastAuthenticated) {
+          const dateObj = new Date(data.lastAuthenticated);
+          // Validate the date is valid
+          if (!isNaN(dateObj.getTime())) {
+            setLastAuthenticatedAt(dateObj);
+          } else {
+            setLastAuthenticatedAt(null);
+          }
+        } else {
+          setLastAuthenticatedAt(null);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching broker config:', err);
+    }
+  };
 
   const handleLogout = async () => {
     await logout();
@@ -78,6 +117,17 @@ export default function Home() {
         <div className="mb-8 rounded-lg bg-white p-6 shadow">
           <h2 className="mb-2 text-2xl font-semibold text-gray-900">Welcome, {user.displayName || user.email}</h2>
           <p className="text-gray-600">Choose an action below to get started.</p>
+        </div>
+
+        {/* Broker Authentication Status */}
+        <div className="mb-8">
+          <BrokerAuthStatus
+            lastAuthenticatedAt={lastAuthenticatedAt}
+            broker="zerodha"
+            onReAuth={() => router.push('/broker/config')}
+            showDetails={false}
+            compact={true}
+          />
         </div>
 
         {/* Action Cards */}

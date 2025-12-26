@@ -13,15 +13,14 @@ function CallbackPageContent() {
 
   useEffect(() => {
     const handleCallback = async () => {
-      // Get request token from URL
+      // Get request token from URL (Zerodha returns as request_token parameter)
       const requestToken = searchParams.get('request_token');
-      const action = searchParams.get('action');
-      const statusParam = searchParams.get('status');
 
-      // Check if this is a successful callback
-      if (!requestToken || action !== 'login' || statusParam !== 'success') {
+      // Check if we have a request token
+      if (!requestToken) {
         setStatus('error');
-        setMessage('Invalid callback. Missing request token or authentication failed.');
+        setMessage('Invalid callback. Missing request token from broker.');
+        setTimeout(() => router.push('/broker/config'), 3000);
         return;
       }
 
@@ -32,7 +31,7 @@ function CallbackPageContent() {
           if (!user) {
             setStatus('error');
             setMessage('Please log in first.');
-            setTimeout(() => router.push('/login'), 2000);
+            setTimeout(() => router.push('/login'), 3000);
           }
         }, 2000);
         return;
@@ -56,20 +55,22 @@ function CallbackPageContent() {
 
         if (response.ok) {
           setStatus('success');
-          setMessage('Authentication successful! Redirecting to place order...');
+          setMessage('Authentication successful! Redirecting to broker config...');
 
-          // Redirect to place order page after 2 seconds
+          // Redirect back to broker config page after 2 seconds
           setTimeout(() => {
-            router.push('/orders/place');
+            router.push('/broker/config');
           }, 2000);
         } else {
           const data = await response.json();
           setStatus('error');
           setMessage(data.error || 'Authentication failed. Please try again.');
+          setTimeout(() => router.push('/broker/config'), 3000);
         }
       } catch (err: any) {
         setStatus('error');
         setMessage(err.message || 'An error occurred during authentication.');
+        setTimeout(() => router.push('/broker/config'), 3000);
       }
     };
 
@@ -106,13 +107,14 @@ function CallbackPageContent() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </div>
-            <h2 className="mb-2 text-xl font-semibold text-red-900">Error</h2>
+            <h2 className="mb-2 text-xl font-semibold text-red-900">Authentication Failed</h2>
             <p className="mb-4 text-gray-600">{message}</p>
+            <p className="text-sm text-gray-500">Redirecting to broker config in 3 seconds...</p>
             <button
               onClick={() => router.push('/broker/config')}
-              className="rounded-lg bg-blue-600 px-6 py-2 font-medium text-white hover:bg-blue-700"
+              className="mt-4 rounded-lg bg-blue-600 px-6 py-2 font-medium text-white hover:bg-blue-700"
             >
-              Go to Broker Config
+              Go to Broker Config Now
             </button>
           </div>
         )}

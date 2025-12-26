@@ -110,6 +110,11 @@ export async function POST(request: NextRequest) {
 
     const accessToken = decryptData(configData.accessToken);
 
+    // Extract access token from combined format (api_key:access_token)
+    const token = accessToken.includes(':')
+      ? accessToken.split(':')[1]
+      : accessToken;
+
     // Build the order payload for modification
     const orderPayload = {
       tradingsymbol: tradingsymbol || '',
@@ -127,7 +132,7 @@ export async function POST(request: NextRequest) {
     // Modify the order via Zerodha
     let result;
     try {
-      result = await modifyOrder(accessToken, orderid, orderPayload);
+      result = await modifyOrder(token, orderid, orderPayload);
     } catch (error: any) {
       return NextResponse.json(
         { error: error.message || 'Failed to modify order' },

@@ -87,7 +87,7 @@ export async function placeOrder(
       method: 'POST',
       headers: {
         'X-Kite-Version': '3',
-        'Authorization': accessToken,
+        'Authorization': `token ${accessToken}`,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: formData.toString(),
@@ -119,7 +119,7 @@ export async function getOrderBook(accessToken: string): Promise<any[]> {
       method: 'GET',
       headers: {
         'X-Kite-Version': '3',
-        'Authorization': accessToken,
+        'Authorization': `token ${accessToken}`,
       },
     });
 
@@ -170,7 +170,7 @@ export async function cancelOrder(
       method: 'DELETE',
       headers: {
         'X-Kite-Version': '3',
-        'Authorization': accessToken,
+        'Authorization': `token ${accessToken}`,
       },
     });
 
@@ -214,7 +214,7 @@ export async function modifyOrder(
       method: 'PUT',
       headers: {
         'X-Kite-Version': '3',
-        'Authorization': accessToken,
+        'Authorization': `token ${accessToken}`,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: formData.toString(),
@@ -246,7 +246,7 @@ export async function getTradeBook(accessToken: string): Promise<any[]> {
       method: 'GET',
       headers: {
         'X-Kite-Version': '3',
-        'Authorization': accessToken,
+        'Authorization': `token ${accessToken}`,
       },
     });
 
@@ -272,7 +272,7 @@ export async function getPositions(accessToken: string): Promise<any> {
       method: 'GET',
       headers: {
         'X-Kite-Version': '3',
-        'Authorization': accessToken,
+        'Authorization': `token ${accessToken}`,
       },
     });
 
@@ -298,7 +298,7 @@ export async function getHoldings(accessToken: string): Promise<any[]> {
       method: 'GET',
       headers: {
         'X-Kite-Version': '3',
-        'Authorization': accessToken,
+        'Authorization': `token ${accessToken}`,
       },
     });
 
@@ -324,7 +324,7 @@ export async function getMargins(accessToken: string): Promise<any> {
       method: 'GET',
       headers: {
         'X-Kite-Version': '3',
-        'Authorization': accessToken,
+        'Authorization': `token ${accessToken}`,
       },
     });
 

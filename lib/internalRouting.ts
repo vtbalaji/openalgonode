@@ -14,7 +14,7 @@ export function getInternalApiUrl(): string {
 }
 
 /**
- * Call internal broker endpoint
+ * Call broker-specific endpoint
  * @param broker - Broker name (e.g., 'zerodha', 'angel')
  * @param action - Action name (e.g., 'place-order', 'cancel-order')
  * @param body - Request body
@@ -25,7 +25,7 @@ export async function callInternalBrokerEndpoint(
   body: any
 ): Promise<any> {
   const baseUrl = getInternalApiUrl();
-  const url = `${baseUrl}/api/internal/broker/${broker}/${action}`;
+  const url = `${baseUrl}/api/broker/${broker}/${action}`;
 
   const response = await fetch(url, {
     method: 'POST',

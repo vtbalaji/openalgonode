@@ -1,7 +1,7 @@
 /**
- * POST /api/internal/broker/zerodha/orderbook
- * Get Zerodha order book
- * Internal endpoint - called by /api/v1/orderbook and /api/ui/orders/status
+ * POST /api/broker/zerodha/positions
+ * Get Zerodha positions/holdings
+ * Internal endpoint - called by /api/v1/positionbook and /api/ui/orders/positions
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -47,27 +47,27 @@ export async function POST(request: NextRequest) {
     const accessToken = decryptData(configData.accessToken);
 
     // Import Zerodha client
-    const { getOrderBook } = await import('@/lib/zerodhaClient');
+    const { getPositions } = await import('@/lib/zerodhaClient');
 
     try {
-      const orders = await getOrderBook(accessToken);
+      const positions = await getPositions(accessToken);
 
       return NextResponse.json(
         {
           status: 'success',
-          data: orders || [],
-          count: orders?.length || 0,
+          data: positions || [],
+          count: positions?.length || 0,
         },
         { status: 200 }
       );
     } catch (error: any) {
       return NextResponse.json(
-        { status: 'error', message: error.message || 'Failed to fetch orderbook' },
+        { status: 'error', message: error.message || 'Failed to fetch positions' },
         { status: 400 }
       );
     }
   } catch (error: any) {
-    console.error('Error in Zerodha orderbook:', error);
+    console.error('Error in Zerodha positions:', error);
     return NextResponse.json(
       { status: 'error', message: error.message || 'Internal server error' },
       { status: 500 }

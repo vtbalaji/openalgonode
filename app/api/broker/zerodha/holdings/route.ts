@@ -1,7 +1,7 @@
 /**
- * POST /api/internal/broker/zerodha/cancel-all-orders
- * Cancel all Zerodha pending orders
- * Internal endpoint - called by /api/v1/cancelallorder and /api/ui/
+ * POST /api/broker/zerodha/holdings
+ * Get Zerodha holdings
+ * Internal endpoint - called by /api/v1/holdings and /api/ui/
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -47,54 +47,27 @@ export async function POST(request: NextRequest) {
     const accessToken = decryptData(configData.accessToken);
 
     // Import Zerodha client
-    const { getOrderBook, cancelOrder } = await import('@/lib/zerodhaClient');
+    const { getHoldings } = await import('@/lib/zerodhaClient');
 
     try {
-      // Get all pending orders
-      const orders = await getOrderBook(accessToken);
-      const pendingOrders = orders.filter((o: any) => o.status === 'PENDING');
-
-      if (pendingOrders.length === 0) {
-        return NextResponse.json(
-          {
-            status: 'success',
-            message: 'No pending orders to cancel',
-            data: { cancelled: 0 },
-          },
-          { status: 200 }
-        );
-      }
-
-      // Cancel all pending orders in parallel
-      const cancelPromises = pendingOrders.map((order: any) =>
-        cancelOrder(accessToken, order.order_id).catch((err: any) => ({
-          error: true,
-          orderId: order.order_id,
-          message: err.message,
-        }))
-      );
-
-      const results = await Promise.allSettled(cancelPromises);
-
-      const cancelled = results.filter((r) => r.status === 'fulfilled').length;
-      const failed = results.filter((r) => r.status === 'rejected').length;
+      const holdings = await getHoldings(accessToken);
 
       return NextResponse.json(
         {
           status: 'success',
-          message: `Cancelled ${cancelled} orders, ${failed} failed`,
-          data: { cancelled, failed, total: pendingOrders.length },
+          data: holdings || [],
+          count: holdings?.length || 0,
         },
         { status: 200 }
       );
     } catch (error: any) {
       return NextResponse.json(
-        { status: 'error', message: error.message || 'Failed to cancel all orders' },
+        { status: 'error', message: error.message || 'Failed to fetch holdings' },
         { status: 400 }
       );
     }
   } catch (error: any) {
-    console.error('Error in Zerodha cancel-all-orders:', error);
+    console.error('Error in Zerodha holdings:', error);
     return NextResponse.json(
       { status: 'error', message: error.message || 'Internal server error' },
       { status: 500 }

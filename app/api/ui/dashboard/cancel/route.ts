@@ -3,25 +3,14 @@ import { requirePermission } from '@/lib/apiKeyAuth';
 import { authenticateOrderRequest, authErrorResponse } from '@/lib/orderAuthUtils';
 import { callInternalBrokerEndpoint } from '@/lib/internalRouting';
 
-interface ModifyOrderRequest {
+interface CancelOrderRequest {
   apikey?: string;
   orderid: string;
-  quantity?: number;
-  price?: number;
-  trigger_price?: number;
-  disclosed_quantity?: number;
-  order_type?: 'MARKET' | 'LIMIT' | 'SL' | 'SL-M';
-  validity?: string;
-  // Additional fields needed for order modification
-  tradingsymbol?: string;
-  exchange?: string;
-  transaction_type?: string;
-  product?: string;
 }
 
 /**
- * POST /api/orders/modify
- * Modify an open order (quantity, price, trigger price, etc.)
+ * POST /api/ui/dashboard/cancel
+ * Cancel an open order
  * Authentication: Supports multiple methods
  *   1. API key in request body: { apikey: "..." }
  *   2. Bearer token: Authorization: Bearer <firebase_token>
@@ -30,7 +19,7 @@ interface ModifyOrderRequest {
  */
 export async function POST(request: NextRequest) {
   try {
-    const body: ModifyOrderRequest = await request.json();
+    const body: CancelOrderRequest = await request.json();
 
     if (!body.orderid) {
       return NextResponse.json(
@@ -51,40 +40,16 @@ export async function POST(request: NextRequest) {
 
     // Check permission if using API key auth
     if (body.apikey && permissions) {
-      const permissionError = requirePermission(permissions, 'modifyorder');
+      const permissionError = requirePermission(permissions, 'cancelorder');
       if (permissionError) {
         return permissionError;
       }
     }
 
-    const {
-      orderid,
-      quantity,
-      price,
-      trigger_price,
-      disclosed_quantity,
-      order_type,
-      validity,
-      tradingsymbol,
-      exchange,
-      transaction_type,
-      product,
-    } = body;
-
     // Call internal broker endpoint
-    const { data, status } = await callInternalBrokerEndpoint(broker, 'modify-order', {
+    const { data, status } = await callInternalBrokerEndpoint(broker, 'cancel-order', {
       userId,
-      orderid,
-      quantity: quantity || 1,
-      price: price ?? 0,
-      trigger_price: trigger_price ?? 0,
-      disclosed_quantity: disclosed_quantity ?? 0,
-      order_type: order_type || 'LIMIT',
-      validity: validity || 'DAY',
-      tradingsymbol: tradingsymbol || '',
-      exchange: exchange || '',
-      transaction_type: transaction_type || 'BUY',
-      product: product || 'MIS',
+      orderid: body.orderid,
     });
 
     if (status !== 200) {
@@ -94,15 +59,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         status: 'success',
-        message: `Order ${orderid} modified successfully`,
-        orderid: data.order_id || orderid,
+        message: `Order ${body.orderid} cancelled successfully`,
+        orderid: data.order_id || body.orderid,
       },
       { status: 200 }
     );
   } catch (error) {
-    console.error('Error modifying order:', error);
+    console.error('Error cancelling order:', error);
     return NextResponse.json(
-      { status: 'error', error: 'Failed to modify order' },
+      { status: 'error', error: 'Failed to cancel order' },
       { status: 500 }
     );
   }

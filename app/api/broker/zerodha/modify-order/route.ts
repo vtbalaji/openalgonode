@@ -1,7 +1,7 @@
 /**
- * POST /api/internal/broker/zerodha/tradebook
- * Get Zerodha trade book
- * Internal endpoint - called by /api/v1/tradebook
+ * POST /api/broker/zerodha/modify-order
+ * Zerodha-specific order modification
+ * Internal endpoint - called by /api/v1/modifyorder and /api/ui/orders/modify
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -18,11 +18,15 @@ function decryptData(encryptedData: string): string {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userId } = body;
+    const { userId, orderid, quantity, price, trigger_price, order_type } = body;
 
-    if (!userId) {
+    // Validate required fields
+    if (!userId || !orderid) {
       return NextResponse.json(
-        { status: 'error', message: 'Missing userId' },
+        {
+          status: 'error',
+          message: 'Missing required fields: userId, orderid',
+        },
         { status: 400 }
       );
     }
@@ -32,14 +36,21 @@ export async function POST(request: NextRequest) {
 
     if (!configData) {
       return NextResponse.json(
-        { status: 'error', message: 'Zerodha not configured' },
+        {
+          status: 'error',
+          message: 'Zerodha not configured for this user',
+        },
         { status: 404 }
       );
     }
 
+    // Check if broker is authenticated
     if (!configData?.accessToken || configData.status !== 'active') {
       return NextResponse.json(
-        { status: 'error', message: 'Zerodha not authenticated' },
+        {
+          status: 'error',
+          message: 'Zerodha not authenticated. Please authenticate first.',
+        },
         { status: 401 }
       );
     }
@@ -47,29 +58,41 @@ export async function POST(request: NextRequest) {
     const accessToken = decryptData(configData.accessToken);
 
     // Import Zerodha client
-    const { getTradeBook } = await import('@/lib/zerodhaClient');
+    const { modifyOrder } = await import('@/lib/zerodhaClient');
 
     try {
-      const trades = await getTradeBook(accessToken);
+      // Modify order with Zerodha
+      const result = await modifyOrder(accessToken, orderid, {
+        quantity,
+        price,
+        trigger_price,
+        order_type,
+      });
 
       return NextResponse.json(
         {
           status: 'success',
-          data: trades || [],
-          count: trades?.length || 0,
+          orderid: result.order_id || orderid,
+          message: 'Order modified successfully',
         },
         { status: 200 }
       );
     } catch (error: any) {
       return NextResponse.json(
-        { status: 'error', message: error.message || 'Failed to fetch tradebook' },
+        {
+          status: 'error',
+          message: error.message || 'Failed to modify order with Zerodha',
+        },
         { status: 400 }
       );
     }
   } catch (error: any) {
-    console.error('Error in Zerodha tradebook:', error);
+    console.error('Error in Zerodha modify-order:', error);
     return NextResponse.json(
-      { status: 'error', message: error.message || 'Internal server error' },
+      {
+        status: 'error',
+        message: error.message || 'Internal server error',
+      },
       { status: 500 }
     );
   }

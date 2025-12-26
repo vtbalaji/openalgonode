@@ -3,8 +3,8 @@ import { adminAuth } from '@/lib/firebaseAdmin';
 import { callInternalBrokerEndpoint } from '@/lib/internalRouting';
 
 /**
- * GET /api/orders/status
- * Get order book (list of all orders) from Zerodha
+ * GET /api/ui/dashboard/positions
+ * Get open positions from broker
  * Requires: Authorization header with Firebase ID token
  * Query params: broker (optional, defaults to 'zerodha')
  */
@@ -35,8 +35,8 @@ export async function GET(request: NextRequest) {
     const userId = decodedToken.uid;
     const broker = request.nextUrl.searchParams.get('broker') || 'zerodha';
 
-    // Route to internal broker endpoint
-    const { data, status } = await callInternalBrokerEndpoint(broker, 'orderbook', {
+    // Call internal broker endpoint
+    const { data, status } = await callInternalBrokerEndpoint(broker, 'positions', {
       userId,
     });
 
@@ -44,18 +44,21 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(data, { status });
     }
 
+    // Combine both net and day positions if available
+    const allPositions = [...(data.net || []), ...(data.day || [])];
+
     return NextResponse.json(
       {
         success: true,
-        orders: data.data || [],
-        count: data.count || 0,
+        positions: allPositions || [],
+        count: allPositions?.length || 0,
       },
       { status: 200 }
     );
   } catch (error) {
-    console.error('Error fetching order status:', error);
+    console.error('Error fetching positions:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch order status' },
+      { error: 'Failed to fetch positions' },
       { status: 500 }
     );
   }

@@ -1,13 +1,7 @@
 /**
- * POST /api/internal/broker/zerodha/cancel-order
- * Zerodha-specific order cancellation
- * Internal endpoint - called by /api/v1/cancelorder and /api/ui/orders/cancel
- *
- * Authentication: Firebase ID token or API key (via parent router)
- * Body: {
- *   userId: string,
- *   orderid: string
- * }
+ * POST /api/broker/zerodha/orderbook
+ * Get Zerodha order book
+ * Internal endpoint - called by /api/v1/orderbook and /api/ui/orders/status
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -24,15 +18,11 @@ function decryptData(encryptedData: string): string {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userId, orderid } = body;
+    const { userId } = body;
 
-    // Validate required fields
-    if (!userId || !orderid) {
+    if (!userId) {
       return NextResponse.json(
-        {
-          status: 'error',
-          message: 'Missing required fields: userId, orderid',
-        },
+        { status: 'error', message: 'Missing userId' },
         { status: 400 }
       );
     }
@@ -42,21 +32,14 @@ export async function POST(request: NextRequest) {
 
     if (!configData) {
       return NextResponse.json(
-        {
-          status: 'error',
-          message: 'Zerodha not configured for this user',
-        },
+        { status: 'error', message: 'Zerodha not configured' },
         { status: 404 }
       );
     }
 
-    // Check if broker is authenticated
     if (!configData?.accessToken || configData.status !== 'active') {
       return NextResponse.json(
-        {
-          status: 'error',
-          message: 'Zerodha not authenticated. Please authenticate first.',
-        },
+        { status: 'error', message: 'Zerodha not authenticated' },
         { status: 401 }
       );
     }
@@ -64,36 +47,29 @@ export async function POST(request: NextRequest) {
     const accessToken = decryptData(configData.accessToken);
 
     // Import Zerodha client
-    const { cancelOrder } = await import('@/lib/zerodhaClient');
+    const { getOrderBook } = await import('@/lib/zerodhaClient');
 
     try {
-      // Cancel order with Zerodha
-      const result = await cancelOrder(accessToken, orderid);
+      const orders = await getOrderBook(accessToken);
 
       return NextResponse.json(
         {
           status: 'success',
-          orderid: result.order_id || orderid,
-          message: 'Order cancelled successfully',
+          data: orders || [],
+          count: orders?.length || 0,
         },
         { status: 200 }
       );
     } catch (error: any) {
       return NextResponse.json(
-        {
-          status: 'error',
-          message: error.message || 'Failed to cancel order with Zerodha',
-        },
+        { status: 'error', message: error.message || 'Failed to fetch orderbook' },
         { status: 400 }
       );
     }
   } catch (error: any) {
-    console.error('Error in Zerodha cancel-order:', error);
+    console.error('Error in Zerodha orderbook:', error);
     return NextResponse.json(
-      {
-        status: 'error',
-        message: error.message || 'Internal server error',
-      },
+      { status: 'error', message: error.message || 'Internal server error' },
       { status: 500 }
     );
   }

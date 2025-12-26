@@ -1,7 +1,13 @@
 /**
- * POST /api/internal/broker/zerodha/modify-order
- * Zerodha-specific order modification
- * Internal endpoint - called by /api/v1/modifyorder and /api/ui/orders/modify
+ * POST /api/broker/zerodha/cancel-order
+ * Zerodha-specific order cancellation
+ * Internal endpoint - called by /api/v1/cancelorder and /api/ui/orders/cancel
+ *
+ * Authentication: Firebase ID token or API key (via parent router)
+ * Body: {
+ *   userId: string,
+ *   orderid: string
+ * }
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -18,7 +24,7 @@ function decryptData(encryptedData: string): string {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userId, orderid, quantity, price, trigger_price, order_type } = body;
+    const { userId, orderid } = body;
 
     // Validate required fields
     if (!userId || !orderid) {
@@ -58,22 +64,17 @@ export async function POST(request: NextRequest) {
     const accessToken = decryptData(configData.accessToken);
 
     // Import Zerodha client
-    const { modifyOrder } = await import('@/lib/zerodhaClient');
+    const { cancelOrder } = await import('@/lib/zerodhaClient');
 
     try {
-      // Modify order with Zerodha
-      const result = await modifyOrder(accessToken, orderid, {
-        quantity,
-        price,
-        trigger_price,
-        order_type,
-      });
+      // Cancel order with Zerodha
+      const result = await cancelOrder(accessToken, orderid);
 
       return NextResponse.json(
         {
           status: 'success',
           orderid: result.order_id || orderid,
-          message: 'Order modified successfully',
+          message: 'Order cancelled successfully',
         },
         { status: 200 }
       );
@@ -81,13 +82,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           status: 'error',
-          message: error.message || 'Failed to modify order with Zerodha',
+          message: error.message || 'Failed to cancel order with Zerodha',
         },
         { status: 400 }
       );
     }
   } catch (error: any) {
-    console.error('Error in Zerodha modify-order:', error);
+    console.error('Error in Zerodha cancel-order:', error);
     return NextResponse.json(
       {
         status: 'error',

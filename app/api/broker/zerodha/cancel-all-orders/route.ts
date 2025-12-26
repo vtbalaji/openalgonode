@@ -1,7 +1,7 @@
 /**
- * POST /api/internal/broker/zerodha/funds
- * Get Zerodha account funds/margins
- * Internal endpoint - called by /api/v1/funds and /api/ui/
+ * POST /api/broker/zerodha/cancel-all-orders
+ * Cancel all Zerodha pending orders
+ * Internal endpoint - called by /api/v1/cancelallorder and /api/ui/
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -47,26 +47,54 @@ export async function POST(request: NextRequest) {
     const accessToken = decryptData(configData.accessToken);
 
     // Import Zerodha client
-    const { getMargins } = await import('@/lib/zerodhaClient');
+    const { getOrderBook, cancelOrder } = await import('@/lib/zerodhaClient');
 
     try {
-      const funds = await getMargins(accessToken);
+      // Get all pending orders
+      const orders = await getOrderBook(accessToken);
+      const pendingOrders = orders.filter((o: any) => o.status === 'PENDING');
+
+      if (pendingOrders.length === 0) {
+        return NextResponse.json(
+          {
+            status: 'success',
+            message: 'No pending orders to cancel',
+            data: { cancelled: 0 },
+          },
+          { status: 200 }
+        );
+      }
+
+      // Cancel all pending orders in parallel
+      const cancelPromises = pendingOrders.map((order: any) =>
+        cancelOrder(accessToken, order.order_id).catch((err: any) => ({
+          error: true,
+          orderId: order.order_id,
+          message: err.message,
+        }))
+      );
+
+      const results = await Promise.allSettled(cancelPromises);
+
+      const cancelled = results.filter((r) => r.status === 'fulfilled').length;
+      const failed = results.filter((r) => r.status === 'rejected').length;
 
       return NextResponse.json(
         {
           status: 'success',
-          data: funds || {},
+          message: `Cancelled ${cancelled} orders, ${failed} failed`,
+          data: { cancelled, failed, total: pendingOrders.length },
         },
         { status: 200 }
       );
     } catch (error: any) {
       return NextResponse.json(
-        { status: 'error', message: error.message || 'Failed to fetch funds' },
+        { status: 'error', message: error.message || 'Failed to cancel all orders' },
         { status: 400 }
       );
     }
   } catch (error: any) {
-    console.error('Error in Zerodha funds:', error);
+    console.error('Error in Zerodha cancel-all-orders:', error);
     return NextResponse.json(
       { status: 'error', message: error.message || 'Internal server error' },
       { status: 500 }

@@ -1,7 +1,7 @@
 /**
- * POST /api/internal/broker/zerodha/positions
- * Get Zerodha positions/holdings
- * Internal endpoint - called by /api/v1/positionbook and /api/ui/orders/positions
+ * POST /api/broker/zerodha/close-position
+ * Close Zerodha position
+ * Internal endpoint - called by /api/v1/closeposition and /api/ui/
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -18,11 +18,11 @@ function decryptData(encryptedData: string): string {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userId } = body;
+    const { userId, symbol, exchange, product } = body;
 
-    if (!userId) {
+    if (!userId || !symbol || !exchange || !product) {
       return NextResponse.json(
-        { status: 'error', message: 'Missing userId' },
+        { status: 'error', message: 'Missing required fields' },
         { status: 400 }
       );
     }
@@ -47,27 +47,27 @@ export async function POST(request: NextRequest) {
     const accessToken = decryptData(configData.accessToken);
 
     // Import Zerodha client
-    const { getPositions } = await import('@/lib/zerodhaClient');
+    const { closePosition } = await import('@/lib/zerodhaClient');
 
     try {
-      const positions = await getPositions(accessToken);
+      const result = await closePosition(accessToken, { symbol, exchange, product });
 
       return NextResponse.json(
         {
           status: 'success',
-          data: positions || [],
-          count: positions?.length || 0,
+          message: 'Position closed successfully',
+          data: result,
         },
         { status: 200 }
       );
     } catch (error: any) {
       return NextResponse.json(
-        { status: 'error', message: error.message || 'Failed to fetch positions' },
+        { status: 'error', message: error.message || 'Failed to close position' },
         { status: 400 }
       );
     }
   } catch (error: any) {
-    console.error('Error in Zerodha positions:', error);
+    console.error('Error in Zerodha close-position:', error);
     return NextResponse.json(
       { status: 'error', message: error.message || 'Internal server error' },
       { status: 500 }

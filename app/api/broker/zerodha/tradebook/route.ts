@@ -1,7 +1,7 @@
 /**
- * POST /api/internal/broker/zerodha/close-position
- * Close Zerodha position
- * Internal endpoint - called by /api/v1/closeposition and /api/ui/
+ * POST /api/broker/zerodha/tradebook
+ * Get Zerodha trade book
+ * Internal endpoint - called by /api/v1/tradebook
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -18,11 +18,11 @@ function decryptData(encryptedData: string): string {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userId, symbol, exchange, product } = body;
+    const { userId } = body;
 
-    if (!userId || !symbol || !exchange || !product) {
+    if (!userId) {
       return NextResponse.json(
-        { status: 'error', message: 'Missing required fields' },
+        { status: 'error', message: 'Missing userId' },
         { status: 400 }
       );
     }
@@ -47,27 +47,27 @@ export async function POST(request: NextRequest) {
     const accessToken = decryptData(configData.accessToken);
 
     // Import Zerodha client
-    const { closePosition } = await import('@/lib/zerodhaClient');
+    const { getTradeBook } = await import('@/lib/zerodhaClient');
 
     try {
-      const result = await closePosition(accessToken, { symbol, exchange, product });
+      const trades = await getTradeBook(accessToken);
 
       return NextResponse.json(
         {
           status: 'success',
-          message: 'Position closed successfully',
-          data: result,
+          data: trades || [],
+          count: trades?.length || 0,
         },
         { status: 200 }
       );
     } catch (error: any) {
       return NextResponse.json(
-        { status: 'error', message: error.message || 'Failed to close position' },
+        { status: 'error', message: error.message || 'Failed to fetch tradebook' },
         { status: 400 }
       );
     }
   } catch (error: any) {
-    console.error('Error in Zerodha close-position:', error);
+    console.error('Error in Zerodha tradebook:', error);
     return NextResponse.json(
       { status: 'error', message: error.message || 'Internal server error' },
       { status: 500 }

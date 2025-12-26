@@ -1,7 +1,7 @@
 /**
- * POST /api/internal/broker/zerodha/holdings
- * Get Zerodha holdings
- * Internal endpoint - called by /api/v1/holdings and /api/ui/
+ * POST /api/broker/zerodha/funds
+ * Get Zerodha account funds/margins
+ * Internal endpoint - called by /api/v1/funds and /api/ui/
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -47,27 +47,26 @@ export async function POST(request: NextRequest) {
     const accessToken = decryptData(configData.accessToken);
 
     // Import Zerodha client
-    const { getHoldings } = await import('@/lib/zerodhaClient');
+    const { getMargins } = await import('@/lib/zerodhaClient');
 
     try {
-      const holdings = await getHoldings(accessToken);
+      const funds = await getMargins(accessToken);
 
       return NextResponse.json(
         {
           status: 'success',
-          data: holdings || [],
-          count: holdings?.length || 0,
+          data: funds || {},
         },
         { status: 200 }
       );
     } catch (error: any) {
       return NextResponse.json(
-        { status: 'error', message: error.message || 'Failed to fetch holdings' },
+        { status: 'error', message: error.message || 'Failed to fetch funds' },
         { status: 400 }
       );
     }
   } catch (error: any) {
-    console.error('Error in Zerodha holdings:', error);
+    console.error('Error in Zerodha funds:', error);
     return NextResponse.json(
       { status: 'error', message: error.message || 'Internal server error' },
       { status: 500 }

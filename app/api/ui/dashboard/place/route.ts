@@ -3,7 +3,7 @@ import { adminAuth } from '@/lib/firebaseAdmin';
 import { callInternalBrokerEndpoint } from '@/lib/internalRouting';
 
 /**
- * POST /api/orders/place
+ * POST /api/ui/dashboard/place
  * Place an order on Zerodha
  * Requires: Authorization header with Firebase ID token
  * Body: {

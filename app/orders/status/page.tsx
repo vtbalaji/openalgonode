@@ -46,6 +46,9 @@ export default function OrderStatusPage() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(true);
+  const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
+  const [nextRefreshAvailableAt, setNextRefreshAvailableAt] = useState<number>(0);
+  const [refreshCooldown, setRefreshCooldown] = useState(0);
 
   // Modal states
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -69,13 +72,44 @@ export default function OrderStatusPage() {
 
   useEffect(() => {
     if (user) {
-      fetchData();
+      fetchData(true); // Bypass cooldown on initial load
     }
   }, [user]);
 
-  const fetchData = async () => {
+  // Handle cooldown countdown display
+  useEffect(() => {
+    if (refreshCooldown <= 0) return;
+
+    const timer = setTimeout(() => {
+      setRefreshCooldown(refreshCooldown - 1);
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [refreshCooldown]);
+
+  // Update cooldown state based on nextRefreshAvailableAt
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const remaining = Math.max(0, Math.ceil((nextRefreshAvailableAt - now) / 1000));
+      setRefreshCooldown(remaining);
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [nextRefreshAvailableAt]);
+
+  const fetchData = async (bypassCooldown: boolean = false) => {
+    // Rate limiting: Prevent rapid consecutive refreshes (Zerodha limit: 10 orders/sec)
+    // Enforce minimum 2 seconds between refreshes
+    const now = Date.now();
+    if (!bypassCooldown && nextRefreshAvailableAt > now) {
+      setError(`Please wait ${Math.ceil((nextRefreshAvailableAt - now) / 1000)}s before refreshing again`);
+      return;
+    }
+
     setError('');
     setIsLoading(true);
+    setLastRefreshTime(new Date());
 
     try {
       const idToken = await user?.getIdToken();
@@ -114,6 +148,9 @@ export default function OrderStatusPage() {
     } finally {
       setIsLoading(false);
       setIsFetching(false);
+
+      // Set next available refresh time (2 second cooldown)
+      setNextRefreshAvailableAt(Date.now() + 2000);
     }
   };
 
@@ -122,6 +159,7 @@ export default function OrderStatusPage() {
     setError('');
     setIsLoading(true);
     setIsFetching(true);
+    setLastRefreshTime(new Date());
 
     try {
       const idToken = await user?.getIdToken();
@@ -160,6 +198,9 @@ export default function OrderStatusPage() {
     } finally {
       setIsLoading(false);
       setIsFetching(false);
+
+      // Set cooldown after tab change
+      setNextRefreshAvailableAt(Date.now() + 2000);
     }
   };
 
@@ -286,13 +327,20 @@ export default function OrderStatusPage() {
               </Link>
               <h1 className="mt-2 text-3xl font-bold text-gray-900">Orders & Positions</h1>
             </div>
-            <button
-              onClick={fetchData}
-              disabled={isLoading}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-white transition hover:bg-blue-700 disabled:opacity-50"
-            >
-              {isLoading ? 'Refreshing...' : 'Refresh'}
-            </button>
+            <div className="flex flex-col items-end gap-1">
+              <button
+                onClick={fetchData}
+                disabled={isLoading || refreshCooldown > 0}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-white transition hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isLoading ? 'Refreshing...' : refreshCooldown > 0 ? `Refresh (${refreshCooldown}s)` : 'Refresh'}
+              </button>
+              {lastRefreshTime && (
+                <span className="text-xs text-gray-500">
+                  Last refreshed: {lastRefreshTime.toLocaleTimeString()}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Tabs */}

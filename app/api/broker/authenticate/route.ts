@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
     await brokerConfigRef.update({
       accessToken: encryptData(authToken),
       status: 'active',
-      lastAuthenticated: new Date(),
+      lastAuthenticated: new Date().toISOString(),
     });
 
     return NextResponse.json(

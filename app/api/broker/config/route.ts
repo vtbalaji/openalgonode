@@ -61,8 +61,8 @@ export async function POST(request: NextRequest) {
       apiKey: encryptData(apiKey),
       apiSecret: encryptData(apiSecret),
       status: 'inactive',
-      createdAt: new Date(),
-      lastUpdated: new Date(),
+      createdAt: new Date().toISOString(),
+      lastUpdated: new Date().toISOString(),
     });
 
     return NextResponse.json(

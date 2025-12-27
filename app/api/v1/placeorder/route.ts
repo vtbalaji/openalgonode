@@ -39,8 +39,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Route to broker-specific internal endpoint
-    if (broker === 'zerodha') {
-      const { data, status } = await callInternalBrokerEndpoint('zerodha', 'place-order', {
+    if (broker === 'zerodha' || broker === 'angel') {
+      const { data, status } = await callInternalBrokerEndpoint(broker, 'place-order', {
         userId,
         symbol: body.symbol,
         exchange: body.exchange,
@@ -51,6 +51,7 @@ export async function POST(request: NextRequest) {
         price: body.price || 0,
         trigger_price: body.trigger_price || 0,
         disclosed_quantity: body.disclosed_quantity || 0,
+        symboltoken: body.symboltoken, // For Angel Broker
         strategy: body.strategy,
       });
 

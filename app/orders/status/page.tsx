@@ -49,6 +49,7 @@ export default function OrderStatusPage() {
   const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
   const [nextRefreshAvailableAt, setNextRefreshAvailableAt] = useState<number>(0);
   const [refreshCooldown, setRefreshCooldown] = useState(0);
+  const [selectedBroker, setSelectedBroker] = useState<string | null>(null);
 
   // Modal states
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -70,11 +71,39 @@ export default function OrderStatusPage() {
     }
   }, [user, loading, router]);
 
+  // Detect active broker
   useEffect(() => {
-    if (user) {
+    const detectBroker = async () => {
+      if (!user) return;
+
+      try {
+        const idToken = await user.getIdToken();
+        const response = await fetch('/api/broker/active', {
+          headers: {
+            'Authorization': `Bearer ${idToken}`,
+          },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const broker = data.primaryBroker || (data.configuredBrokers && data.configuredBrokers[0]);
+          if (broker) {
+            setSelectedBroker(broker);
+          }
+        }
+      } catch (err) {
+        console.error('Error detecting broker:', err);
+      }
+    };
+
+    detectBroker();
+  }, [user]);
+
+  useEffect(() => {
+    if (user && selectedBroker) {
       fetchData(true); // Bypass cooldown on initial load
     }
-  }, [user]);
+  }, [user, selectedBroker]);
 
   // Handle cooldown countdown display
   useEffect(() => {
@@ -115,7 +144,7 @@ export default function OrderStatusPage() {
       const idToken = await user?.getIdToken();
 
       if (activeTab === 'orders') {
-        const response = await fetch('/api/orders/status?broker=zerodha', {
+        const response = await fetch(`/api/orders/status?broker=${selectedBroker}`, {
           headers: {
             'Authorization': `Bearer ${idToken}`,
           },
@@ -129,7 +158,7 @@ export default function OrderStatusPage() {
           setError(data.error || 'Failed to fetch orders');
         }
       } else {
-        const response = await fetch('/api/orders/positions?broker=zerodha', {
+        const response = await fetch(`/api/orders/positions?broker=${selectedBroker}`, {
           headers: {
             'Authorization': `Bearer ${idToken}`,
           },

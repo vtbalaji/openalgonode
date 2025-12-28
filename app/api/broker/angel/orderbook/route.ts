@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           status: 'success',
-          data: orders || [],
+          orders: orders || [],
           count: orders?.length || 0,
         },
         { status: 200 }

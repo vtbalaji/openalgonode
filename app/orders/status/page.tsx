@@ -152,7 +152,7 @@ export default function OrderStatusPage() {
 
         if (response.ok) {
           const data = await response.json();
-          setOrders(data.orders || []);
+          setOrders(data.orders || data.data || []);
         } else {
           const data = await response.json();
           setError(data.error || 'Failed to fetch orders');
@@ -166,7 +166,7 @@ export default function OrderStatusPage() {
 
         if (response.ok) {
           const data = await response.json();
-          setPositions(data.positions || []);
+          setPositions(data.positions || data.data || []);
         } else {
           const data = await response.json();
           setError(data.error || 'Failed to fetch positions');
@@ -432,9 +432,9 @@ export default function OrderStatusPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {orders.map((order) => (
-                    <tr key={order.order_id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 text-sm font-mono text-gray-900">{order.order_id}</td>
+                  {orders.map((order, index) => (
+                    <tr key={order.order_id || order.orderid || index} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 text-sm font-mono text-gray-900">{order.order_id || order.orderid}</td>
                       <td className="px-6 py-4 text-sm font-semibold text-gray-900">
                         {order.tradingsymbol} <span className="text-xs text-gray-500">{order.exchange}</span>
                       </td>

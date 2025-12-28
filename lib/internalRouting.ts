@@ -8,9 +8,17 @@
  * Works in both dev and production environments
  */
 export function getInternalApiUrl(): string {
-  // Use empty string for relative URLs (works on both localhost and Vercel)
-  // This allows same-origin requests to work correctly
-  return '';
+  // On Vercel: Use VERCEL_URL which contains the deployment domain
+  // On localhost: Use http://localhost:3000
+  // On other environments: Use NEXT_PUBLIC_API_URL if set, otherwise localhost
+
+  if (process.env.VERCEL_URL) {
+    // Vercel deployment - use HTTPS
+    return `https://${process.env.VERCEL_URL}`;
+  }
+
+  // Fall back to environment variable or localhost
+  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 }
 
 /**

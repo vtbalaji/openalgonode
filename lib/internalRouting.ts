@@ -35,12 +35,40 @@ export async function callInternalBrokerEndpoint(
   const baseUrl = getInternalApiUrl();
   const url = `${baseUrl}/api/broker/${broker}/${action}`;
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
 
-  const data = await response.json();
-  return { data, status: response.status };
+    const contentType = response.headers.get('content-type');
+    const text = await response.text();
+
+    // Check if response looks like HTML (starts with < or <!doctype)
+    if (text.trim().startsWith('<')) {
+      console.error(`HTML response from ${url}:`, {
+        status: response.status,
+        contentType,
+        text: text.substring(0, 500),
+      });
+      throw new Error(`HTML response from broker endpoint (status ${response.status}): ${text.substring(0, 100)}`);
+    }
+
+    // Try to parse as JSON
+    try {
+      const data = JSON.parse(text);
+      return { data, status: response.status };
+    } catch (parseError) {
+      console.error(`Failed to parse JSON from ${url}:`, {
+        status: response.status,
+        contentType,
+        text: text.substring(0, 500),
+      });
+      throw new Error(`Invalid JSON from broker endpoint: ${text.substring(0, 100)}`);
+    }
+  } catch (error: any) {
+    console.error(`Error calling broker endpoint ${url}:`, error.message);
+    throw error;
+  }
 }

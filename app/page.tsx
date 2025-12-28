@@ -11,17 +11,41 @@ export default function Home() {
   const router = useRouter();
   const [lastAuthenticatedAt, setLastAuthenticatedAt] = useState<Date | null>(null);
   const [brokerStatus, setBrokerStatus] = useState<'active' | 'inactive' | null>(null);
+  const [selectedBroker, setSelectedBroker] = useState<string | null>(null);
 
   useEffect(() => {
     if (user) {
-      fetchBrokerConfig();
+      fetchActiveBroker();
     }
   }, [user]);
 
-  const fetchBrokerConfig = async () => {
+  const fetchActiveBroker = async () => {
     try {
       const idToken = await user?.getIdToken();
-      const response = await fetch('/api/broker/config?broker=zerodha', {
+      const response = await fetch('/api/broker/active', {
+        headers: {
+          'Authorization': `Bearer ${idToken}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // Use primary broker, or first configured broker if no primary
+        const broker = data.primaryBroker || (data.configuredBrokers && data.configuredBrokers[0]);
+        if (broker) {
+          setSelectedBroker(broker);
+          await fetchBrokerConfig(broker);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching active broker:', err);
+    }
+  };
+
+  const fetchBrokerConfig = async (broker: string) => {
+    try {
+      const idToken = await user?.getIdToken();
+      const response = await fetch(`/api/broker/config?broker=${broker}`, {
         headers: {
           'Authorization': `Bearer ${idToken}`,
         },
@@ -120,15 +144,17 @@ export default function Home() {
         </div>
 
         {/* Broker Authentication Status */}
-        <div className="mb-8">
-          <BrokerAuthStatus
-            lastAuthenticatedAt={lastAuthenticatedAt}
-            broker="zerodha"
-            onReAuth={() => router.push('/broker/config')}
-            showDetails={false}
-            compact={true}
-          />
-        </div>
+        {selectedBroker && (
+          <div className="mb-8">
+            <BrokerAuthStatus
+              lastAuthenticatedAt={lastAuthenticatedAt}
+              broker={selectedBroker}
+              onReAuth={() => router.push('/broker/config')}
+              showDetails={false}
+              compact={true}
+            />
+          </div>
+        )}
 
         {/* Action Cards */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -144,7 +170,7 @@ export default function Home() {
               </svg>
             </div>
             <h3 className="mb-2 text-lg font-semibold text-gray-900">Broker Configuration</h3>
-            <p className="text-gray-600">Set up your broker API credentials (Zerodha)</p>
+            <p className="text-gray-600">Set up your broker API credentials{selectedBroker ? ` (${selectedBroker.charAt(0).toUpperCase() + selectedBroker.slice(1)})` : ''}</p>
           </Link>
 
           {/* Place Order */}

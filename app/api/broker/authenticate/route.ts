@@ -42,6 +42,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { broker } = body;
 
+    console.log(`[AUTH] Processing authentication for user=${userId}, broker=${broker}`);
+
     if (!broker) {
       return NextResponse.json(
         { error: 'Missing required field: broker' },
@@ -50,7 +52,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Retrieve broker config from cache
+    console.log(`[AUTH] Fetching cached broker config for ${broker}`);
     const configData = await getCachedBrokerConfig(userId, broker);
+    console.log(`[AUTH] Config data:`, configData ? { status: configData.status, hasApiKey: !!configData.apiKey } : 'null');
 
     if (!configData) {
       return NextResponse.json(
@@ -101,11 +105,40 @@ export async function POST(request: NextRequest) {
       // Update Firestore with combined auth token
       const userRef = adminDb.collection('users').doc(userId);
       const brokerConfigRef = userRef.collection('brokerConfig').doc(broker);
-      await brokerConfigRef.update({
-        accessToken: encryptData(authToken),
-        status: 'active',
-        lastAuthenticated: new Date().toISOString(),
-      });
+
+      console.log(`[AUTH-ZERODHA] Saving access token to Firestore for user=${userId}`);
+      try {
+        await brokerConfigRef.set({
+          accessToken: encryptData(authToken),
+          status: 'active',
+          lastAuthenticated: new Date().toISOString(),
+        }, { merge: true });
+        console.log(`[AUTH-ZERODHA] Successfully saved access token`);
+
+        // Validate the write by reading it back immediately
+        console.log(`[AUTH-ZERODHA] Validating write by reading back from Firestore...`);
+        const validationDoc = await brokerConfigRef.get();
+        if (validationDoc.exists) {
+          const savedData = validationDoc.data();
+          console.log(`[AUTH-ZERODHA] ✅ Write validated! Document exists with:`, {
+            status: savedData?.status,
+            hasAccessToken: !!savedData?.accessToken,
+            lastAuthenticated: savedData?.lastAuthenticated,
+          });
+        } else {
+          console.error(`[AUTH-ZERODHA] ❌ Write failed! Document does not exist after write`);
+          return NextResponse.json(
+            { error: 'Write verification failed. Document was not created.' },
+            { status: 500 }
+          );
+        }
+      } catch (firebaseError) {
+        console.error('Failed to save access token to Firestore:', firebaseError);
+        return NextResponse.json(
+          { error: 'Failed to save authentication token. Please try again.' },
+          { status: 500 }
+        );
+      }
 
       invalidateBrokerConfig(userId, broker);
 
@@ -128,12 +161,16 @@ export async function POST(request: NextRequest) {
 
       const { accessToken, feedToken, refreshToken, clientCode, pin, totp } = body;
 
+      console.log(`[AUTH-ANGEL] OAuth flow detected: accessToken=${!!accessToken}, feedToken=${!!feedToken}, refreshToken=${!!refreshToken}`);
+      console.log(`[AUTH-ANGEL] Manual flow detected: clientCode=${!!clientCode}, pin=${!!pin}, totp=${!!totp}`);
+
       let jwtToken: string;
       let feedTokenToStore: string | undefined = feedToken;
 
       // Check if we have OAuth tokens (preferred)
       if (accessToken) {
         // Angel OAuth flow - tokens already provided
+        console.log(`[AUTH-ANGEL] Using OAuth flow with accessToken`);
         jwtToken = accessToken;
       } else if (clientCode && pin && totp) {
         // Manual authentication flow - need to authenticate
@@ -183,10 +220,44 @@ export async function POST(request: NextRequest) {
         updateData.refreshToken = encryptData(refreshToken);
       }
 
-      await brokerConfigRef.update(updateData);
+      console.log(`[AUTH-ANGEL] Saving tokens to Firestore for user=${userId}, broker=${broker}`);
+      console.log(`[AUTH-ANGEL] Update data keys:`, Object.keys(updateData));
 
+      try {
+        await brokerConfigRef.set(updateData, { merge: true });
+        console.log(`[AUTH-ANGEL] Successfully saved tokens to Firestore`);
+
+        // Validate the write by reading it back immediately
+        console.log(`[AUTH-ANGEL] Validating write by reading back from Firestore...`);
+        const validationDoc = await brokerConfigRef.get();
+        if (validationDoc.exists) {
+          const savedData = validationDoc.data();
+          console.log(`[AUTH-ANGEL] ✅ Write validated! Document exists with:`, {
+            status: savedData?.status,
+            hasAccessToken: !!savedData?.accessToken,
+            hasFeedToken: !!savedData?.feedToken,
+            hasRefreshToken: !!savedData?.refreshToken,
+            lastAuthenticated: savedData?.lastAuthenticated,
+          });
+        } else {
+          console.error(`[AUTH-ANGEL] ❌ Write failed! Document does not exist after write`);
+          return NextResponse.json(
+            { error: 'Write verification failed. Document was not created.' },
+            { status: 500 }
+          );
+        }
+      } catch (firebaseError) {
+        console.error('[AUTH-ANGEL] Failed to save authentication tokens to Firestore:', firebaseError);
+        return NextResponse.json(
+          { error: 'Failed to save authentication tokens. Please try again.' },
+          { status: 500 }
+        );
+      }
+
+      console.log(`[AUTH-ANGEL] Invalidating cache for broker=${broker}`);
       invalidateBrokerConfig(userId, broker);
 
+      console.log(`[AUTH-ANGEL] Authentication successful, returning 200 response`);
       return NextResponse.json(
         {
           success: true,

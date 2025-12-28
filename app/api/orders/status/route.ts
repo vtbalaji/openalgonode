@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth } from '@/lib/firebaseAdmin';
-import { getCachedBrokerConfig } from '@/lib/brokerConfigUtils';
-import { decryptData } from '@/lib/encryptionUtils';
 import { resolveBroker } from '@/lib/brokerDetection';
 
 /**
@@ -47,55 +45,31 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get broker config
-    const configData = await getCachedBrokerConfig(userId, broker);
+    // Route to broker-specific endpoint
+    const protocol = request.headers.get('x-forwarded-proto') || 'http';
+    const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'localhost:3000';
+    const brokerEndpoint = `${protocol}://${host}/api/broker/${broker}/orderbook`;
 
-    if (!configData) {
+    console.log(`[ORDERS-STATUS] Calling endpoint: ${brokerEndpoint}`);
+
+    const brokerResponse = await fetch(brokerEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({ userId }),
+    });
+
+    const result = await brokerResponse.json();
+    if (!brokerResponse.ok) {
       return NextResponse.json(
-        { error: `${broker} not configured` },
-        { status: 404 }
+        { error: result.error || `Failed on ${broker}` },
+        { status: brokerResponse.status }
       );
     }
 
-    if (!configData?.accessToken || configData.status !== 'active') {
-      return NextResponse.json(
-        { error: `${broker} not authenticated` },
-        { status: 401 }
-      );
-    }
-
-    // Decrypt access token
-    let accessToken: string;
-    try {
-      accessToken = decryptData(configData.accessToken);
-    } catch (error) {
-      console.error('Failed to decrypt access token:', error);
-      return NextResponse.json(
-        { error: 'Failed to decrypt credentials. Please re-authenticate.' },
-        { status: 401 }
-      );
-    }
-
-    // Call Zerodha client directly
-    const { getOrderBook } = await import('@/lib/zerodhaClient');
-
-    try {
-      const orders = await getOrderBook(accessToken);
-
-      return NextResponse.json(
-        {
-          success: true,
-          orders: orders || [],
-          count: orders?.length || 0,
-        },
-        { status: 200 }
-      );
-    } catch (error: any) {
-      return NextResponse.json(
-        { error: error.message || 'Failed to fetch orders' },
-        { status: 400 }
-      );
-    }
+    return NextResponse.json({...result}, { status: 200 });
   } catch (error: any) {
     const errorMsg = error.message || String(error) || 'Failed to fetch order status';
     console.error('Error fetching order status:', errorMsg, error);

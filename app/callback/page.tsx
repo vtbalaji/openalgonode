@@ -13,8 +13,12 @@ function CallbackPageContent() {
 
   useEffect(() => {
     const handleCallback = async () => {
-      // Get broker from URL parameter (passed during redirect)
-      const broker = searchParams.get('broker');
+      // Get broker from URL parameter OR sessionStorage (fallback if broker parameter is lost)
+      let broker = searchParams.get('broker');
+      if (!broker) {
+        // Try to get broker from sessionStorage (set before redirect to broker login)
+        broker = typeof window !== 'undefined' ? sessionStorage.getItem('authenticatingBroker') : null;
+      }
 
       // Get request token from URL (Zerodha returns as request_token parameter)
       const requestToken = searchParams.get('request_token');
@@ -27,7 +31,8 @@ function CallbackPageContent() {
       // Validate we have a broker
       if (!broker) {
         setStatus('error');
-        setMessage('Invalid callback. Missing broker parameter.');
+        setMessage('Invalid callback. Missing broker parameter. Please try again.');
+        sessionStorage.removeItem('authenticatingBroker');
         setTimeout(() => router.push('/broker/config'), 3000);
         return;
       }
@@ -36,6 +41,7 @@ function CallbackPageContent() {
       if (broker === 'zerodha' && !requestToken) {
         setStatus('error');
         setMessage('Invalid Zerodha callback. Missing request token.');
+        sessionStorage.removeItem('authenticatingBroker');
         setTimeout(() => router.push('/broker/config'), 3000);
         return;
       }
@@ -43,6 +49,7 @@ function CallbackPageContent() {
       if (broker === 'angel' && !authToken) {
         setStatus('error');
         setMessage('Invalid Angel callback. Missing authentication token from Angel Broker.');
+        sessionStorage.removeItem('authenticatingBroker');
         setTimeout(() => router.push('/broker/config'), 3000);
         return;
       }
@@ -54,6 +61,7 @@ function CallbackPageContent() {
           if (!user) {
             setStatus('error');
             setMessage('Please log in first.');
+            sessionStorage.removeItem('authenticatingBroker');
             setTimeout(() => router.push('/login'), 3000);
           }
         }, 2000);
@@ -90,6 +98,9 @@ function CallbackPageContent() {
           setStatus('success');
           setMessage('Authentication successful! Redirecting to broker config...');
 
+          // Clear sessionStorage since authentication is complete
+          sessionStorage.removeItem('authenticatingBroker');
+
           // Redirect back to broker config page after 2 seconds
           setTimeout(() => {
             router.push('/broker/config');
@@ -98,11 +109,13 @@ function CallbackPageContent() {
           const data = await response.json();
           setStatus('error');
           setMessage(data.error || 'Authentication failed. Please try again.');
+          sessionStorage.removeItem('authenticatingBroker');
           setTimeout(() => router.push('/broker/config'), 3000);
         }
       } catch (err: any) {
         setStatus('error');
         setMessage(err.message || 'An error occurred during authentication.');
+        sessionStorage.removeItem('authenticatingBroker');
         setTimeout(() => router.push('/broker/config'), 3000);
       }
     };

@@ -35,7 +35,7 @@ export const BROKER_CONFIGS: Record<string, BrokerConfig> = {
     id: 'angel',
     name: 'angel',
     displayName: 'Angel One',
-    loginUrlTemplate: 'https://smartapi.angelbroking.com/publisher-login?api_key={apiKey}',
+    loginUrlTemplate: 'https://smartapi.angelbroking.com/publisher-login?api_key={apiKey}&redirect_uri={redirectUri}',
     apiEndpoint: 'https://apiconnect.angelbroking.com',
     requiresApiKey: true,
     requiresApiSecret: true,

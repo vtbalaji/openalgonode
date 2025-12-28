@@ -112,6 +112,126 @@ export function transformOrderData(data: any, symboltoken: string = ''): AngelOr
 }
 
 /**
+ * Search for a symbol on Angel Broker to get its symboltoken
+ */
+export async function searchScrip(
+  jwtToken: string,
+  apiKey: string,
+  symbol: string,
+  exchange: string = 'NSE'
+): Promise<{ symboltoken: string; trading_symbol: string } | null> {
+  try {
+    console.log(`[searchScrip] Searching for ${symbol} on ${exchange}...`);
+
+    // Try official Angel master token file first
+    console.log(`[searchScrip] Attempting master file lookup...`);
+    try {
+      const response = await fetch('https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json');
+
+      if (response.ok) {
+        const masterData = await response.json() as any[];
+        console.log(`[searchScrip] Loaded master file with ${masterData.length} symbols`);
+
+        // Look for exact match with exchange
+        let match = masterData.find((scrip: any) => {
+          const scriptrade = (scrip.scripname || scrip.trading_symbol || scrip.symbol || '').toUpperCase();
+          const exchangeMapped = (scrip.exchange || scrip.exch || '').toUpperCase();
+          return scriptrade === symbol.toUpperCase() && exchangeMapped === exchange.toUpperCase();
+        });
+
+        // If not found, try with -EQ suffix (Angel convention for equity on NSE)
+        if (!match && exchange === 'NSE') {
+          match = masterData.find((scrip: any) => {
+            const scriptrade = (scrip.scripname || scrip.trading_symbol || scrip.symbol || '').toUpperCase();
+            const symbolWithEq = `${symbol.toUpperCase()}-EQ`;
+            return scriptrade === symbolWithEq;
+          });
+        }
+
+        // If still not found, try partial match (less strict)
+        if (!match) {
+          match = masterData.find((scrip: any) => {
+            const scriptrade = (scrip.scripname || scrip.trading_symbol || scrip.symbol || '').toUpperCase();
+            return scriptrade.includes(symbol.toUpperCase());
+          });
+        }
+
+        if (match) {
+          const token = match.token || match.exch_token || match.symboltoken || match.expiry_symbol || match.symbol_token || '';
+          if (token) {
+            console.log(`[searchScrip] Found token ${token} for ${symbol} in master file`);
+            return {
+              symboltoken: token.toString(),
+              trading_symbol: match.scripname || match.trading_symbol || match.symbol || symbol,
+            };
+          } else {
+            console.warn(`[searchScrip] Match found but no token field:`, Object.keys(match).slice(0, 10));
+          }
+        }
+      } else {
+        console.warn(`[searchScrip] Master file fetch failed with status ${response.status}`);
+      }
+    } catch (e) {
+      console.warn(`[searchScrip] Master file lookup failed:`, e);
+    }
+
+    // All direct attempts failed
+    console.error(`[searchScrip] All search attempts failed for ${symbol} on ${exchange}`);
+
+    // Try fallback: get from existing positions
+    console.log(`[searchScrip] Trying fallback: searching existing positions...`);
+    try {
+      const positions = await getPositions(jwtToken, apiKey);
+      const matchingPosition = positions.find(
+        (p: any) => p.tradingsymbol === symbol && p.exchange === exchange
+      );
+      if (matchingPosition && matchingPosition.symboltoken) {
+        console.log(`[searchScrip] Found symboltoken ${matchingPosition.symboltoken} in positions`);
+        return {
+          symboltoken: matchingPosition.symboltoken,
+          trading_symbol: matchingPosition.tradingsymbol,
+        };
+      }
+    } catch (e) {
+      console.warn(`[searchScrip] Could not get positions for fallback:`, e);
+    }
+
+    // Try fallback: get from holdings
+    console.log(`[searchScrip] Trying fallback: searching holdings...`);
+    try {
+      const holdings = await getHoldings(jwtToken, apiKey);
+      const matchingHolding = holdings.find(
+        (h: any) => h.tradingsymbol === symbol && h.exchange === exchange
+      );
+      if (matchingHolding && matchingHolding.symboltoken) {
+        console.log(`[searchScrip] Found symboltoken ${matchingHolding.symboltoken} in holdings`);
+        return {
+          symboltoken: matchingHolding.symboltoken,
+          trading_symbol: matchingHolding.tradingsymbol,
+        };
+      }
+    } catch (e) {
+      console.warn(`[searchScrip] Could not get holdings for fallback:`, e);
+    }
+
+    // For NFO/futures, try with cash market as fallback
+    if (exchange === 'NFO' || exchange === 'NSEFO') {
+      console.log(`[searchScrip] Trying fallback search on NSE for ${symbol}...`);
+      const nseFallback = await searchScrip(jwtToken, apiKey, symbol, 'NSE');
+      if (nseFallback) {
+        console.log(`[searchScrip] Found in NSE fallback`);
+        return nseFallback;
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error(`[searchScrip] Exception for ${symbol}:`, error);
+    return null;
+  }
+}
+
+/**
  * Authenticate with Angel Broker using clientCode, PIN, and TOTP
  */
 export async function authenticateAngel(
@@ -549,10 +669,18 @@ export async function closePosition(
     const action = parseInt(position.netqty) > 0 ? 'SELL' : 'BUY';
     const closeQuantity = Math.abs(parseInt(position.netqty));
 
+    // Use symboltoken from position if available
+    let symboltoken = position.symboltoken || '';
+    if (!symboltoken) {
+      // If position data doesn't have symboltoken, log and continue
+      // Angel API should handle the error
+      console.warn(`No symboltoken in position data for ${symbol}`);
+    }
+
     const orderPayload: AngelOrderPayload = {
       variety: 'NORMAL',
       tradingsymbol: symbol,
-      symboltoken: '',
+      symboltoken: symboltoken,
       transactiontype: action as 'BUY' | 'SELL',
       exchange: exchange,
       ordertype: 'MARKET',

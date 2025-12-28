@@ -128,6 +128,11 @@ export default function BrokerConfigPage() {
 
       if (response.ok) {
         const data = await response.json();
+        // Store the broker being authenticated in sessionStorage
+        // so callback page can retrieve it even if broker parameter is lost
+        if (selectedBroker) {
+          sessionStorage.setItem('authenticatingBroker', selectedBroker);
+        }
         // Redirect to broker login page
         window.location.href = data.loginUrl;
       } else {
@@ -227,6 +232,43 @@ export default function BrokerConfigPage() {
     }
   };
 
+  const handleResetAuth = async () => {
+    if (!selectedBroker) return;
+
+    if (!window.confirm(`Are you sure you want to delete ${selectedBroker} authentication tokens? You'll need to re-authenticate.`)) {
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const idToken = await user?.getIdToken();
+      const response = await fetch(`/api/broker/config/delete?broker=${selectedBroker}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${idToken}`,
+        },
+      });
+
+      if (response.ok) {
+        setSuccess('Authentication tokens deleted. Please authenticate again.');
+        setAuthStatus(null);
+        setLastAuthenticatedAt(null);
+        setRequestToken('');
+        // Refresh config to show reset state
+        setTimeout(() => {
+          fetchBrokerConfig();
+        }, 1000);
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Failed to delete authentication');
+      }
+    } catch (err: any) {
+      setError(err.message || 'An error occurred');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   if (loading || isFetching) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -260,13 +302,27 @@ export default function BrokerConfigPage() {
         {/* Status Card */}
         {selectedBroker && (
           <div className="mb-8">
-            <BrokerAuthStatus
-              lastAuthenticatedAt={lastAuthenticatedAt}
-              broker={selectedBroker}
-              onReAuth={handleGetLoginUrl}
-              showDetails={true}
-              compact={false}
-            />
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <BrokerAuthStatus
+                  lastAuthenticatedAt={lastAuthenticatedAt}
+                  broker={selectedBroker}
+                  onReAuth={handleGetLoginUrl}
+                  showDetails={true}
+                  compact={false}
+                />
+              </div>
+              {authStatus === 'active' && (
+                <button
+                  type="button"
+                  onClick={handleResetAuth}
+                  className="ml-4 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition"
+                  title="Clear authentication tokens for testing"
+                >
+                  🔄 Reset (Testing)
+                </button>
+              )}
+            </div>
           </div>
         )}
 

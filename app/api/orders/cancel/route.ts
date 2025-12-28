@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth } from '@/lib/firebaseAdmin';
 import { getCachedBrokerConfig } from '@/lib/brokerConfigUtils';
-import { decryptData } from '@/lib/encryptionUtils';
 import { resolveBroker } from '@/lib/brokerDetection';
 
 /**
@@ -75,35 +74,51 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Decrypt access token
-    let accessToken: string;
-    try {
-      accessToken = decryptData(configData.accessToken);
-    } catch (error) {
-      console.error('Failed to decrypt access token:', error);
-      return NextResponse.json(
-        { error: 'Failed to decrypt credentials. Please re-authenticate.' },
-        { status: 401 }
-      );
-    }
+    // Route to broker-specific endpoint
+    console.log(`[ORDERS-CANCEL] Routing cancel to ${broker} broker`);
 
-    // Call Zerodha client directly
-    const { cancelOrder } = await import('@/lib/zerodhaClient');
+    const protocol = request.headers.get('x-forwarded-proto') || 'http';
+    const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'localhost:3000';
+    const brokerEndpoint = `${protocol}://${host}/api/broker/${broker}/cancel-order`;
+
+    console.log(`[ORDERS-CANCEL] Calling endpoint: ${brokerEndpoint}`);
 
     try {
-      const result = await cancelOrder(accessToken, order_id);
+      const brokerResponse = await fetch(brokerEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          userId,
+          orderid: order_id,
+        }),
+      });
+
+      const result = await brokerResponse.json();
+
+      if (!brokerResponse.ok) {
+        console.error(`[ORDERS-CANCEL] Error from broker:`, result);
+        return NextResponse.json(
+          { error: result.error || `Failed to cancel order on ${broker}` },
+          { status: brokerResponse.status }
+        );
+      }
 
       return NextResponse.json(
         {
           success: true,
-          orderId: result.order_id,
-          message: 'Order cancelled successfully',
+          orderId: result.orderId || result.order_id,
+          message: `Order cancelled successfully on ${broker}`,
+          ...result,
         },
         { status: 200 }
       );
     } catch (error: any) {
+      console.error(`Error cancelling order on ${broker}:`, error.message);
       return NextResponse.json(
-        { error: error.message || 'Failed to cancel order' },
+        { error: error.message || `Failed to cancel order on ${broker}` },
         { status: 400 }
       );
     }

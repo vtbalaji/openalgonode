@@ -67,6 +67,7 @@ export async function POST(request: NextRequest) {
       price: order.price,
       trigger_price: order.trigger_price,
       disclosed_quantity: order.disclosed_quantity,
+      symboltoken: order.symboltoken,
     });
 
     if (status !== 200) {
@@ -76,7 +77,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: true,
-        orderId: data.order_id,
+        orderId: data.order_id || data.orderid,
         message: 'Order placed successfully',
       },
       { status: 200 }

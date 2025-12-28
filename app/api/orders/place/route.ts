@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminAuth } from '@/lib/firebaseAdmin';
-import { adminDb } from '@/lib/firebaseAdmin';
+import { adminAuth, adminDb } from '@/lib/firebaseAdmin';
 import { getCachedBrokerConfig } from '@/lib/brokerConfigUtils';
-import { decryptData } from '@/lib/encryptionUtils';
 import { resolveBroker } from '@/lib/brokerDetection';
 
 /**
@@ -85,68 +83,80 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Decrypt access token
-    let accessToken: string;
+    // Route to broker-specific endpoint
+    console.log(`[ORDERS-PLACE] Routing order to ${broker} broker`);
+
+    // Build the broker-specific endpoint URL
+    const protocol = request.headers.get('x-forwarded-proto') || 'http';
+    const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'localhost:3000';
+    const brokerEndpoint = `${protocol}://${host}/api/broker/${broker}/place-order`;
+
+    console.log(`[ORDERS-PLACE] Calling endpoint: ${brokerEndpoint}`);
+
+    // Call broker-specific endpoint internally
     try {
-      accessToken = decryptData(configData.accessToken);
-    } catch (error) {
-      console.error('Failed to decrypt access token:', error);
-      return NextResponse.json(
-        { error: 'Failed to decrypt credentials. Please re-authenticate.' },
-        { status: 401 }
-      );
-    }
+      const brokerResponse = await fetch(brokerEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          userId,
+          ...order,
+        }),
+      });
 
-    // Call Zerodha client directly
-    const { placeOrder, transformOrderData } = await import('@/lib/zerodhaClient');
+      const result = await brokerResponse.json();
 
-    // Transform order data to Zerodha format
-    const orderPayload = {
-      symbol: order.symbol,
-      exchange: order.exchange,
-      action: order.action,
-      quantity: order.quantity,
-      product: order.product,
-      pricetype: order.pricetype,
-      price: order.price,
-      trigger_price: order.trigger_price,
-      disclosed_quantity: order.disclosed_quantity,
-    };
-
-    const zerodhaOrder = transformOrderData(orderPayload);
-
-    try {
-      // Place order with Zerodha
-      const result = await placeOrder(accessToken, zerodhaOrder);
+      if (!brokerResponse.ok) {
+        console.error(`[ORDERS-PLACE] Error from ${broker} (status ${brokerResponse.status}):`, JSON.stringify(result, null, 2));
+        return NextResponse.json(
+          {
+            error: result.error || result.message || result.status || `Failed to place order on ${broker}`,
+            details: result
+          },
+          { status: brokerResponse.status }
+        );
+      }
 
       // Store order in Firestore for reference
       const ordersRef = adminDb.collection('users').doc(userId).collection('orders');
-      await ordersRef.doc(result.order_id).set({
-        orderId: result.order_id,
-        symbol: order.symbol,
-        exchange: order.exchange,
-        action: order.action,
-        quantity: order.quantity,
-        product: order.product,
-        pricetype: order.pricetype,
-        broker: 'zerodha',
-        status: 'pending',
-        createdAt: new Date(),
-        zerodhaResponse: result,
-      });
+      const orderId = result.orderId || result.order_id;
+
+      if (orderId) {
+        await ordersRef.doc(orderId).set({
+          orderId,
+          symbol: order.symbol,
+          exchange: order.exchange,
+          action: order.action,
+          quantity: order.quantity,
+          product: order.product,
+          pricetype: order.pricetype,
+          broker,
+          status: 'pending',
+          createdAt: new Date(),
+          brokerResponse: result,
+        });
+      }
 
       return NextResponse.json(
         {
           success: true,
-          orderId: result.order_id,
-          message: 'Order placed successfully',
+          orderId,
+          message: `Order placed successfully on ${broker}`,
+          ...result,
         },
         { status: 200 }
       );
     } catch (error: any) {
+      console.error(`[ORDERS-PLACE] Catch block error for ${broker}:`, error.message || error);
       return NextResponse.json(
-        { error: error.message || 'Failed to place order' },
-        { status: 400 }
+        {
+          error: error.message || `Failed to place order on ${broker}`,
+          details: error.toString()
+        },
+        { status: 500 }
       );
     }
   } catch (error: any) {

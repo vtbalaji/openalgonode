@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth } from '@/lib/firebaseAdmin';
-import { getCachedBrokerConfig } from '@/lib/brokerConfigUtils';
-import { decryptData } from '@/lib/encryptionUtils';
 import { resolveBroker } from '@/lib/brokerDetection';
 
 /**
@@ -63,71 +61,39 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get broker config
-    const configData = await getCachedBrokerConfig(userId, broker);
+    // Route to broker-specific endpoint
+    const protocol = request.headers.get('x-forwarded-proto') || 'http';
+    const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'localhost:3000';
+    const brokerEndpoint = `${protocol}://${host}/api/broker/${broker}/modify-order`;
 
-    if (!configData) {
+    console.log(`[ORDERS-MODIFY] Calling endpoint: ${brokerEndpoint}`);
+
+    const brokerResponse = await fetch(brokerEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({
+        userId,
+        orderid: order_id,
+        quantity,
+        price,
+        trigger_price,
+        product,
+        pricetype,
+      }),
+    });
+
+    const result = await brokerResponse.json();
+    if (!brokerResponse.ok) {
       return NextResponse.json(
-        { error: `${broker} not configured` },
-        { status: 404 }
+        { error: result.error || `Failed on ${broker}` },
+        { status: brokerResponse.status }
       );
     }
 
-    if (!configData?.accessToken || configData.status !== 'active') {
-      return NextResponse.json(
-        { error: `${broker} not authenticated` },
-        { status: 401 }
-      );
-    }
-
-    // Decrypt access token
-    let accessToken: string;
-    try {
-      accessToken = decryptData(configData.accessToken);
-    } catch (error) {
-      console.error('Failed to decrypt access token:', error);
-      return NextResponse.json(
-        { error: 'Failed to decrypt credentials. Please re-authenticate.' },
-        { status: 401 }
-      );
-    }
-
-    // Get current order to retrieve required fields for modification
-    const { getOrderStatus, modifyOrder } = await import('@/lib/zerodhaClient');
-
-    try {
-      // Get current order details
-      const currentOrder = await getOrderStatus(accessToken, order_id);
-
-      // Build modify payload with all required fields
-      const modifyPayload: any = {
-        tradingsymbol: currentOrder.tradingsymbol,
-        exchange: currentOrder.exchange,
-        transaction_type: currentOrder.transaction_type || 'BUY',
-        order_type: pricetype === 'MARKET' ? 'MARKET' : 'LIMIT',
-        quantity: quantity ? parseInt(quantity.toString()) : parseInt(currentOrder.quantity),
-        product: product || currentOrder.product,
-        price: price ? parseFloat(price.toString()) : currentOrder.price || 0,
-        trigger_price: trigger_price ? parseFloat(trigger_price.toString()) : currentOrder.trigger_price || 0,
-        disclosed_quantity: currentOrder.disclosed_quantity || 0,
-      };
-
-      const result = await modifyOrder(accessToken, order_id, modifyPayload);
-
-      return NextResponse.json(
-        {
-          success: true,
-          orderId: result.order_id || result.orderid,
-          message: 'Order modified successfully',
-        },
-        { status: 200 }
-      );
-    } catch (error: any) {
-      return NextResponse.json(
-        { error: error.message || 'Failed to modify order' },
-        { status: 400 }
-      );
-    }
+    return NextResponse.json({...result}, { status: 200 });
   } catch (error: any) {
     const errorMsg = error.message || String(error) || 'Failed to modify order';
     console.error('Error modifying order:', errorMsg, error);

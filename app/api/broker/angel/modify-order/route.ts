@@ -55,6 +55,12 @@ export async function POST(request: NextRequest) {
     // Import Angel client
     const { modifyOrder } = await import('@/lib/angelClient');
 
+    // Use provided symboltoken or leave empty for Angel's error response
+    let resolvedSymboltoken = symboltoken;
+    if (!resolvedSymboltoken && symbol && exchange) {
+      console.log(`[ANGEL-MODIFY-ORDER] No symboltoken provided for ${symbol}, will attempt order anyway`);
+    }
+
     const orderPayload = {
       orderid,
       quantity,
@@ -64,7 +70,7 @@ export async function POST(request: NextRequest) {
       product,
       symbol,
       exchange,
-      symboltoken,
+      symboltoken: resolvedSymboltoken,
       disclosed_quantity,
     };
 

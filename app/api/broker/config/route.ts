@@ -102,6 +102,8 @@ export async function GET(request: NextRequest) {
     const userId = decodedToken.uid;
     const broker = request.nextUrl.searchParams.get('broker');
 
+    console.log(`[CONFIG-GET] Retrieving config for user=${userId}, broker=${broker}`);
+
     if (!broker) {
       return NextResponse.json(
         { error: 'Missing required parameter: broker' },
@@ -112,7 +114,10 @@ export async function GET(request: NextRequest) {
     // Retrieve from cache
     const data = await getCachedBrokerConfig(userId, broker);
 
+    console.log(`[CONFIG-GET] Retrieved data:`, data ? { status: data.status, hasApiKey: !!data.apiKey, hasAccessToken: !!data.accessToken, lastAuthenticated: data.lastAuthenticated } : 'null');
+
     if (!data) {
+      console.log(`[CONFIG-GET] Broker configuration not found, returning 404`);
       return NextResponse.json(
         { error: 'Broker configuration not found' },
         { status: 404 }
@@ -121,16 +126,17 @@ export async function GET(request: NextRequest) {
 
     // Return basic config info without decrypting credentials
     // Credential validation happens during actual API calls (place-order, orderbook, etc.)
-    return NextResponse.json(
-      {
-        broker: data.broker,
-        status: data.status,
-        lastUpdated: data.lastUpdated,
-        lastAuthenticated: data.lastAuthenticated || null,
-        credentialsExist: !!data.apiKey && !!data.apiSecret,
-      },
-      { status: 200 }
-    );
+    const response = {
+      broker: data.broker,
+      status: data.status,
+      lastUpdated: data.lastUpdated,
+      lastAuthenticated: data.lastAuthenticated || null,
+      credentialsExist: !!data.apiKey && !!data.apiSecret,
+    };
+
+    console.log(`[CONFIG-GET] Returning response:`, response);
+
+    return NextResponse.json(response, { status: 200 });
   } catch (error) {
     console.error('Error retrieving broker config:', error);
     return NextResponse.json(

@@ -18,6 +18,7 @@ export default function PlaceOrderPage() {
   const [pricetype, setPricetype] = useState('MARKET');
   const [price, setPrice] = useState('');
   const [triggerPrice, setTriggerPrice] = useState('');
+  const [symboltoken, setSymboltoken] = useState('');
 
   // UI state
   const [error, setError] = useState('');
@@ -26,6 +27,7 @@ export default function PlaceOrderPage() {
   const [orderId, setOrderId] = useState('');
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [brokerNotAuthenticated, setBrokerNotAuthenticated] = useState(false);
+  const [selectedBroker, setSelectedBroker] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user && !loading) {
@@ -33,25 +35,8 @@ export default function PlaceOrderPage() {
     }
   }, [user, loading, router]);
 
-  // Auto-detect exchange and product based on symbol
-  useEffect(() => {
-    if (!symbol) return;
-
-    const upperSymbol = symbol.toUpperCase();
-    // If symbol ends with PE or CE, it's an option
-    if (upperSymbol.endsWith('PE') || upperSymbol.endsWith('CE')) {
-      setExchange('NFO');
-      setProduct('MIS');
-    } else if (upperSymbol.includes('FUT')) {
-      // If symbol contains FUT, it's a future
-      setExchange('NFO');
-      setProduct('NRML');
-    } else {
-      // Otherwise it's a stock
-      setExchange('NSE');
-      setProduct('MIS');
-    }
-  }, [symbol]);
+  // Don't auto-detect anything - let user manually select exchange and product
+  // This prevents confusion when typing RELIANCE and it auto-changes to NFO
 
   // Check broker authentication status
   useEffect(() => {
@@ -60,24 +45,49 @@ export default function PlaceOrderPage() {
 
       try {
         const idToken = await user.getIdToken();
-        const response = await fetch('/api/broker/config?broker=zerodha', {
+
+        // First, get the active broker
+        const activeBrokerResponse = await fetch('/api/broker/active', {
           headers: {
             'Authorization': `Bearer ${idToken}`,
           },
         });
 
-        if (response.ok) {
-          const data = await response.json();
-          if (data.status !== 'active') {
-            // Broker not authenticated, show warning instead of redirecting
-            setBrokerNotAuthenticated(true);
-            setCheckingAuth(false);
+        if (activeBrokerResponse.ok) {
+          const activeData = await activeBrokerResponse.json();
+          const broker = activeData.primaryBroker || (activeData.configuredBrokers && activeData.configuredBrokers[0]);
+
+          if (!broker) {
+            // No broker configured at all, redirect to broker config
+            router.push('/broker/config');
+            return;
+          }
+
+          setSelectedBroker(broker);
+
+          // Now check the auth status of this broker
+          const configResponse = await fetch(`/api/broker/config?broker=${broker}`, {
+            headers: {
+              'Authorization': `Bearer ${idToken}`,
+            },
+          });
+
+          if (configResponse.ok) {
+            const data = await configResponse.json();
+            if (data.status !== 'active') {
+              // Broker not authenticated, show warning instead of redirecting
+              setBrokerNotAuthenticated(true);
+              setCheckingAuth(false);
+            } else {
+              setBrokerNotAuthenticated(false);
+              setCheckingAuth(false);
+            }
           } else {
-            setBrokerNotAuthenticated(false);
-            setCheckingAuth(false);
+            // No broker config found, redirect to broker config page
+            router.push('/broker/config');
           }
         } else {
-          // No broker config found, redirect to broker config page
+          // Error getting active broker, redirect to config
           router.push('/broker/config');
         }
       } catch (err) {
@@ -87,13 +97,18 @@ export default function PlaceOrderPage() {
     };
 
     checkBrokerAuth();
-  }, [user]);
+  }, [user, router]);
 
   // Redirect to broker login
   const redirectToBrokerLogin = async () => {
+    if (!selectedBroker) {
+      router.push('/broker/config');
+      return;
+    }
+
     try {
       const idToken = await user?.getIdToken();
-      const response = await fetch('/api/broker/login-url?broker=zerodha', {
+      const response = await fetch(`/api/broker/login-url?broker=${selectedBroker}`, {
         headers: {
           'Authorization': `Bearer ${idToken}`,
         },
@@ -138,16 +153,22 @@ export default function PlaceOrderPage() {
       return;
     }
 
+    if (!selectedBroker) {
+      setError('No broker selected. Please configure a broker first.');
+      setIsLoading(false);
+      return;
+    }
+
     try {
       const idToken = await user?.getIdToken();
-      const response = await fetch('/api/orders/place', {
+      const response = await fetch('/api/ui/dashboard/place', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${idToken}`,
         },
         body: JSON.stringify({
-          broker: 'zerodha',
+          broker: selectedBroker,
           symbol: symbol.toUpperCase(),
           exchange,
           action,
@@ -156,6 +177,7 @@ export default function PlaceOrderPage() {
           pricetype,
           price: price ? Number(price) : undefined,
           trigger_price: triggerPrice ? Number(triggerPrice) : undefined,
+          symboltoken: symboltoken || undefined,
         }),
       });
 
@@ -233,7 +255,7 @@ export default function PlaceOrderPage() {
                   Broker Not Authenticated
                 </h3>
                 <p className="mt-2 text-sm text-yellow-700">
-                  Your Zerodha account is configured but not authenticated. You need to complete authentication before placing orders.
+                  Your {selectedBroker ? selectedBroker.charAt(0).toUpperCase() + selectedBroker.slice(1) : 'broker'} account is configured but not authenticated. You need to complete authentication before placing orders.
                 </p>
                 <div className="mt-4 flex gap-3">
                   <button
@@ -285,6 +307,21 @@ export default function PlaceOrderPage() {
                 placeholder="e.g., RELIANCE, INFY, TCS"
                 required
               />
+            </div>
+
+            {/* Symbol Token (Advanced/Optional) */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Symbol Token (Optional - for Angel Broker)</label>
+              <input
+                type="text"
+                value={symboltoken}
+                onChange={(e) => setSymboltoken(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-blue-500 focus:outline-none"
+                placeholder="Leave empty for auto-lookup, or enter manually if known"
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Leave empty to auto-lookup on Angel, or manually enter the symboltoken if you know it. Contact your broker if unsure.
+              </p>
             </div>
 
             {/* Exchange and Action */}

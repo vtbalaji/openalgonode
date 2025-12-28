@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth } from '@/lib/firebaseAdmin';
-import { callInternalBrokerEndpoint } from '@/lib/internalRouting';
+import { getCachedBrokerConfig } from '@/lib/brokerConfigUtils';
+import { decryptData } from '@/lib/encryptionUtils';
 
 /**
  * POST /api/orders/modify
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest) {
 
     const userId = decodedToken.uid;
     const orderData = await request.json();
-    const { broker = 'zerodha', order_id, ...order } = orderData;
+    const { broker = 'zerodha', order_id, quantity, price, trigger_price, product, pricetype } = orderData;
 
     // Validate required fields
     if (!order_id) {
@@ -51,34 +52,83 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Call internal broker endpoint
-    const { data, status } = await callInternalBrokerEndpoint(broker, 'modify-order', {
-      userId,
-      order_id,
-      ...order,
-    });
-
-    if (status !== 200) {
-      // Transform error response for consistency
-      const errorMsg = data.message || data.error || 'Failed to modify order';
+    if (broker !== 'zerodha') {
       return NextResponse.json(
-        { error: errorMsg },
-        { status }
+        { error: 'Only zerodha broker is currently supported' },
+        { status: 400 }
       );
     }
 
+    // Get Zerodha broker config
+    const configData = await getCachedBrokerConfig(userId, 'zerodha');
+
+    if (!configData) {
+      return NextResponse.json(
+        { error: 'Zerodha not configured' },
+        { status: 404 }
+      );
+    }
+
+    if (!configData?.accessToken || configData.status !== 'active') {
+      return NextResponse.json(
+        { error: 'Zerodha not authenticated' },
+        { status: 401 }
+      );
+    }
+
+    // Decrypt access token
+    let accessToken: string;
+    try {
+      accessToken = decryptData(configData.accessToken);
+    } catch (error) {
+      console.error('Failed to decrypt access token:', error);
+      return NextResponse.json(
+        { error: 'Failed to decrypt credentials. Please re-authenticate.' },
+        { status: 401 }
+      );
+    }
+
+    // Get current order to retrieve required fields for modification
+    const { getOrderStatus, modifyOrder } = await import('@/lib/zerodhaClient');
+
+    try {
+      // Get current order details
+      const currentOrder = await getOrderStatus(accessToken, order_id);
+
+      // Build modify payload with all required fields
+      const modifyPayload: any = {
+        tradingsymbol: currentOrder.tradingsymbol,
+        exchange: currentOrder.exchange,
+        transaction_type: currentOrder.transaction_type || 'BUY',
+        order_type: pricetype === 'MARKET' ? 'MARKET' : 'LIMIT',
+        quantity: quantity ? parseInt(quantity.toString()) : parseInt(currentOrder.quantity),
+        product: product || currentOrder.product,
+        price: price ? parseFloat(price.toString()) : currentOrder.price || 0,
+        trigger_price: trigger_price ? parseFloat(trigger_price.toString()) : currentOrder.trigger_price || 0,
+        disclosed_quantity: currentOrder.disclosed_quantity || 0,
+      };
+
+      const result = await modifyOrder(accessToken, order_id, modifyPayload);
+
+      return NextResponse.json(
+        {
+          success: true,
+          orderId: result.order_id || result.orderid,
+          message: 'Order modified successfully',
+        },
+        { status: 200 }
+      );
+    } catch (error: any) {
+      return NextResponse.json(
+        { error: error.message || 'Failed to modify order' },
+        { status: 400 }
+      );
+    }
+  } catch (error: any) {
+    const errorMsg = error.message || String(error) || 'Failed to modify order';
+    console.error('Error modifying order:', errorMsg, error);
     return NextResponse.json(
-      {
-        success: true,
-        orderId: data.orderid || data.order_id,
-        message: 'Order modified successfully',
-      },
-      { status: 200 }
-    );
-  } catch (error) {
-    console.error('Error modifying order:', error);
-    return NextResponse.json(
-      { error: 'Failed to modify order' },
+      { error: errorMsg },
       { status: 500 }
     );
   }

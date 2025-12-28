@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth } from '@/lib/firebaseAdmin';
-import { callInternalBrokerEndpoint } from '@/lib/internalRouting';
+import { adminDb } from '@/lib/firebaseAdmin';
+import { getCachedBrokerConfig } from '@/lib/brokerConfigUtils';
+import { decryptData } from '@/lib/encryptionUtils';
 
 /**
  * POST /api/orders/place
@@ -55,9 +57,47 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Call internal broker endpoint
-    const { data, status } = await callInternalBrokerEndpoint(broker, 'place-order', {
-      userId,
+    if (broker !== 'zerodha') {
+      return NextResponse.json(
+        { error: 'Only zerodha broker is currently supported' },
+        { status: 400 }
+      );
+    }
+
+    // Get Zerodha broker config
+    const configData = await getCachedBrokerConfig(userId, 'zerodha');
+
+    if (!configData) {
+      return NextResponse.json(
+        { error: 'Zerodha not configured' },
+        { status: 404 }
+      );
+    }
+
+    if (!configData?.accessToken || configData.status !== 'active') {
+      return NextResponse.json(
+        { error: 'Zerodha not authenticated' },
+        { status: 401 }
+      );
+    }
+
+    // Decrypt access token
+    let accessToken: string;
+    try {
+      accessToken = decryptData(configData.accessToken);
+    } catch (error) {
+      console.error('Failed to decrypt access token:', error);
+      return NextResponse.json(
+        { error: 'Failed to decrypt credentials. Please re-authenticate.' },
+        { status: 401 }
+      );
+    }
+
+    // Call Zerodha client directly
+    const { placeOrder, transformOrderData } = await import('@/lib/zerodhaClient');
+
+    // Transform order data to Zerodha format
+    const orderPayload = {
       symbol: order.symbol,
       exchange: order.exchange,
       action: order.action,
@@ -67,26 +107,44 @@ export async function POST(request: NextRequest) {
       price: order.price,
       trigger_price: order.trigger_price,
       disclosed_quantity: order.disclosed_quantity,
-    });
+    };
 
-    if (status !== 200) {
-      // Transform error response for consistency
-      const errorMsg = data.message || data.error || 'Failed to place order';
-      console.error('Order placement failed:', { status, error: errorMsg, data });
+    const zerodhaOrder = transformOrderData(orderPayload);
+
+    try {
+      // Place order with Zerodha
+      const result = await placeOrder(accessToken, zerodhaOrder);
+
+      // Store order in Firestore for reference
+      const ordersRef = adminDb.collection('users').doc(userId).collection('orders');
+      await ordersRef.doc(result.order_id).set({
+        orderId: result.order_id,
+        symbol: order.symbol,
+        exchange: order.exchange,
+        action: order.action,
+        quantity: order.quantity,
+        product: order.product,
+        pricetype: order.pricetype,
+        broker: 'zerodha',
+        status: 'pending',
+        createdAt: new Date(),
+        zerodhaResponse: result,
+      });
+
       return NextResponse.json(
-        { error: errorMsg },
-        { status }
+        {
+          success: true,
+          orderId: result.order_id,
+          message: 'Order placed successfully',
+        },
+        { status: 200 }
+      );
+    } catch (error: any) {
+      return NextResponse.json(
+        { error: error.message || 'Failed to place order' },
+        { status: 400 }
       );
     }
-
-    return NextResponse.json(
-      {
-        success: true,
-        orderId: data.orderid || data.order_id,
-        message: 'Order placed successfully',
-      },
-      { status: 200 }
-    );
   } catch (error: any) {
     const errorMsg = error.message || String(error) || 'Failed to place order';
     console.error('Error placing order:', errorMsg, error);

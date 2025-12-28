@@ -111,3 +111,11 @@ To add Angel Broking support:
 ✅ Easy to add new brokers
 ✅ Self-documenting via directory structure
 ✅ No code duplication across layers
+- Original Python Flask app remains untouched
+- New Next.js app is standalone
+- Can run both simultaneously for testing
+- Plan to eventually replace Flask app with Next.js
+- Explain everything directly on screen/terminal
+- Keep it comprehensive and clear in the conversation
+- Only create MD files when you specifically ask for them
+- Avoid pre-emptive documentation

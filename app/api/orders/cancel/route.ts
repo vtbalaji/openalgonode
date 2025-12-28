@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth } from '@/lib/firebaseAdmin';
-import { callInternalBrokerEndpoint } from '@/lib/internalRouting';
+import { getCachedBrokerConfig } from '@/lib/brokerConfigUtils';
+import { decryptData } from '@/lib/encryptionUtils';
 
 /**
  * POST /api/orders/cancel
@@ -46,33 +47,67 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Call internal broker endpoint
-    const { data, status } = await callInternalBrokerEndpoint(broker, 'cancel-order', {
-      userId,
-      order_id,
-    });
-
-    if (status !== 200) {
-      // Transform error response for consistency
-      const errorMsg = data.message || data.error || 'Failed to cancel order';
+    if (broker !== 'zerodha') {
       return NextResponse.json(
-        { error: errorMsg },
-        { status }
+        { error: 'Only zerodha broker is currently supported' },
+        { status: 400 }
       );
     }
 
+    // Get Zerodha broker config
+    const configData = await getCachedBrokerConfig(userId, 'zerodha');
+
+    if (!configData) {
+      return NextResponse.json(
+        { error: 'Zerodha not configured' },
+        { status: 404 }
+      );
+    }
+
+    if (!configData?.accessToken || configData.status !== 'active') {
+      return NextResponse.json(
+        { error: 'Zerodha not authenticated' },
+        { status: 401 }
+      );
+    }
+
+    // Decrypt access token
+    let accessToken: string;
+    try {
+      accessToken = decryptData(configData.accessToken);
+    } catch (error) {
+      console.error('Failed to decrypt access token:', error);
+      return NextResponse.json(
+        { error: 'Failed to decrypt credentials. Please re-authenticate.' },
+        { status: 401 }
+      );
+    }
+
+    // Call Zerodha client directly
+    const { cancelOrder } = await import('@/lib/zerodhaClient');
+
+    try {
+      const result = await cancelOrder(accessToken, order_id);
+
+      return NextResponse.json(
+        {
+          success: true,
+          orderId: result.order_id,
+          message: 'Order cancelled successfully',
+        },
+        { status: 200 }
+      );
+    } catch (error: any) {
+      return NextResponse.json(
+        { error: error.message || 'Failed to cancel order' },
+        { status: 400 }
+      );
+    }
+  } catch (error: any) {
+    const errorMsg = error.message || String(error) || 'Failed to cancel order';
+    console.error('Error cancelling order:', errorMsg, error);
     return NextResponse.json(
-      {
-        success: true,
-        orderId: data.orderid || data.order_id,
-        message: 'Order cancelled successfully',
-      },
-      { status: 200 }
-    );
-  } catch (error) {
-    console.error('Error cancelling order:', error);
-    return NextResponse.json(
-      { error: 'Failed to cancel order' },
+      { error: errorMsg },
       { status: 500 }
     );
   }

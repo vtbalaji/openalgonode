@@ -185,9 +185,12 @@ export async function POST(request: NextRequest) {
       console.log(`[ANGEL-PLACE-ORDER] Success:`, result);
 
       // Store order in Firestore for reference
+      // ℹ️ Use standardized field names for both brokers
       const ordersRef = adminDb.collection('users').doc(userId).collection('orders');
+      const brokerOrderId = result.orderid; // Angel uses 'orderid'
       const orderDoc: any = {
-        orderId: result.orderid,
+        // Standardized fields (same for all brokers)
+        order_id: brokerOrderId,       // Standard field name for queries
         symbol: resolvedSymbol,
         exchange,
         action,
@@ -197,17 +200,20 @@ export async function POST(request: NextRequest) {
         broker: 'angel',
         status: 'pending',
         createdAt: new Date(),
+
+        // Broker-specific response (for debugging)
         angelResponse: result,
       };
       if (strategy) {
         orderDoc.strategy = strategy;
       }
-      await ordersRef.doc(result.orderid).set(orderDoc);
+      await ordersRef.doc(brokerOrderId).set(orderDoc);
 
       return NextResponse.json(
         {
           status: 'success',
-          orderid: result.orderid,
+          order_id: result.orderid,        // Standardized field name
+          orderid: result.orderid,         // Keep for backward compatibility
         },
         { status: 200 }
       );

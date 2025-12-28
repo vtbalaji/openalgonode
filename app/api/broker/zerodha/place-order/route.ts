@@ -102,19 +102,23 @@ export async function POST(request: NextRequest) {
       const result = await placeOrder(accessToken, zerodhaOrder);
 
       // Store order in Firestore for reference
+      // ℹ️ Use standardized field names for both brokers
       const ordersRef = adminDb.collection('users').doc(userId).collection('orders');
-      await ordersRef.doc(result.order_id).set({
-        orderId: result.order_id,
+      const brokerOrderId = result.order_id; // Zerodha uses 'order_id'
+      await ordersRef.doc(brokerOrderId).set({
+        // Standardized fields (same for all brokers)
+        order_id: brokerOrderId,       // Standard field name for queries
         symbol,
         exchange,
         action,
         quantity,
         product,
         pricetype,
-        strategy,
         broker: 'zerodha',
         status: 'pending',
         createdAt: new Date(),
+
+        // Broker-specific response (for debugging)
         zerodhaResponse: result,
       });
 

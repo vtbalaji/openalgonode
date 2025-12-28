@@ -36,11 +36,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Call internal broker endpoint
+    // Note: Map 'product' to 'producttype' for Angel (OpenAlgo uses 'product')
     const { data, status } = await callInternalBrokerEndpoint(broker, 'close-position', {
       userId,
       symbol: body.symbol,
       exchange: body.exchange,
-      product: body.product,
+      producttype: body.product, // Map OpenAlgo 'product' to broker-specific 'producttype'
     });
 
     return NextResponse.json(data, { status });

@@ -42,6 +42,45 @@ function getAngelHeaders(jwtToken: string, apiKey: string): Record<string, strin
 }
 
 /**
+ * Normalize exchange codes across different formats
+ * OpenAlgo uses: NSE, BSE, NFO, MCX, etc.
+ * Angel uses: NSE, BSE, NFO, NSEFO, BSEFO, MCXFO, etc.
+ */
+export function normalizeExchange(exchange: string): string {
+  const normalized = exchange.toUpperCase();
+
+  // Map Angel-specific codes to OpenAlgo standard
+  const exchangeMap: Record<string, string> = {
+    NSEFO: 'NFO',
+    BSEFO: 'BSE_FO',
+    MCXFO: 'MCX',
+    NCDEX: 'NCDEX',
+  };
+
+  return exchangeMap[normalized] || normalized;
+}
+
+/**
+ * Denormalize OpenAlgo exchange to broker-specific format
+ * NFO → NSEFO (for Angel, NFO defaults to NSE Futures)
+ */
+export function denormalizeExchangeForAngel(exchange: string, symbol: string): string {
+  const normalized = exchange.toUpperCase();
+
+  // If it's NFO and symbol doesn't suggest BSE, use NSEFO
+  if (normalized === 'NFO') {
+    return symbol.includes('BSE') ? 'BSEFO' : 'NSEFO';
+  }
+
+  // If it's MCX, use MCXFO
+  if (normalized === 'MCX') {
+    return 'MCXFO';
+  }
+
+  return normalized;
+}
+
+/**
  * Map OpenAlgo order type to Angel order type
  */
 export function mapOrderType(pricetype: string): 'MARKET' | 'LIMIT' | 'STOPLOSS_LIMIT' | 'STOPLOSS_MARKET' {
@@ -113,15 +152,23 @@ export function transformOrderData(data: any, symboltoken: string = ''): AngelOr
 
 /**
  * Search for a symbol on Angel Broker to get its symboltoken
+ * @param depth - Internal parameter to prevent infinite recursion (max 2 levels)
  */
 export async function searchScrip(
   jwtToken: string,
   apiKey: string,
   symbol: string,
-  exchange: string = 'NSE'
+  exchange: string = 'NSE',
+  depth: number = 0
 ): Promise<{ symboltoken: string; trading_symbol: string } | null> {
+  // Prevent infinite recursion (max 2 levels: original + 1 fallback)
+  if (depth > 1) {
+    console.warn(`[searchScrip] Max recursion depth reached for ${symbol} on ${exchange}`);
+    return null;
+  }
+
   try {
-    console.log(`[searchScrip] Searching for ${symbol} on ${exchange}...`);
+    console.log(`[searchScrip] Searching for ${symbol} on ${exchange}... (depth: ${depth})`);
 
     // Try official Angel master token file first
     console.log(`[searchScrip] Attempting master file lookup...`);
@@ -214,10 +261,10 @@ export async function searchScrip(
       console.warn(`[searchScrip] Could not get holdings for fallback:`, e);
     }
 
-    // For NFO/futures, try with cash market as fallback
-    if (exchange === 'NFO' || exchange === 'NSEFO') {
+    // For NFO/futures, try with cash market as fallback (only if depth allows)
+    if ((exchange === 'NFO' || exchange === 'NSEFO') && depth < 1) {
       console.log(`[searchScrip] Trying fallback search on NSE for ${symbol}...`);
-      const nseFallback = await searchScrip(jwtToken, apiKey, symbol, 'NSE');
+      const nseFallback = await searchScrip(jwtToken, apiKey, symbol, 'NSE', depth + 1);
       if (nseFallback) {
         console.log(`[searchScrip] Found in NSE fallback`);
         return nseFallback;
@@ -303,6 +350,7 @@ export async function placeOrder(
       duration: orderPayload.duration || 'DAY',
       price: (orderPayload.price || '0').toString(),
       triggerprice: (orderPayload.triggerprice || '0').toString(),
+      disclosedquantity: (orderPayload.disclosedquantity || '0').toString(),
       squareoff: '0',
       stoploss: '0',
       quantity: orderPayload.quantity.toString(),

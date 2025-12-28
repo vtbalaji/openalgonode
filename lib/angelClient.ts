@@ -4,8 +4,6 @@
  * Maps OpenAlgo format to Angel Broker API format
  */
 
-import fetch from 'node-fetch';
-
 const ANGEL_BASE_URL = 'https://apiconnect.angelbroking.com';
 
 /**
@@ -46,8 +44,8 @@ function getAngelHeaders(jwtToken: string, apiKey: string): Record<string, strin
 /**
  * Map OpenAlgo order type to Angel order type
  */
-export function mapOrderType(pricetype: string): string {
-  const mapping: Record<string, string> = {
+export function mapOrderType(pricetype: string): 'MARKET' | 'LIMIT' | 'STOPLOSS_LIMIT' | 'STOPLOSS_MARKET' {
+  const mapping: Record<string, 'MARKET' | 'LIMIT' | 'STOPLOSS_LIMIT' | 'STOPLOSS_MARKET'> = {
     'MARKET': 'MARKET',
     'LIMIT': 'LIMIT',
     'SL': 'STOPLOSS_LIMIT',

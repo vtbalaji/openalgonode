@@ -7,6 +7,16 @@
 
 import { getSymbolCache } from '@/lib/symbolCache';
 
+// Type for cached symbols
+interface CachedSymbol {
+  token: number;
+  symbol: string;
+  exchange: string;
+  expiry?: string;
+  strikePrice?: number;
+  optionType?: string;
+}
+
 // Fallback hardcoded tokens for backward compatibility (if Firebase is unavailable)
 const FALLBACK_TOKENS: Record<string, number> = {
   'RELIANCE': 738561,
@@ -45,8 +55,8 @@ const FALLBACK_TOKENS: Record<string, number> = {
 };
 
 // Cache for async operations
-let symbolsCache: Map<string, Map<string, BrokerSymbol>> = new Map();
-let loadingPromise: Promise<Map<string, BrokerSymbol>> | null = null;
+let symbolsCache: Map<string, Map<string, CachedSymbol>> = new Map();
+let loadingPromise: Promise<Map<string, CachedSymbol>> | null = null;
 
 const BROKER = 'zerodha';
 

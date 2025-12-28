@@ -329,7 +329,7 @@ export default function OrderStatusPage() {
             </div>
             <div className="flex flex-col items-end gap-1">
               <button
-                onClick={fetchData}
+                onClick={() => fetchData()}
                 disabled={isLoading || refreshCooldown > 0}
                 className="rounded-lg bg-blue-600 px-4 py-2 text-white transition hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >

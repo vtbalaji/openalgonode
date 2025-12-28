@@ -80,8 +80,12 @@ export async function placeOrder(
       trigger_price: (orderPayload.trigger_price || '0').toString(),
       disclosed_quantity: (orderPayload.disclosed_quantity || '0').toString(),
       validity: orderPayload.validity || 'DAY',
-      tag: orderPayload.tag || 'openalgo',
     });
+
+    // Add optional tag field only if provided
+    if (orderPayload.tag) {
+      formData.append('tag', orderPayload.tag);
+    }
 
     const response = await fetch(`${ZERODHA_BASE_URL}/orders/regular`, {
       method: 'POST',

@@ -1,0 +1,224 @@
+  // ============================================================================
+  // AMIBROKER COMPLETE TRADING EXECUTOR
+  //
+  // This script:
+  // 1. Generates trading signals
+  // 2. Places orders
+  // 3. Monitors positions
+  // 4. Closes at profit/loss targets
+  // ============================================================================
+
+  // ============================================================================
+  // CONFIGURATION - EDIT THESE
+  // ============================================================================
+
+  // Your API endpoint (OpenAlgo compatible)
+  ApiUrl = "https://algo.tradeidea.co.in/api/v1/placeorder";
+
+  // API Key for authentication
+  ApiKey = "YOUR-API-KEY";  // Replace with your actual API key
+
+  // Trading parameters
+  Symbol = Name();          // Current symbol (e.g., RELIANCE)
+  Exchange = "NSE";
+  Qty = 1;                  // Quantity per trade
+
+  // Risk & Reward
+  TargetProfitPct = 2.0;    // Close at +2% profit
+  StopLossPct = 1.0;        // Close at -1% loss
+  TimeWindow = 50;          // Bars to hold position
+
+  // Strategy parameters (Moving Averages)
+  FastPeriod = Param("Fast MA", 5, 2, 50);
+  SlowPeriod = Param("Slow MA", 20, 5, 100);
+
+  // ============================================================================
+  // INDICATORS - Generate trading signals
+  // ============================================================================
+
+  FastMA = MA(Close, FastPeriod);
+  SlowMA = MA(Close, SlowPeriod);
+
+  // Signal generation
+  BuySignal = Cross(FastMA, SlowMA);      // Fast MA crosses above Slow MA
+  SellSignal = Cross(SlowMA, FastMA);     // Fast MA crosses below Slow MA
+
+  // ============================================================================
+  // STATE MANAGEMENT - Track positions
+  // ============================================================================
+
+  // Use static variables to remember position state
+  StaticVarSet("Position", Nz(StaticVarGet("Position"), 0));
+  StaticVarSet("EntryPrice", Nz(StaticVarGet("EntryPrice"), 0));
+  StaticVarSet("BarsSinceEntry", Nz(StaticVarGet("BarsSinceEntry"), 0));
+
+  Position = StaticVarGet("Position");
+  EntryPrice = StaticVarGet("EntryPrice");
+  BarsSinceEntry = StaticVarGet("BarsSinceEntry");
+
+  // ============================================================================
+  // ORDER EXECUTION FUNCTION
+  // ============================================================================
+
+  function ExecuteOrder(action, qty) {
+      // Build JSON payload (OpenAlgo format)
+      payload = "{" +
+          "\"apikey\": \"" + ApiKey + "\", " +
+          "\"symbol\": \"" + Symbol + "\", " +
+          "\"exchange\": \"" + Exchange + "\", " +
+          "\"action\": \"" + action + "\", " +
+          "\"quantity\": " + qty + ", " +
+          "\"product\": \"MIS\", " +
+          "\"pricetype\": \"MARKET\", " +
+          "\"strategy\": \"amibroker\" " +
+      "}";
+
+      _TRACE("Placing order: " + action + " " + qty + " @ " + NumToStr(Close, 1.2));
+
+      try {
+          // Create HTTP request object (Windows only)
+          WinHttpReq = CreateObject("WinHttp.WinHttpRequest.5.1");
+
+          // Open connection to API endpoint
+          WinHttpReq.Open("POST", ApiUrl, False);  // False = Wait for response
+
+          // Set headers
+          WinHttpReq.SetRequestHeader("Content-Type", "application/json");
+
+          // Send request and wait for response
+          WinHttpReq.Send(payload);
+
+          // Check response
+          if (WinHttpReq.Status == 200) {
+              response = WinHttpReq.ResponseText;
+              _TRACE("✓ Order executed: " + response);
+              return true;
+          }
+          else {
+              _TRACE("✗ Order failed: HTTP " + WinHttpReq.Status);
+              return false;
+          }
+      }
+      catch(ex) {
+          _TRACE("✗ Error: " + ex.description);
+          return false;
+      }
+  }
+
+  // ============================================================================
+  // TRADING LOGIC - Entry, Monitoring, Exit
+  // ============================================================================
+
+  // ENTRY: Place buy order when signal triggers
+  if (BuySignal AND Position == 0) {
+      if (ExecuteOrder("BUY", Qty)) {
+          // Order successful, update position state
+          Position = Qty;
+          EntryPrice = Close;
+          BarsSinceEntry = 0;
+
+          StaticVarSet("Position", Position);
+          StaticVarSet("EntryPrice", EntryPrice);
+          StaticVarSet("BarsSinceEntry", BarsSinceEntry);
+
+          _TRACE("✓ Entered LONG: " + Symbol + " @ " + NumToStr(EntryPrice, 1.2));
+      }
+  }
+
+  // EXIT 1: Close at profit target
+  if (Position > 0) {
+      CurrentProfit = ((Close - EntryPrice) / EntryPrice) * 100;
+
+      if (CurrentProfit >= TargetProfitPct) {
+          if (ExecuteOrder("SELL", Qty)) {
+              _TRACE("✓ PROFIT TARGET HIT: " + NumToStr(CurrentProfit, 1.2) + "%");
+
+              Position = 0;
+              EntryPrice = 0;
+              BarsSinceEntry = 0;
+
+              StaticVarSet("Position", 0);
+              StaticVarSet("EntryPrice", 0);
+              StaticVarSet("BarsSinceEntry", 0);
+          }
+      }
+  }
+
+  // EXIT 2: Close at stop loss
+  if (Position > 0) {
+      CurrentLoss = ((Close - EntryPrice) / EntryPrice) * 100;
+
+      if (CurrentLoss <= -StopLossPct) {
+          if (ExecuteOrder("SELL", Qty)) {
+              _TRACE("✓ STOP LOSS HIT: " + NumToStr(CurrentLoss, 1.2) + "%");
+
+              Position = 0;
+              EntryPrice = 0;
+              BarsSinceEntry = 0;
+
+              StaticVarSet("Position", 0);
+              StaticVarSet("EntryPrice", 0);
+              StaticVarSet("BarsSinceEntry", 0);
+          }
+      }
+  }
+
+  // EXIT 3: Close after holding for X bars
+  if (Position > 0) {
+      BarsSinceEntry = BarsSinceEntry + 1;
+      StaticVarSet("BarsSinceEntry", BarsSinceEntry);
+
+      if (BarsSinceEntry >= TimeWindow) {
+          if (ExecuteOrder("SELL", Qty)) {
+              CurrentPL = Close - EntryPrice;
+              _TRACE("✓ TIME WINDOW EXPIRED: Exit @ " + NumToStr(Close, 1.2) + " PL: " + NumToStr(CurrentPL, 1.2));
+
+              Position = 0;
+              EntryPrice = 0;
+              BarsSinceEntry = 0;
+
+              StaticVarSet("Position", 0);
+              StaticVarSet("EntryPrice", 0);
+              StaticVarSet("BarsSinceEntry", 0);
+          }
+      }
+  }
+
+  // ============================================================================
+  // CHART DISPLAY
+  // ============================================================================
+
+  // Plot price and moving averages
+  Plot(Close, "Close", colorDefault, styleBar);
+  Plot(FastMA, "FastMA(" + FastPeriod + ")", colorBlue, styleLine | styleThick);
+  Plot(SlowMA, "SlowMA(" + SlowPeriod + ")", colorRed, styleLine | styleThick);
+
+  // Plot entry/exit points
+  if (BuySignal) PlotShapes(shapeUpArrow, colorGreen, 0, Low - ATR(14), 15);
+  if (SellSignal) PlotShapes(shapeDownArrow, colorRed, 0, High + ATR(14), 15);
+
+  // Calculate P&L if in position
+  if (Position > 0) {
+      CurrentProfit = ((Close - EntryPrice) / EntryPrice) * 100;
+      ProfitColor = IIf(CurrentProfit >= 0, colorGreen, colorRed);
+
+      Title = Symbol + " | " +
+              "Status: IN POSITION | " +
+              "Entry: " + NumToStr(EntryPrice, 1.2) + " | " +
+              "Current: " + NumToStr(Close, 1.2) + " | " +
+              "P/L: " + NumToStr(CurrentProfit, 1.2) + "% | " +
+              "Target: +" + TargetProfitPct + "% | " +
+              "SL: -" + StopLossPct + "%";
+
+      // Draw profit/loss line
+      Plot(EntryPrice, "Entry", ProfitColor, styleLine | styleNoLabel);
+      Plot(EntryPrice * (1 + TargetProfitPct/100), "Target", colorGreen, styleDots | styleNoLabel);
+      Plot(EntryPrice * (1 - StopLossPct/100), "StopLoss", colorRed, styleDots | styleNoLabel);
+  }
+  else {
+      Title = Symbol + " | " +
+              "Status: FLAT | " +
+              "FastMA: " + NumToStr(FastMA, 1.2) + " | " +
+              "SlowMA: " + NumToStr(SlowMA, 1.2) + " | " +
+              "Signal: " + IIf(BuySignal, "BUY", IIf(SellSignal, "SELL", "NONE"));
+  }

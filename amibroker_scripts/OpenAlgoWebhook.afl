@@ -1,0 +1,150 @@
+// ============================================================================
+// OpenAlgo Webhook Strategy - AmiBroker Integration
+//
+// This script sends trading signals to your Vercel webhook endpoint
+// and executes them via the OpenAlgo strategy system
+//
+// Usage:
+// 1. Replace WEBHOOK_URL with your actual webhook URL
+// 2. Adjust strategy logic below (currently simple MA crossover)
+// 3. Apply to chart and run
+//
+// ============================================================================
+
+// ============================================================================
+// CONFIGURATION - EDIT THESE VALUES
+// ============================================================================
+
+// Paste your webhook URL from the dashboard (Strategy → Copy Webhook URL)
+WEBHOOK_URL = "https://your-app.vercel.app/api/webhook/YOUR-WEBHOOK-ID-HERE";
+
+// Trading mode: "LONG" (buy/sell), "SHORT" (sell/buy), or "BOTH" (flexible)
+TRADING_MODE = "LONG";
+
+// Enable/disable strategy
+ENABLED = True;
+
+// ============================================================================
+// STRATEGY LOGIC - Customize this section
+// ============================================================================
+
+// Simple Moving Average Crossover
+FastPeriod = Param("Fast MA", 5, 2, 50);
+SlowPeriod = Param("Slow MA", 20, 10, 100);
+
+FastMA = MA(Close, FastPeriod);
+SlowMA = MA(Close, SlowPeriod);
+
+// Generate signals
+BuySignal = Cross(FastMA, SlowMA);   // Fast MA crosses above Slow MA
+SellSignal = Cross(SlowMA, FastMA);  // Fast MA crosses below Slow MA
+
+// ============================================================================
+// EXECUTE WEBHOOK CALLS
+// ============================================================================
+
+if (ENABLED) {
+    if (BuySignal) {
+        Action = "BUY";
+        PositionSize = 1;  // Only needed if TRADING_MODE = "BOTH"
+        SendWebhookSignal(Action, PositionSize);
+    }
+
+    if (SellSignal) {
+        Action = "SELL";
+        PositionSize = 0;  // 0 means close position (for BOTH mode)
+        SendWebhookSignal(Action, PositionSize);
+    }
+}
+
+// ============================================================================
+// WEBHOOK FUNCTION - Do not modify
+// ============================================================================
+
+function SendWebhookSignal(action, posSize) {
+    global WEBHOOK_URL;
+
+    Symbol = Name();
+
+    // Validate webhook URL
+    if (StrMatch(WEBHOOK_URL, "YOUR-WEBHOOK-ID") > 0) {
+        Alert("ERROR: Update WEBHOOK_URL with your actual webhook ID");
+        return;
+    }
+
+    // Build JSON payload
+    payload = "{" +
+        "\"symbol\": \"" + Symbol + "\", " +
+        "\"action\": \"" + action + "\", " +
+        "\"position_size\": " + posSize +
+    "}";
+
+    _TRACE("Sending signal: " + payload);
+
+    // Create HTTP request object (Windows only)
+    try {
+        WinHttpReq = CreateObject("WinHttp.WinHttpRequest.5.1");
+    }
+    catch(ex) {
+        Alert("ERROR: Could not create WinHttp object.\n\n" +
+              "This script requires Windows and AmiBroker running as Administrator.\n\n" +
+              "If on Mac/Linux, use the local executor setup instead.");
+        return;
+    }
+
+    // Send POST request
+    try {
+        WinHttpReq.Open("POST", WEBHOOK_URL, False);
+        WinHttpReq.SetRequestHeader("Content-Type", "application/json");
+        WinHttpReq.Send(payload);
+
+        // Get response
+        response = WinHttpReq.ResponseText;
+        statusCode = WinHttpReq.Status;
+
+        // Log result
+        if (statusCode == 200) {
+            _TRACE("✓ Signal sent successfully: " + Symbol + " " + action);
+            _TRACE("Response: " + response);
+
+            // Show on chart
+            AlertMsg = "✓ Order Sent\n" +
+                      "Symbol: " + Symbol + "\n" +
+                      "Action: " + action + "\n" +
+                      "Time: " + Now(3);
+            Say(AlertMsg);
+        }
+        else {
+            _TRACE("✗ Error: HTTP " + statusCode);
+            _TRACE("Response: " + response);
+        }
+    }
+    catch(ex) {
+        _TRACE("✗ Error sending webhook: " + ex.description);
+    }
+}
+
+// ============================================================================
+// CHART DISPLAY
+// ============================================================================
+
+Plot(Close, "Close", colorDefault, styleBar);
+Plot(FastMA, "Fast MA (" + FastPeriod + ")", colorBlue, styleLine | styleThick);
+Plot(SlowMA, "Slow MA (" + SlowPeriod + ")", colorRed, styleLine | styleThick);
+
+// Plot buy/sell signals on chart
+PlotShapes(
+    BuySignal * shapeUpArrow +
+    SellSignal * shapeDownArrow,
+    IIf(BuySignal, colorGreen, colorRed),
+    0,
+    IIf(BuySignal, Low - 0.5, High + 0.5),
+    10
+);
+
+// Show in title bar
+Title = Name() + " | " +
+        "FastMA: " + NumToStr(FastMA, 1.2) + " | " +
+        "SlowMA: " + NumToStr(SlowMA, 1.2) + " | " +
+        "Bid: " + NumToStr(BidPrice, 1.2) + " | " +
+        "Ask: " + NumToStr(AskPrice, 1.2);

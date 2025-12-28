@@ -1,0 +1,143 @@
+// ============================================================================
+// OpenAlgo Local Executor - AmiBroker Integration
+//
+// This script sends commands to a LOCAL executor server running on your desktop
+// Useful when you want to run script-based strategies directly
+//
+// Setup:
+// 1. Start local executor: cd strategy-executor && npm start
+// 2. Update LOCAL_EXECUTOR_URL to match your machine
+// 3. Update API_KEY with your executor API key
+// 4. Apply to chart
+//
+// ============================================================================
+
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
+
+// Local executor running on your desktop
+LOCAL_EXECUTOR_URL = "http://localhost:4000";
+
+// API key for executor authentication (set in .env)
+API_KEY = "your-executor-api-key";
+
+// Strategy name (matches script file: scripts/{strategyId}.py or .js)
+STRATEGY_ID = "my-strategy";
+
+// Script type: "python" or "node"
+SCRIPT_TYPE = "python";
+
+// Enable/disable
+ENABLED = True;
+
+// ============================================================================
+// MANAGE SCRIPT EXECUTION
+// ============================================================================
+
+// Conditions to start/stop script
+// For example, start at 9:15 AM, stop at 3:30 PM
+
+StartTime = 091500;  // 9:15 AM
+StopTime = 153000;   // 3:30 PM
+
+CurrentTime = Hour() * 10000 + Minute() * 100 + Second();
+
+// Start script at market open
+if (ENABLED AND CurrentTime >= StartTime AND
+    Ref(ValueWhen(1, 1, CurrentTime), -1) < StartTime) {
+    _TRACE("Market open - starting strategy");
+    StartStrategy();
+}
+
+// Stop script at market close
+if (ENABLED AND CurrentTime >= StopTime AND
+    Ref(ValueWhen(1, 1, CurrentTime), -1) < StopTime) {
+    _TRACE("Market close - stopping strategy");
+    StopStrategy();
+}
+
+// ============================================================================
+// FUNCTIONS
+// ============================================================================
+
+function StartStrategy() {
+    global LOCAL_EXECUTOR_URL, STRATEGY_ID, SCRIPT_TYPE, API_KEY;
+
+    url = LOCAL_EXECUTOR_URL + "/start/" + STRATEGY_ID;
+    payload = "{\"scriptType\": \"" + SCRIPT_TYPE + "\"}";
+
+    try {
+        WinHttpReq = CreateObject("WinHttp.WinHttpRequest.5.1");
+        WinHttpReq.Open("POST", url, False);
+        WinHttpReq.SetRequestHeader("Content-Type", "application/json");
+        WinHttpReq.SetRequestHeader("X-API-Key", API_KEY);
+        WinHttpReq.Send(payload);
+
+        if (WinHttpReq.Status == 200) {
+            _TRACE("✓ Strategy started: " + STRATEGY_ID);
+        }
+        else {
+            _TRACE("✗ Failed to start strategy: " + WinHttpReq.ResponseText);
+        }
+    }
+    catch(ex) {
+        _TRACE("✗ Error starting strategy: " + ex.description);
+    }
+}
+
+function StopStrategy() {
+    global LOCAL_EXECUTOR_URL, STRATEGY_ID, API_KEY;
+
+    url = LOCAL_EXECUTOR_URL + "/stop/" + STRATEGY_ID;
+
+    try {
+        WinHttpReq = CreateObject("WinHttp.WinHttpRequest.5.1");
+        WinHttpReq.Open("POST", url, False);
+        WinHttpReq.SetRequestHeader("X-API-Key", API_KEY);
+        WinHttpReq.Send("");
+
+        if (WinHttpReq.Status == 200) {
+            _TRACE("✓ Strategy stopped: " + STRATEGY_ID);
+        }
+        else {
+            _TRACE("✗ Failed to stop strategy: " + WinHttpReq.ResponseText);
+        }
+    }
+    catch(ex) {
+        _TRACE("✗ Error stopping strategy: " + ex.description);
+    }
+}
+
+function GetStrategyStatus() {
+    global LOCAL_EXECUTOR_URL, STRATEGY_ID, API_KEY;
+
+    url = LOCAL_EXECUTOR_URL + "/status/" + STRATEGY_ID;
+
+    try {
+        WinHttpReq = CreateObject("WinHttp.WinHttpRequest.5.1");
+        WinHttpReq.Open("GET", url, False);
+        WinHttpReq.SetRequestHeader("X-API-Key", API_KEY);
+        WinHttpReq.Send("");
+
+        if (WinHttpReq.Status == 200) {
+            response = WinHttpReq.ResponseText;
+            _TRACE("Status: " + response);
+            return response;
+        }
+    }
+    catch(ex) {
+        _TRACE("✗ Error getting status: " + ex.description);
+    }
+}
+
+// ============================================================================
+// CHART DISPLAY
+// ============================================================================
+
+Plot(Close, "Close", colorDefault, styleBar);
+
+Title = Name() + " | " +
+        "Strategy: " + STRATEGY_ID + " | " +
+        "Time: " + NumToStr(CurrentTime, 1.0) + " | " +
+        "Status: Check console";

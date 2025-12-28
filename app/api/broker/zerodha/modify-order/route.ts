@@ -11,7 +11,7 @@ import { decryptData } from '@/lib/encryptionUtils';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userId, orderid, quantity, price, trigger_price, order_type } = body;
+    const { userId, orderid, symbol, exchange, action, quantity, product, pricetype, price, trigger_price, disclosed_quantity } = body;
 
     // Validate required fields
     if (!userId || !orderid) {
@@ -69,10 +69,15 @@ export async function POST(request: NextRequest) {
     try {
       // Modify order with Zerodha
       const result = await modifyOrder(accessToken, orderid, {
+        tradingsymbol: symbol,
+        exchange,
+        transaction_type: action?.toUpperCase() as 'BUY' | 'SELL',
+        order_type: pricetype,
         quantity,
+        product,
         price,
         trigger_price,
-        order_type,
+        disclosed_quantity,
       });
 
       return NextResponse.json(

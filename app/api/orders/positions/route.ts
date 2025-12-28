@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth } from '@/lib/firebaseAdmin';
-import { callInternalBrokerEndpoint } from '@/lib/internalRouting';
+import { getCachedBrokerConfig } from '@/lib/brokerConfigUtils';
+import { decryptData } from '@/lib/encryptionUtils';
 
 /**
  * GET /api/orders/positions
@@ -35,26 +36,65 @@ export async function GET(request: NextRequest) {
     const userId = decodedToken.uid;
     const broker = request.nextUrl.searchParams.get('broker') || 'zerodha';
 
-    // Call internal broker endpoint
-    const { data, status } = await callInternalBrokerEndpoint(broker, 'positions', {
-      userId,
-    });
-
-    if (status !== 200) {
-      return NextResponse.json(data, { status });
+    if (broker !== 'zerodha') {
+      return NextResponse.json(
+        { error: 'Only zerodha broker is currently supported' },
+        { status: 400 }
+      );
     }
 
-    // Combine both net and day positions if available
-    const allPositions = [...(data.net || []), ...(data.day || [])];
+    // Get Zerodha broker config
+    const configData = await getCachedBrokerConfig(userId, 'zerodha');
 
-    return NextResponse.json(
-      {
-        success: true,
-        positions: allPositions || [],
-        count: allPositions?.length || 0,
-      },
-      { status: 200 }
-    );
+    if (!configData) {
+      return NextResponse.json(
+        { error: 'Zerodha not configured' },
+        { status: 404 }
+      );
+    }
+
+    if (!configData?.accessToken || configData.status !== 'active') {
+      return NextResponse.json(
+        { error: 'Zerodha not authenticated' },
+        { status: 401 }
+      );
+    }
+
+    // Decrypt access token
+    let accessToken: string;
+    try {
+      accessToken = decryptData(configData.accessToken);
+    } catch (error) {
+      console.error('Failed to decrypt access token:', error);
+      return NextResponse.json(
+        { error: 'Failed to decrypt credentials. Please re-authenticate.' },
+        { status: 401 }
+      );
+    }
+
+    // Call Zerodha client directly
+    const { getPositions } = await import('@/lib/zerodhaClient');
+
+    try {
+      const positions = await getPositions(accessToken);
+
+      // Combine both net and day positions if available
+      const allPositions = [...(positions.net || []), ...(positions.day || [])];
+
+      return NextResponse.json(
+        {
+          success: true,
+          positions: allPositions || [],
+          count: allPositions?.length || 0,
+        },
+        { status: 200 }
+      );
+    } catch (error: any) {
+      return NextResponse.json(
+        { error: error.message || 'Failed to fetch positions' },
+        { status: 400 }
+      );
+    }
   } catch (error: any) {
     const errorMsg = error.message || String(error) || 'Failed to fetch positions';
     console.error('Error fetching positions:', errorMsg, error);

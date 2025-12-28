@@ -14,14 +14,18 @@ export async function POST(request: NextRequest) {
     const { userId } = body;
 
     if (!userId) {
+      console.error('Missing userId in orderbook request');
       return NextResponse.json(
         { status: 'error', message: 'Missing userId' },
         { status: 400 }
       );
     }
 
+    console.log('Fetching orderbook for userId:', userId);
+
     // Get Zerodha broker config
     const configData = await getCachedBrokerConfig(userId, 'zerodha');
+    console.log('Broker config retrieved:', { userId, hasConfig: !!configData, status: configData?.status });
 
     if (!configData) {
       return NextResponse.json(

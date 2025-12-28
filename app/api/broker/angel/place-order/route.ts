@@ -101,13 +101,15 @@ export async function POST(request: NextRequest) {
 
     // Lookup symboltoken if not provided (using Angel's official master token file)
     let resolvedSymboltoken = symboltoken;
+    let resolvedSymbol = symbol;
     if (!resolvedSymboltoken) {
       console.log(`[ANGEL-PLACE-ORDER] Symboltoken not provided, attempting lookup for ${symbol} on ${exchange}...`);
       try {
         const scrip = await searchScrip(jwtToken, apiKey, symbol, exchange);
         if (scrip) {
           resolvedSymboltoken = scrip.symboltoken;
-          console.log(`[ANGEL-PLACE-ORDER] Found symboltoken: ${resolvedSymboltoken} for ${scrip.trading_symbol}`);
+          resolvedSymbol = scrip.trading_symbol;
+          console.log(`[ANGEL-PLACE-ORDER] Found symboltoken: ${resolvedSymboltoken} for ${resolvedSymbol}`);
         } else {
           console.warn(`[ANGEL-PLACE-ORDER] searchScrip returned null for ${symbol} on ${exchange}, will try placing order without it`);
           // Don't block the order - let Angel's API handle the error
@@ -120,7 +122,7 @@ export async function POST(request: NextRequest) {
 
     // Transform order data to Angel format
     const orderData = {
-      symbol,
+      symbol: resolvedSymbol,
       exchange,
       action,
       quantity,
@@ -152,20 +154,23 @@ export async function POST(request: NextRequest) {
 
       // Store order in Firestore for reference
       const ordersRef = adminDb.collection('users').doc(userId).collection('orders');
-      await ordersRef.doc(result.orderid).set({
+      const orderDoc: any = {
         orderId: result.orderid,
-        symbol,
+        symbol: resolvedSymbol,
         exchange,
         action,
         quantity,
         product,
         pricetype,
-        strategy,
         broker: 'angel',
         status: 'pending',
         createdAt: new Date(),
         angelResponse: result,
-      });
+      };
+      if (strategy) {
+        orderDoc.strategy = strategy;
+      }
+      await ordersRef.doc(result.orderid).set(orderDoc);
 
       return NextResponse.json(
         {

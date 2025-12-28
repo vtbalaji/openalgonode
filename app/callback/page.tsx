@@ -19,10 +19,10 @@ function CallbackPageContent() {
       // Get request token from URL (Zerodha returns as request_token parameter)
       const requestToken = searchParams.get('request_token');
 
-      // Get Angel-specific parameters if present
-      const clientCode = searchParams.get('clientCode');
-      const pin = searchParams.get('pin');
-      const totp = searchParams.get('totp');
+      // Get Angel-specific parameters if present (Angel returns these directly after OAuth)
+      const authToken = searchParams.get('auth_token');
+      const feedToken = searchParams.get('feed_token');
+      const refreshToken = searchParams.get('refresh_token');
 
       // Validate we have a broker
       if (!broker) {
@@ -40,9 +40,9 @@ function CallbackPageContent() {
         return;
       }
 
-      if (broker === 'angel' && (!clientCode || !pin || !totp)) {
+      if (broker === 'angel' && !authToken) {
         setStatus('error');
-        setMessage('Invalid Angel callback. Missing authentication parameters.');
+        setMessage('Invalid Angel callback. Missing authentication token from Angel Broker.');
         setTimeout(() => router.push('/broker/config'), 3000);
         return;
       }
@@ -71,9 +71,10 @@ function CallbackPageContent() {
         if (broker === 'zerodha') {
           body.requestToken = requestToken;
         } else if (broker === 'angel') {
-          body.clientCode = clientCode;
-          body.pin = pin;
-          body.totp = totp;
+          // Angel returns tokens directly after OAuth - use them directly
+          body.accessToken = authToken;
+          body.feedToken = feedToken;
+          body.refreshToken = refreshToken;
         }
 
         const response = await fetch('/api/broker/authenticate', {

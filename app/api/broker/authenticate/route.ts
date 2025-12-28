@@ -122,37 +122,46 @@ export async function POST(request: NextRequest) {
 
     // Handle Angel authentication
     else if (broker === 'angel') {
-      const { clientCode, pin, totp } = body;
+      // Angel can come in two ways:
+      // 1. OAuth flow: receives accessToken (auth_token), feedToken, refreshToken directly
+      // 2. Manual: receives clientCode, pin, totp
 
-      if (!clientCode || !pin || !totp) {
-        return NextResponse.json(
-          { error: 'Missing required fields for Angel: clientCode, pin, totp' },
-          { status: 400 }
-        );
-      }
+      const { accessToken, feedToken, refreshToken, clientCode, pin, totp } = body;
 
-      // Decrypt API key with error handling
-      let apiKey: string;
-      try {
-        apiKey = decryptData(configData.apiKey);
-      } catch (error) {
-        console.error('Failed to decrypt API key:', error);
-        return NextResponse.json(
-          { error: 'Failed to decrypt broker credentials. Please reconfigure your broker.' },
-          { status: 400 }
-        );
-      }
-
-      // Authenticate with Angel
       let jwtToken: string;
-      let feedToken: string | undefined;
-      try {
-        const authResult = await authenticateAngel(clientCode, pin, totp, apiKey);
-        jwtToken = authResult.jwtToken;
-        feedToken = authResult.feedToken;
-      } catch (error: any) {
+      let feedTokenToStore: string | undefined = feedToken;
+
+      // Check if we have OAuth tokens (preferred)
+      if (accessToken) {
+        // Angel OAuth flow - tokens already provided
+        jwtToken = accessToken;
+      } else if (clientCode && pin && totp) {
+        // Manual authentication flow - need to authenticate
+        let apiKey: string;
+        try {
+          apiKey = decryptData(configData.apiKey);
+        } catch (error) {
+          console.error('Failed to decrypt API key:', error);
+          return NextResponse.json(
+            { error: 'Failed to decrypt broker credentials. Please reconfigure your broker.' },
+            { status: 400 }
+          );
+        }
+
+        // Authenticate with Angel using manual credentials
+        try {
+          const authResult = await authenticateAngel(clientCode, pin, totp, apiKey);
+          jwtToken = authResult.jwtToken;
+          feedTokenToStore = authResult.feedToken;
+        } catch (error: any) {
+          return NextResponse.json(
+            { error: error.message || 'Failed to authenticate with Angel Broker' },
+            { status: 400 }
+          );
+        }
+      } else {
         return NextResponse.json(
-          { error: error.message || 'Failed to authenticate with Angel Broker' },
+          { error: 'Missing required fields for Angel: either accessToken (OAuth) or clientCode+pin+totp (manual)' },
           { status: 400 }
         );
       }
@@ -166,8 +175,12 @@ export async function POST(request: NextRequest) {
         lastAuthenticated: new Date().toISOString(),
       };
 
-      if (feedToken) {
-        updateData.feedToken = encryptData(feedToken);
+      if (feedTokenToStore) {
+        updateData.feedToken = encryptData(feedTokenToStore);
+      }
+
+      if (refreshToken) {
+        updateData.refreshToken = encryptData(refreshToken);
       }
 
       await brokerConfigRef.update(updateData);

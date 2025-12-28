@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth } from '@/lib/firebaseAdmin';
 import { getCachedBrokerConfig } from '@/lib/brokerConfigUtils';
 import { decryptData } from '@/lib/encryptionUtils';
+import { resolveBroker } from '@/lib/brokerDetection';
 
 /**
  * GET /api/orders/status
@@ -34,28 +35,31 @@ export async function GET(request: NextRequest) {
     }
 
     const userId = decodedToken.uid;
-    const broker = request.nextUrl.searchParams.get('broker') || 'zerodha';
+    const brokerParam = request.nextUrl.searchParams.get('broker') || undefined;
 
-    if (broker !== 'zerodha') {
+    // Resolve broker: use provided broker or auto-detect active broker
+    const broker = await resolveBroker(userId, brokerParam);
+
+    if (!broker) {
       return NextResponse.json(
-        { error: 'Only zerodha broker is currently supported' },
-        { status: 400 }
+        { error: 'No active broker configured. Please configure a broker first.' },
+        { status: 404 }
       );
     }
 
-    // Get Zerodha broker config
-    const configData = await getCachedBrokerConfig(userId, 'zerodha');
+    // Get broker config
+    const configData = await getCachedBrokerConfig(userId, broker);
 
     if (!configData) {
       return NextResponse.json(
-        { error: 'Zerodha not configured' },
+        { error: `${broker} not configured` },
         { status: 404 }
       );
     }
 
     if (!configData?.accessToken || configData.status !== 'active') {
       return NextResponse.json(
-        { error: 'Zerodha not authenticated' },
+        { error: `${broker} not authenticated` },
         { status: 401 }
       );
     }

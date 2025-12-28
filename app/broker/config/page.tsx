@@ -10,7 +10,7 @@ import { BrokerAuthStatus } from '@/components/BrokerAuthStatus';
 export default function BrokerConfigPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
-  const [selectedBroker, setSelectedBroker] = useState('zerodha');
+  const [selectedBroker, setSelectedBroker] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState('');
   const [apiSecret, setApiSecret] = useState('');
   const [requestToken, setRequestToken] = useState('');
@@ -24,7 +24,7 @@ export default function BrokerConfigPage() {
   const [credentialsExist, setCredentialsExist] = useState(false);
   const [editMode, setEditMode] = useState(false);
 
-  const brokerConfig = getBrokerConfig(selectedBroker);
+  const brokerConfig = selectedBroker ? getBrokerConfig(selectedBroker) : null;
   const allBrokers = getAllBrokers();
 
   useEffect(() => {
@@ -33,11 +33,39 @@ export default function BrokerConfigPage() {
     }
   }, [user, loading, router]);
 
+  // On mount, detect user's primary active broker
   useEffect(() => {
     if (user) {
+      detectPrimaryBroker();
+    }
+  }, [user]);
+
+  // Fetch broker config whenever selected broker changes
+  useEffect(() => {
+    if (user && selectedBroker) {
       fetchBrokerConfig();
     }
-  }, [user, selectedBroker]);
+  }, [selectedBroker]);
+
+  const detectPrimaryBroker = async () => {
+    try {
+      const idToken = await user?.getIdToken();
+      const response = await fetch('/api/broker/active', {
+        headers: {
+          'Authorization': `Bearer ${idToken}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.primaryBroker) {
+          setSelectedBroker(data.primaryBroker);
+        }
+      }
+    } catch (err) {
+      console.error('Error detecting primary broker:', err);
+    }
+  };
 
   const fetchBrokerConfig = async () => {
     try {
@@ -226,15 +254,17 @@ export default function BrokerConfigPage() {
       {/* Main Content */}
       <main className="mx-auto max-w-2xl px-4 py-12 sm:px-6 lg:px-8">
         {/* Status Card */}
-        <div className="mb-8">
-          <BrokerAuthStatus
-            lastAuthenticatedAt={lastAuthenticatedAt}
-            broker={selectedBroker}
-            onReAuth={handleGetLoginUrl}
-            showDetails={true}
-            compact={false}
-          />
-        </div>
+        {selectedBroker && (
+          <div className="mb-8">
+            <BrokerAuthStatus
+              lastAuthenticatedAt={lastAuthenticatedAt}
+              broker={selectedBroker}
+              onReAuth={handleGetLoginUrl}
+              showDetails={true}
+              compact={false}
+            />
+          </div>
+        )}
 
         {validationError && (
           <div className="mb-6 rounded-lg bg-yellow-50 border border-yellow-200 p-4 text-yellow-800">
@@ -291,10 +321,11 @@ export default function BrokerConfigPage() {
             <div>
               <label className="block text-sm font-medium text-gray-700">Select Broker</label>
               <select
-                value={selectedBroker}
-                onChange={(e) => setSelectedBroker(e.target.value)}
+                value={selectedBroker || ''}
+                onChange={(e) => setSelectedBroker(e.target.value || null)}
                 className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-blue-500 focus:outline-none"
               >
+                <option value="">-- Select a broker --</option>
                 {allBrokers.map((broker) => (
                   <option key={broker.id} value={broker.id}>
                     {broker.displayName}

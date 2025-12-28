@@ -28,6 +28,7 @@ export interface PlaceOrderRequest {
   price?: number;
   trigger_price?: number;
   disclosed_quantity?: number;
+  token?: string; // Optional broker-specific token (Angel: symboltoken, Zerodha: N/A)
 }
 
 export interface ModifyOrderRequest {
@@ -43,6 +44,7 @@ export interface ModifyOrderRequest {
   quantity: number;
   disclosed_quantity: number;
   trigger_price: number;
+  token?: string; // Optional broker-specific token (Angel: symboltoken, Zerodha: N/A)
 }
 
 export interface CancelOrderRequest {

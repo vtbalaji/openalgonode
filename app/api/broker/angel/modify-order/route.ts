@@ -52,13 +52,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Import Angel client
+    // Import Angel client and symbol mapping service
     const { modifyOrder } = await import('@/lib/angelClient');
+    const { getSymbolMapping } = await import('@/lib/symbolMapping');
 
-    // Use provided symboltoken or leave empty for Angel's error response
+    // Use provided symboltoken or lookup from symbol mapping table
     let resolvedSymboltoken = symboltoken;
+    let resolvedSymbol = symbol;
+
     if (!resolvedSymboltoken && symbol && exchange) {
-      console.log(`[ANGEL-MODIFY-ORDER] No symboltoken provided for ${symbol}, will attempt order anyway`);
+      console.log(`[ANGEL-MODIFY-ORDER] No symboltoken provided for ${symbol}, attempting lookup...`);
+      const mapping = await getSymbolMapping(symbol, exchange, 'angel');
+      if (mapping) {
+        resolvedSymboltoken = mapping.token;
+        resolvedSymbol = mapping.brsymbol;
+        console.log(
+          `[ANGEL-MODIFY-ORDER] Found symboltoken: ${resolvedSymboltoken} for ${resolvedSymbol}`
+        );
+      } else {
+        console.warn(
+          `[ANGEL-MODIFY-ORDER] No symboltoken found for ${symbol}, will attempt order anyway`
+        );
+      }
     }
 
     const orderPayload = {
@@ -68,7 +83,7 @@ export async function POST(request: NextRequest) {
       trigger_price,
       pricetype,
       product,
-      symbol,
+      symbol: resolvedSymbol,
       exchange,
       symboltoken: resolvedSymboltoken,
       disclosed_quantity,

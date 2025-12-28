@@ -51,6 +51,7 @@ export async function POST(request: NextRequest) {
       price: body.price,
       trigger_price: body.trigger_price,
       disclosed_quantity: body.disclosed_quantity,
+      symboltoken: body.token, // Map OpenAlgo 'token' to broker 'symboltoken'
     });
 
     return NextResponse.json(data, { status });

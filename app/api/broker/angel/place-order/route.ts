@@ -96,28 +96,60 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Import Angel client
+    // Import Angel client and symbol mapping service
     const { placeOrder, transformOrderData, searchScrip } = await import('@/lib/angelClient');
+    const { getSymbolMapping, searchSymbolMappings } = await import('@/lib/symbolMapping');
 
-    // Lookup symboltoken if not provided (using Angel's official master token file)
+    // Lookup symboltoken using symbol mapping table (OpenAlgo pattern)
     let resolvedSymboltoken = symboltoken;
     let resolvedSymbol = symbol;
+
     if (!resolvedSymboltoken) {
       console.log(`[ANGEL-PLACE-ORDER] Symboltoken not provided, attempting lookup for ${symbol} on ${exchange}...`);
-      try {
-        const scrip = await searchScrip(jwtToken, apiKey, symbol, exchange);
-        if (scrip) {
-          resolvedSymboltoken = scrip.symboltoken;
-          resolvedSymbol = scrip.trading_symbol;
-          console.log(`[ANGEL-PLACE-ORDER] Found symboltoken: ${resolvedSymboltoken} for ${resolvedSymbol}`);
+
+      // Step 1: Try symbol mapping table (fast, cached)
+      console.log(`[ANGEL-PLACE-ORDER] Step 1: Checking symbol mapping table...`);
+      const mapping = await getSymbolMapping(symbol, exchange, 'angel');
+      if (mapping) {
+        resolvedSymboltoken = mapping.token;
+        resolvedSymbol = mapping.brsymbol;
+        console.log(`[ANGEL-PLACE-ORDER] ✓ Found in mapping table: ${resolvedSymbol} (Token: ${resolvedSymboltoken})`);
+      } else {
+        // Step 2: Try fuzzy search in mapping table
+        console.log(`[ANGEL-PLACE-ORDER] Step 2: Fuzzy search in mapping table...`);
+        const fuzzyMatches = await searchSymbolMappings(symbol, exchange, 'angel', 3);
+        if (fuzzyMatches.length > 0) {
+          const match = fuzzyMatches[0];
+          resolvedSymboltoken = match.token;
+          resolvedSymbol = match.brsymbol;
+          console.log(
+            `[ANGEL-PLACE-ORDER] ⚠ Fuzzy match found: ${resolvedSymbol} (Token: ${resolvedSymboltoken})`
+          );
         } else {
-          console.warn(`[ANGEL-PLACE-ORDER] searchScrip returned null for ${symbol} on ${exchange}, will try placing order without it`);
-          // Don't block the order - let Angel's API handle the error
+          // Step 3: Fallback to on-demand searchScrip (slow, but handles edge cases)
+          console.log(`[ANGEL-PLACE-ORDER] Step 3: Fallback to on-demand symbol search...`);
+          try {
+            const scrip = await searchScrip(jwtToken, apiKey, symbol, exchange);
+            if (scrip) {
+              resolvedSymboltoken = scrip.symboltoken;
+              resolvedSymbol = scrip.trading_symbol;
+              console.log(
+                `[ANGEL-PLACE-ORDER] ✓ Found via searchScrip: ${resolvedSymbol} (Token: ${resolvedSymboltoken})`
+              );
+            } else {
+              console.warn(
+                `[ANGEL-PLACE-ORDER] ✗ Symbol not found in any lookup method for ${symbol} on ${exchange}`
+              );
+              // Don't block the order - let Angel's API handle the error
+            }
+          } catch (error: any) {
+            console.warn(`[ANGEL-PLACE-ORDER] Error in fallback searchScrip:`, error.message);
+            // Don't block the order - let Angel's API handle the error
+          }
         }
-      } catch (error: any) {
-        console.warn(`[ANGEL-PLACE-ORDER] Error looking up symboltoken:`, error.message);
-        // Don't block the order - let Angel's API handle the error
       }
+    } else {
+      console.log(`[ANGEL-PLACE-ORDER] Symboltoken provided by caller: ${resolvedSymboltoken}`);
     }
 
     // Transform order data to Angel format

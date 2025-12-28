@@ -35,9 +35,13 @@ export default function BrokerConfigPage() {
 
   // On mount, detect user's primary active broker
   useEffect(() => {
-    if (user) {
-      detectPrimaryBroker();
-    }
+    const initBroker = async () => {
+      if (user) {
+        await detectPrimaryBroker();
+        setIsFetching(false);  // Stop loading after detection
+      }
+    };
+    initBroker();
   }, [user]);
 
   // Fetch broker config whenever selected broker changes

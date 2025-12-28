@@ -100,7 +100,14 @@ export async function GET(request: NextRequest) {
     }
 
     const userId = decodedToken.uid;
-    const broker = request.nextUrl.searchParams.get('broker') || 'zerodha';
+    const broker = request.nextUrl.searchParams.get('broker');
+
+    if (!broker) {
+      return NextResponse.json(
+        { error: 'Missing required parameter: broker' },
+        { status: 400 }
+      );
+    }
 
     // Retrieve from cache
     const data = await getCachedBrokerConfig(userId, broker);

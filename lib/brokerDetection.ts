@@ -6,8 +6,28 @@
 import { adminDb } from './firebaseAdmin';
 
 /**
+ * Get user's configured brokers
+ * Returns list of all configured broker IDs (regardless of authentication status)
+ * Used for broker selection/detection
+ */
+export async function getConfiguredBrokers(userId: string): Promise<string[]> {
+  try {
+    const brokerSnapshot = await adminDb
+      .collection('users')
+      .doc(userId)
+      .collection('brokerConfig')
+      .get();
+
+    return brokerSnapshot.docs.map((doc) => doc.id);
+  } catch (error) {
+    console.error('Error getting configured brokers:', error);
+    return [];
+  }
+}
+
+/**
  * Get user's active brokers
- * Returns list of active broker IDs
+ * Returns list of active broker IDs (fully authenticated)
  */
 export async function getActiveBrokers(userId: string): Promise<string[]> {
   try {

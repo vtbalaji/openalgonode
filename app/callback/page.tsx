@@ -13,13 +13,36 @@ function CallbackPageContent() {
 
   useEffect(() => {
     const handleCallback = async () => {
+      // Get broker from URL parameter (passed during redirect)
+      const broker = searchParams.get('broker');
+
       // Get request token from URL (Zerodha returns as request_token parameter)
       const requestToken = searchParams.get('request_token');
 
-      // Check if we have a request token
-      if (!requestToken) {
+      // Get Angel-specific parameters if present
+      const clientCode = searchParams.get('clientCode');
+      const pin = searchParams.get('pin');
+      const totp = searchParams.get('totp');
+
+      // Validate we have a broker
+      if (!broker) {
         setStatus('error');
-        setMessage('Invalid callback. Missing request token from broker.');
+        setMessage('Invalid callback. Missing broker parameter.');
+        setTimeout(() => router.push('/broker/config'), 3000);
+        return;
+      }
+
+      // Check if we have appropriate parameters for the broker
+      if (broker === 'zerodha' && !requestToken) {
+        setStatus('error');
+        setMessage('Invalid Zerodha callback. Missing request token.');
+        setTimeout(() => router.push('/broker/config'), 3000);
+        return;
+      }
+
+      if (broker === 'angel' && (!clientCode || !pin || !totp)) {
+        setStatus('error');
+        setMessage('Invalid Angel callback. Missing authentication parameters.');
         setTimeout(() => router.push('/broker/config'), 3000);
         return;
       }
@@ -38,19 +61,28 @@ function CallbackPageContent() {
       }
 
       try {
-        setMessage('Authenticating with broker...');
+        setMessage(`Authenticating with ${broker}...`);
 
         const idToken = await user.getIdToken();
+
+        // Build request body based on broker type
+        const body: any = { broker };
+
+        if (broker === 'zerodha') {
+          body.requestToken = requestToken;
+        } else if (broker === 'angel') {
+          body.clientCode = clientCode;
+          body.pin = pin;
+          body.totp = totp;
+        }
+
         const response = await fetch('/api/broker/authenticate', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${idToken}`,
           },
-          body: JSON.stringify({
-            broker: 'zerodha', // TODO: Get broker from session/state
-            requestToken,
-          }),
+          body: JSON.stringify(body),
         });
 
         if (response.ok) {

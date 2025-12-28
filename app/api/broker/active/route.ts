@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth } from '@/lib/firebaseAdmin';
-import { getActiveBrokers } from '@/lib/brokerDetection';
+import { getConfiguredBrokers } from '@/lib/brokerDetection';
 
 /**
  * GET /api/broker/active
- * Get list of user's active brokers
+ * Get list of user's configured brokers (for broker selection)
+ * Returns brokers that are configured, regardless of authentication status
  * Requires: Firebase ID token in Authorization header
  */
 export async function GET(request: NextRequest) {
@@ -33,20 +34,20 @@ export async function GET(request: NextRequest) {
 
     const userId = decodedToken.uid;
 
-    // Get active brokers for this user
-    const activeBrokers = await getActiveBrokers(userId);
+    // Get configured brokers for this user (for broker selection dropdown)
+    const configuredBrokers = await getConfiguredBrokers(userId);
 
     return NextResponse.json(
       {
-        activeBrokers,
-        primaryBroker: activeBrokers.length > 0 ? activeBrokers[0] : null,
+        configuredBrokers,
+        primaryBroker: configuredBrokers.length > 0 ? configuredBrokers[0] : null,
       },
       { status: 200 }
     );
   } catch (error) {
-    console.error('Error getting active brokers:', error);
+    console.error('Error getting configured brokers:', error);
     return NextResponse.json(
-      { error: 'Failed to get active brokers' },
+      { error: 'Failed to get configured brokers' },
       { status: 500 }
     );
   }

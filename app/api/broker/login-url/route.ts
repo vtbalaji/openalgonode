@@ -41,7 +41,14 @@ export async function GET(request: NextRequest) {
     }
 
     const userId = decodedToken.uid;
-    const broker = request.nextUrl.searchParams.get('broker') || 'zerodha';
+    const broker = request.nextUrl.searchParams.get('broker');
+
+    if (!broker) {
+      return NextResponse.json(
+        { error: 'Missing required parameter: broker' },
+        { status: 400 }
+      );
+    }
 
     // Retrieve broker config from cache
     const data = await getCachedBrokerConfig(userId, broker);
@@ -66,7 +73,11 @@ export async function GET(request: NextRequest) {
       ? `https://${request.headers.get('x-forwarded-host') || request.headers.get('host')}`
       : `http://${request.headers.get('host')}`;
 
-    const fullCallbackUrl = redirectUrl || `${origin}/callback`;
+    // Include broker parameter in callback URL so callback knows which broker this is for
+    const baseCallbackUrl = redirectUrl || `${origin}/callback`;
+    const callbackUrlWithBroker = new URL(baseCallbackUrl);
+    callbackUrlWithBroker.searchParams.set('broker', broker);
+    const fullCallbackUrl = callbackUrlWithBroker.toString();
 
     // Build login URL
     const loginUrl = buildBrokerLoginUrl(broker, apiKey, fullCallbackUrl);

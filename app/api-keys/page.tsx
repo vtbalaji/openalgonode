@@ -57,12 +57,18 @@ export default function ApiKeysPage() {
 
       if (response.ok) {
         const data = await response.json();
-        setApiKeys(data.keys);
+        setApiKeys(data.keys || []);
+        setError(''); // Clear any previous errors
       } else {
-        setError('Failed to fetch API keys');
+        const data = await response.json();
+        const errorMsg = data.error || `Failed to fetch API keys (HTTP ${response.status})`;
+        setError(errorMsg);
+        console.error('API Keys fetch error:', { status: response.status, error: data });
       }
     } catch (err: any) {
-      setError(err.message || 'An error occurred');
+      const errMsg = err.message || 'An error occurred';
+      setError(errMsg);
+      console.error('API Keys fetch exception:', err);
     } finally {
       setIsLoading(false);
     }
@@ -107,7 +113,7 @@ export default function ApiKeysPage() {
   };
 
   const handleRevokeKey = async (keyId: string) => {
-    if (!confirm('Are you sure you want to revoke this API key? This action cannot be undone.')) {
+    if (!confirm('Are you sure you want to revoke this API key? It will no longer work, but you can delete it later.')) {
       return;
     }
 
@@ -126,7 +132,34 @@ export default function ApiKeysPage() {
         setSuccess('API key revoked successfully');
         fetchApiKeys();
       } else {
-        setError('Failed to revoke API key');
+        const data = await response.json();
+        setError(data.error || 'Failed to revoke API key');
+      }
+    } catch (err: any) {
+      setError(err.message || 'An error occurred');
+    }
+  };
+
+  const handleDeleteKey = async (keyId: string) => {
+    if (!confirm('Are you sure you want to permanently delete this API key? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const idToken = await user?.getIdToken();
+      const response = await fetch(`/api/apikeys/revoke?keyId=${keyId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${idToken}`,
+        },
+      });
+
+      if (response.ok) {
+        setSuccess('API key deleted successfully');
+        fetchApiKeys();
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Failed to delete API key');
       }
     } catch (err: any) {
       setError(err.message || 'An error occurred');
@@ -315,14 +348,23 @@ export default function ApiKeysPage() {
                         {key.lastUsedAt && ` • Last used: ${new Date(key.lastUsedAt._seconds * 1000).toLocaleDateString()}`}
                       </div>
                     </div>
-                    {key.status === 'active' && (
-                      <button
-                        onClick={() => handleRevokeKey(key.id)}
-                        className="rounded bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700"
-                      >
-                        Revoke
-                      </button>
-                    )}
+                    <div className="flex gap-2">
+                      {key.status === 'active' ? (
+                        <button
+                          onClick={() => handleRevokeKey(key.id)}
+                          className="rounded bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700 transition"
+                        >
+                          Revoke
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleDeleteKey(key.id)}
+                          className="rounded bg-gray-600 px-4 py-2 text-sm text-white hover:bg-gray-700 transition"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))

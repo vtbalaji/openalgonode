@@ -124,17 +124,23 @@ export async function getUserApiKeys(userId: string): Promise<Omit<ApiKey, 'secr
   const snapshot = await adminDb
     .collection('apiKeys')
     .where('userId', '==', userId)
-    .orderBy('createdAt', 'desc')
     .get();
 
-  return snapshot.docs.map((doc) => {
-    const data = doc.data() as Omit<ApiKey, 'id'>;
-    const { secret, ...rest } = data; // Exclude secret
-    return {
-      id: doc.id,
-      ...rest,
-    } as Omit<ApiKey, 'secret'>;
-  });
+  return snapshot.docs
+    .map((doc) => {
+      const data = doc.data() as Omit<ApiKey, 'id'>;
+      const { secret, ...rest } = data; // Exclude secret
+      return {
+        id: doc.id,
+        ...rest,
+      } as Omit<ApiKey, 'secret'>;
+    })
+    .sort((a, b) => {
+      // Sort by createdAt descending (newest first)
+      const dateA = a.createdAt instanceof Date ? a.createdAt.getTime() : (a.createdAt as any)?._seconds * 1000 || 0;
+      const dateB = b.createdAt instanceof Date ? b.createdAt.getTime() : (b.createdAt as any)?._seconds * 1000 || 0;
+      return dateB - dateA;
+    });
 }
 
 /**

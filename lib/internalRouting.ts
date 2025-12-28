@@ -8,9 +8,9 @@
  * Works in both dev and production environments
  */
 export function getInternalApiUrl(): string {
-  // In production, use environment variable or standard endpoint
-  const baseUrl = process.env.INTERNAL_API_BASE_URL || 'http://localhost:3000';
-  return baseUrl;
+  // Use empty string for relative URLs (works on both localhost and Vercel)
+  // This allows same-origin requests to work correctly
+  return '';
 }
 
 /**

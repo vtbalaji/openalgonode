@@ -144,6 +144,7 @@ export default function OrderStatusPage() {
         }
       }
     } catch (err: any) {
+      console.error('Fetch error:', err);
       setError(err.message || 'An error occurred');
     } finally {
       setIsLoading(false);
@@ -194,6 +195,7 @@ export default function OrderStatusPage() {
         }
       }
     } catch (err: any) {
+      console.error('Fetch error:', err);
       setError(err.message || 'An error occurred');
     } finally {
       setIsLoading(false);

@@ -55,10 +55,11 @@ export async function GET(request: NextRequest) {
       },
       { status: 200 }
     );
-  } catch (error) {
-    console.error('Error fetching positions:', error);
+  } catch (error: any) {
+    const errorMsg = error.message || String(error) || 'Failed to fetch positions';
+    console.error('Error fetching positions:', errorMsg, error);
     return NextResponse.json(
-      { error: 'Failed to fetch positions' },
+      { error: errorMsg },
       { status: 500 }
     );
   }

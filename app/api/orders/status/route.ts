@@ -52,10 +52,11 @@ export async function GET(request: NextRequest) {
       },
       { status: 200 }
     );
-  } catch (error) {
-    console.error('Error fetching order status:', error);
+  } catch (error: any) {
+    const errorMsg = error.message || String(error) || 'Failed to fetch order status';
+    console.error('Error fetching order status:', errorMsg, error);
     return NextResponse.json(
-      { error: 'Failed to fetch order status' },
+      { error: errorMsg },
       { status: 500 }
     );
   }

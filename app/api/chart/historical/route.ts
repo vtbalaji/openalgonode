@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCachedBrokerConfig } from '@/lib/brokerConfigUtils';
 import { getInstrumentToken } from '@/lib/websocket/instrumentMapping';
 import { decryptData } from '@/lib/encryptionUtils';
+import { getSymbolCache } from '@/lib/symbolCache';
 
 export async function GET(request: NextRequest) {
   try {
@@ -31,16 +32,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get instrument token
-    const instrumentToken = getInstrumentToken(symbol);
-    if (!instrumentToken) {
-      return NextResponse.json(
-        { error: 'Symbol not found: ' + symbol },
-        { status: 404 }
-      );
-    }
-
-    // Get broker config
+    // Get broker config first (needed for loading symbol cache if not loaded)
     const configData = await getCachedBrokerConfig(userId, 'zerodha');
     if (!configData || configData.status !== 'active') {
       return NextResponse.json(
@@ -50,8 +42,29 @@ export async function GET(request: NextRequest) {
     }
 
     // Decrypt credentials
+    const encryptedAccessToken = decryptData(configData.accessToken);
     const apiKey = decryptData(configData.apiKey);
-    const accessToken = decryptData(configData.accessToken);
+
+    // Extract access token from combined format (apiKey:accessToken)
+    const accessToken = encryptedAccessToken.includes(':')
+      ? encryptedAccessToken.split(':')[1]
+      : encryptedAccessToken;
+
+    // Ensure symbol cache is loaded
+    const symbolCache = getSymbolCache();
+    if (!symbolCache.isReady()) {
+      console.log('[CHART-HISTORICAL] Symbol cache not loaded, loading now...');
+      await symbolCache.load(apiKey, accessToken);
+    }
+
+    // Get instrument token
+    const instrumentToken = getInstrumentToken(symbol);
+    if (!instrumentToken) {
+      return NextResponse.json(
+        { error: 'Symbol not found: ' + symbol },
+        { status: 404 }
+      );
+    }
 
     // Build Zerodha API URL
     const baseUrl = 'https://api.kite.trade';

@@ -40,6 +40,8 @@ export default function ChartPage() {
     emaPeriod: 12,
     rsi: true,
     rsiPeriod: 14,
+    volumeProfile: false,
+    volumeProfileBins: 150, // More bins = smoother mountain
   });
 
   // Real-time price updates
@@ -135,7 +137,7 @@ export default function ChartPage() {
     }));
   };
 
-  const updateIndicatorPeriod = (indicator: 'smaPeriod' | 'emaPeriod' | 'rsiPeriod', value: number) => {
+  const updateIndicatorPeriod = (indicator: 'smaPeriod' | 'emaPeriod' | 'rsiPeriod' | 'volumeProfileBins', value: number) => {
     setIndicators((prev) => ({
       ...prev,
       [indicator]: value,
@@ -168,7 +170,7 @@ export default function ChartPage() {
                   type="text"
                   value={customSymbol}
                   onChange={(e) => setCustomSymbol(e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900"
                   placeholder="e.g., RELIANCE, NIFTY25DEC25900CE"
                 />
                 <button
@@ -222,7 +224,7 @@ export default function ChartPage() {
           {/* Indicators */}
           <div className="mt-6 pt-6 border-t border-gray-200">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Indicators</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* SMA */}
               <div className="flex items-center gap-3">
                 <input
@@ -240,7 +242,7 @@ export default function ChartPage() {
                   value={indicators.smaPeriod}
                   onChange={(e) => updateIndicatorPeriod('smaPeriod', parseInt(e.target.value))}
                   disabled={!indicators.sma}
-                  className="w-16 px-2 py-1 text-sm border border-gray-300 rounded disabled:bg-gray-100"
+                  className="w-16 px-2 py-1 text-sm border border-gray-300 rounded disabled:bg-gray-100 text-gray-900"
                   min="1"
                   max="200"
                 />
@@ -263,7 +265,7 @@ export default function ChartPage() {
                   value={indicators.emaPeriod}
                   onChange={(e) => updateIndicatorPeriod('emaPeriod', parseInt(e.target.value))}
                   disabled={!indicators.ema}
-                  className="w-16 px-2 py-1 text-sm border border-gray-300 rounded disabled:bg-gray-100"
+                  className="w-16 px-2 py-1 text-sm border border-gray-300 rounded disabled:bg-gray-100 text-gray-900"
                   min="1"
                   max="200"
                 />
@@ -286,9 +288,32 @@ export default function ChartPage() {
                   value={indicators.rsiPeriod}
                   onChange={(e) => updateIndicatorPeriod('rsiPeriod', parseInt(e.target.value))}
                   disabled={!indicators.rsi}
-                  className="w-16 px-2 py-1 text-sm border border-gray-300 rounded disabled:bg-gray-100"
+                  className="w-16 px-2 py-1 text-sm border border-gray-300 rounded disabled:bg-gray-100 text-gray-900"
                   min="1"
                   max="100"
+                />
+              </div>
+
+              {/* Volume Profile */}
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="volumeProfile"
+                  checked={indicators.volumeProfile}
+                  onChange={() => toggleIndicator('volumeProfile')}
+                  className="w-4 h-4 text-red-600 rounded focus:ring-2"
+                />
+                <label htmlFor="volumeProfile" className="text-sm font-medium text-gray-700">
+                  Vol Profile
+                </label>
+                <input
+                  type="number"
+                  value={indicators.volumeProfileBins}
+                  onChange={(e) => updateIndicatorPeriod('volumeProfileBins', parseInt(e.target.value))}
+                  disabled={!indicators.volumeProfile}
+                  className="w-16 px-2 py-1 text-sm border border-gray-300 rounded disabled:bg-gray-100 text-gray-900"
+                  min="10"
+                  max="200"
                 />
               </div>
             </div>

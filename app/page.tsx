@@ -215,32 +215,18 @@ export default function Home() {
             <p className="text-gray-600">Generate keys for TradingView, Python, etc.</p>
           </Link>
 
-          {/* Live Prices */}
+          {/* Advanced Chart */}
           <Link
-            href="/live-prices"
-            className="block rounded-lg bg-white p-6 shadow transition hover:shadow-lg"
+            href="/chart"
+            className="block rounded-lg bg-white p-6 shadow transition hover:shadow-lg border-2 border-purple-200"
           >
-            <div className="mb-4 inline-block rounded-lg bg-red-100 p-3">
-              <svg className="h-6 w-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+            <div className="mb-4 inline-block rounded-lg bg-purple-100 p-3">
+              <svg className="h-6 w-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
               </svg>
             </div>
-            <h3 className="mb-2 text-lg font-semibold text-gray-900">Live Prices</h3>
-            <p className="text-gray-600">Real-time market data via WebSocket</p>
-          </Link>
-
-          {/* WebSocket Test */}
-          <Link
-            href="/test-websocket"
-            className="block rounded-lg bg-white p-6 shadow transition hover:shadow-lg border-2 border-orange-200"
-          >
-            <div className="mb-4 inline-block rounded-lg bg-orange-100 p-3">
-              <svg className="h-6 w-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
-              </svg>
-            </div>
-            <h3 className="mb-2 text-lg font-semibold text-gray-900">Test WebSocket</h3>
-            <p className="text-gray-600">Diagnostic tool for real-time connection</p>
+            <h3 className="mb-2 text-lg font-semibold text-gray-900">Advanced Chart</h3>
+            <p className="text-gray-600">Technical analysis with Volume Profile</p>
           </Link>
 
           {/* API Documentation */}

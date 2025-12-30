@@ -10,8 +10,16 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { createChart, IChartApi, ISeriesApi } from 'lightweight-charts';
+import {
+  createChart,
+  IChartApi,
+  ISeriesApi,
+  CandlestickData,
+  LineData,
+  HistogramData
+} from 'lightweight-charts';
 import { SMA, EMA, RSI } from 'technicalindicators';
+import { calculateVolumeProfile } from '@/lib/indicators/volumeProfile';
 
 export interface ChartData {
   time: number;
@@ -29,6 +37,8 @@ export interface IndicatorConfig {
   emaPeriod: number;
   rsi: boolean;
   rsiPeriod: number;
+  volumeProfile: boolean;
+  volumeProfileBins: number;
 }
 
 export interface AdvancedTradingChartProps {
@@ -50,15 +60,24 @@ export function AdvancedTradingChart({
 }: AdvancedTradingChartProps) {
   const mainChartRef = useRef<HTMLDivElement>(null);
   const rsiChartRef = useRef<HTMLDivElement>(null);
-  
+  const volumeProfileOverlayRef = useRef<HTMLDivElement>(null);
+
   const mainChartInstanceRef = useRef<IChartApi | null>(null);
   const rsiChartInstanceRef = useRef<IChartApi | null>(null);
-  
-  const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
-  const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
-  const smaSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const emaSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const rsiSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+
+  const candlestickSeriesRef = useRef<any>(null);
+  const volumeSeriesRef = useRef<any>(null);
+  const smaSeriesRef = useRef<any>(null);
+  const emaSeriesRef = useRef<any>(null);
+  const rsiSeriesRef = useRef<any>(null);
+  const volumeProfileSeriesRef = useRef<any>(null);
+  const pocLineRef = useRef<any>(null);
+  const valueAreaHighLineRef = useRef<any>(null);
+  const valueAreaLowLineRef = useRef<any>(null);
+
+  const [volumeProfileData, setVolumeProfileData] = useState<any>(null);
+  const [visibleRange, setVisibleRange] = useState<any>(null);
+  const visibleRangeRef = useRef<any>(null);
 
   // Initialize charts
   useEffect(() => {
@@ -165,6 +184,18 @@ export function AdvancedTradingChart({
       });
     }
 
+    // Track visible time range for volume profile
+    mainChart.timeScale().subscribeVisibleTimeRangeChange((timeRange) => {
+      if (timeRange) {
+        // Only update if range actually changed to prevent infinite loop
+        const prevRange = visibleRangeRef.current;
+        if (!prevRange || prevRange.from !== timeRange.from || prevRange.to !== timeRange.to) {
+          visibleRangeRef.current = timeRange;
+          setVisibleRange(timeRange);
+        }
+      }
+    });
+
     // Resize handler
     const handleResize = () => {
       if (mainChartRef.current && mainChartInstanceRef.current) {
@@ -183,8 +214,22 @@ export function AdvancedTradingChart({
 
     return () => {
       window.removeEventListener('resize', handleResize);
-      if (mainChartInstanceRef.current) mainChartInstanceRef.current.remove();
-      if (rsiChartInstanceRef.current) rsiChartInstanceRef.current.remove();
+      if (mainChartInstanceRef.current) {
+        try {
+          mainChartInstanceRef.current.remove();
+          mainChartInstanceRef.current = null;
+        } catch (e) {
+          console.warn('Error removing main chart:', e);
+        }
+      }
+      if (rsiChartInstanceRef.current) {
+        try {
+          rsiChartInstanceRef.current.remove();
+          rsiChartInstanceRef.current = null;
+        } catch (e) {
+          console.warn('Error removing RSI chart:', e);
+        }
+      }
     };
   }, [indicators.rsi, height]);
 
@@ -209,8 +254,13 @@ export function AdvancedTradingChart({
 
     // SMA
     if (indicators.sma && data.length >= indicators.smaPeriod && mainChartInstanceRef.current) {
-      if (smaSeriesRef.current) {
-        mainChartInstanceRef.current.removeSeries(smaSeriesRef.current);
+      if (smaSeriesRef.current && mainChartInstanceRef.current) {
+        try {
+          mainChartInstanceRef.current.removeSeries(smaSeriesRef.current);
+          smaSeriesRef.current = null;
+        } catch (e) {
+          console.warn('Error removing SMA series:', e);
+        }
       }
 
       const smaValues = SMA.calculate({ period: indicators.smaPeriod, values: closePrices });
@@ -227,12 +277,25 @@ export function AdvancedTradingChart({
 
       smaSeries.setData(smaData);
       smaSeriesRef.current = smaSeries;
+    } else if (!indicators.sma && smaSeriesRef.current && mainChartInstanceRef.current) {
+      // Remove SMA when disabled
+      try {
+        mainChartInstanceRef.current.removeSeries(smaSeriesRef.current);
+        smaSeriesRef.current = null;
+      } catch (e) {
+        console.warn('Error removing SMA series:', e);
+      }
     }
 
     // EMA
     if (indicators.ema && data.length >= indicators.emaPeriod && mainChartInstanceRef.current) {
-      if (emaSeriesRef.current) {
-        mainChartInstanceRef.current.removeSeries(emaSeriesRef.current);
+      if (emaSeriesRef.current && mainChartInstanceRef.current) {
+        try {
+          mainChartInstanceRef.current.removeSeries(emaSeriesRef.current);
+          emaSeriesRef.current = null;
+        } catch (e) {
+          console.warn('Error removing EMA series:', e);
+        }
       }
 
       const emaValues = EMA.calculate({ period: indicators.emaPeriod, values: closePrices });
@@ -249,6 +312,14 @@ export function AdvancedTradingChart({
 
       emaSeries.setData(emaData);
       emaSeriesRef.current = emaSeries;
+    } else if (!indicators.ema && emaSeriesRef.current && mainChartInstanceRef.current) {
+      // Remove EMA when disabled
+      try {
+        mainChartInstanceRef.current.removeSeries(emaSeriesRef.current);
+        emaSeriesRef.current = null;
+      } catch (e) {
+        console.warn('Error removing EMA series:', e);
+      }
     }
 
     // RSI
@@ -262,15 +333,233 @@ export function AdvancedTradingChart({
       rsiSeriesRef.current.setData(rsiData);
     }
 
+    // Volume Profile
+    if (indicators.volumeProfile && data.length > 0 && mainChartInstanceRef.current) {
+      // Use ALL data instead of visible range
+      const minTime = Math.min(...data.map(d => d.time));
+      const maxTime = Math.max(...data.map(d => d.time));
+
+      console.log('[VP] Using all data:', {
+        totalCandles: data.length,
+        dateRange: {
+          from: new Date(minTime * 1000).toISOString(),
+          to: new Date(maxTime * 1000).toISOString(),
+        },
+        priceRange: {
+          min: Math.min(...data.map(d => d.low)).toFixed(2),
+          max: Math.max(...data.map(d => d.high)).toFixed(2),
+        }
+      });
+
+      // Calculate volume profile for ALL data
+      const volumeProfileResult = calculateVolumeProfile(
+        data,
+        indicators.volumeProfileBins || 50,
+        0.70
+      );
+
+      // Store for histogram rendering
+      setVolumeProfileData(volumeProfileResult);
+
+      // Find max volume for verification
+      const maxVol = Math.max(...volumeProfileResult.profile.map(p => p.volume));
+      const pocBar = volumeProfileResult.profile.find(p => Math.abs(p.price - volumeProfileResult.poc) < 0.01);
+      const maxVolBar = volumeProfileResult.profile.find(p => p.volume === maxVol);
+
+      // Get top 5 bars by volume
+      const top5Bars = [...volumeProfileResult.profile]
+        .sort((a, b) => b.volume - a.volume)
+        .slice(0, 5)
+        .map((bar, i) => `${i + 1}. Price ${bar.price.toFixed(2)}: Volume ${bar.volume.toFixed(0)}`);
+
+      console.log('[VOLUME PROFILE] Calculated:', {
+        binCount: volumeProfileResult.profile.length,
+        poc: volumeProfileResult.poc.toFixed(2),
+        pocVolume: pocBar?.volume.toFixed(0),
+        maxVolBar: `Price ${maxVolBar?.price.toFixed(2)}: Volume ${maxVolBar?.volume.toFixed(0)}`,
+        pocMatchesMax: Math.abs((pocBar?.volume || 0) - maxVol) < 0.01,
+        valueAreaHigh: volumeProfileResult.valueAreaHigh.toFixed(2),
+        valueAreaLow: volumeProfileResult.valueAreaLow.toFixed(2),
+        totalVolume: volumeProfileResult.totalVolume.toFixed(0),
+      });
+
+      console.log('[VOLUME PROFILE] Top 5 bars by volume:', top5Bars);
+
+      // Remove old series if they exist
+      if (pocLineRef.current) {
+        try {
+          mainChartInstanceRef.current.removeSeries(pocLineRef.current);
+          pocLineRef.current = null;
+        } catch (e) {
+          console.warn('Error removing POC line:', e);
+        }
+      }
+      if (valueAreaHighLineRef.current) {
+        try {
+          mainChartInstanceRef.current.removeSeries(valueAreaHighLineRef.current);
+          valueAreaHighLineRef.current = null;
+        } catch (e) {
+          console.warn('Error removing Value Area High line:', e);
+        }
+      }
+      if (valueAreaLowLineRef.current) {
+        try {
+          mainChartInstanceRef.current.removeSeries(valueAreaLowLineRef.current);
+          valueAreaLowLineRef.current = null;
+        } catch (e) {
+          console.warn('Error removing Value Area Low line:', e);
+        }
+      }
+
+      // Add POC (Point of Control) line - highest volume price
+      const pocLine = mainChartInstanceRef.current.addLineSeries({
+        color: '#FF6B6B',
+        lineWidth: 2,
+        lineStyle: 0, // Solid line
+        title: 'POC',
+      });
+      pocLine.setData(data.map(d => ({ time: d.time, value: volumeProfileResult.poc })));
+      pocLineRef.current = pocLine;
+
+      // Add Value Area High line
+      const vaHighLine = mainChartInstanceRef.current.addLineSeries({
+        color: '#4ECDC4',
+        lineWidth: 1,
+        lineStyle: 2, // Dashed line
+        title: 'VA High',
+      });
+      vaHighLine.setData(data.map(d => ({ time: d.time, value: volumeProfileResult.valueAreaHigh })));
+      valueAreaHighLineRef.current = vaHighLine;
+
+      // Add Value Area Low line
+      const vaLowLine = mainChartInstanceRef.current.addLineSeries({
+        color: '#4ECDC4',
+        lineWidth: 1,
+        lineStyle: 2, // Dashed line
+        title: 'VA Low',
+      });
+      vaLowLine.setData(data.map(d => ({ time: d.time, value: volumeProfileResult.valueAreaLow })));
+      valueAreaLowLineRef.current = vaLowLine;
+
+    } else if (!indicators.volumeProfile) {
+      // Remove all volume profile lines when disabled
+      setVolumeProfileData(null);
+
+      if (pocLineRef.current && mainChartInstanceRef.current) {
+        try {
+          mainChartInstanceRef.current.removeSeries(pocLineRef.current);
+          pocLineRef.current = null;
+        } catch (e) {
+          console.warn('Error removing POC line:', e);
+        }
+      }
+      if (valueAreaHighLineRef.current && mainChartInstanceRef.current) {
+        try {
+          mainChartInstanceRef.current.removeSeries(valueAreaHighLineRef.current);
+          valueAreaHighLineRef.current = null;
+        } catch (e) {
+          console.warn('Error removing Value Area High line:', e);
+        }
+      }
+      if (valueAreaLowLineRef.current && mainChartInstanceRef.current) {
+        try {
+          mainChartInstanceRef.current.removeSeries(valueAreaLowLineRef.current);
+          valueAreaLowLineRef.current = null;
+        } catch (e) {
+          console.warn('Error removing Value Area Low line:', e);
+        }
+      }
+    }
+
     // Fit content
     if (mainChartInstanceRef.current) {
       mainChartInstanceRef.current.timeScale().fitContent();
     }
-  }, [data, indicators]);
+  }, [data, indicators, visibleRange]);
 
   return (
     <div className="w-full">
-      <div ref={mainChartRef} className="border border-gray-200 rounded-t-lg" />
+      <div className="relative">
+        <div ref={mainChartRef} className="border border-gray-200 rounded-t-lg" />
+
+        {/* Volume Profile Histogram - Sideways Mountain */}
+        {indicators.volumeProfile && volumeProfileData && mainChartInstanceRef.current && (
+          <div
+            className="absolute top-0 right-0 pointer-events-none z-50"
+            style={{
+              width: '200px',
+              height: indicators.rsi ? height - 150 : height,
+            }}
+          >
+            {(() => {
+              // Get price range from profile
+              const prices = volumeProfileData.profile.map((r: any) => r.price);
+              const minPrice = Math.min(...prices);
+              const maxPrice = Math.max(...prices);
+              const priceRange = maxPrice - minPrice;
+              const chartHeight = indicators.rsi ? height - 150 : height;
+              const maxVolume = Math.max(...volumeProfileData.profile.map((r: any) => r.volume));
+
+              // Find top 5 bars by volume for debugging
+              const top5 = [...volumeProfileData.profile]
+                .sort((a, b) => b.volume - a.volume)
+                .slice(0, 5)
+                .map(r => ({ price: r.price.toFixed(2), volume: r.volume.toFixed(0) }));
+
+              console.log('[VP] Rendering with manual positioning:', {
+                minPrice: minPrice.toFixed(2),
+                maxPrice: maxPrice.toFixed(2),
+                priceRange: priceRange.toFixed(2),
+                chartHeight,
+                barCount: volumeProfileData.profile.length,
+                poc: volumeProfileData.poc.toFixed(2),
+                top5VolumeBar: top5,
+              });
+
+              return volumeProfileData.profile.map((row: any, index: number) => {
+                try {
+                  // Calculate Y position manually (inverted because chart grows downward)
+                  const pricePercent = (maxPrice - row.price) / priceRange;
+                  const yCoord = pricePercent * chartHeight;
+
+                  // Calculate bar width
+                  const barWidth = Math.max(3, (row.volume / maxVolume) * 120);
+
+                  // Check if this is in the value area
+                  const isInValueArea = row.price >= volumeProfileData.valueAreaLow &&
+                                        row.price <= volumeProfileData.valueAreaHigh;
+
+                  // Check if this is POC
+                  const isPOC = Math.abs(row.price - volumeProfileData.poc) < (volumeProfileData.poc * 0.001);
+
+                  return (
+                    <div
+                      key={index}
+                      className="absolute"
+                      style={{
+                        top: yCoord + 'px',
+                        right: '70px',
+                        width: barWidth + 'px',
+                        height: '2px',
+                        backgroundColor: isPOC
+                          ? '#FF0000'
+                          : isInValueArea
+                            ? 'rgba(33, 150, 243, 0.9)'
+                            : 'rgba(156, 163, 175, 0.7)',
+                        boxShadow: isPOC ? '0 0 4px rgba(255,0,0,1)' : 'none',
+                      }}
+                    />
+                  );
+                } catch (e) {
+                  console.error('[VP] Error rendering bar:', e);
+                  return null;
+                }
+              });
+            })()}
+          </div>
+        )}
+      </div>
+
       {indicators.rsi && (
         <div ref={rsiChartRef} className="border border-t-0 border-gray-200 rounded-b-lg" />
       )}

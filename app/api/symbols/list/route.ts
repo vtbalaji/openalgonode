@@ -1,24 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getBrokerSymbolsList } from '@/lib/firebaseSymbols';
+import { getAllZerodhaSymbols } from '@/lib/zerodhaSymbolLoader';
 
 /**
  * GET /api/symbols/list?broker=zerodha
  * Get list of all available symbols for a broker
+ * Uses LOCAL JSON (zerodhasymbol.json) - NO FIREBASE READS
  */
 export async function GET(request: NextRequest) {
   try {
     const broker = request.nextUrl.searchParams.get('broker') || 'zerodha';
 
-    const symbols = await getBrokerSymbolsList(broker);
+    if (broker === 'zerodha') {
+      // ✅ USE LOCAL JSON (NO FIREBASE READ!)
+      const allSymbols = getAllZerodhaSymbols();
+      const symbolNames = allSymbols.map(s => s.symbol);
+
+      console.log(`[Symbols] Returning ${symbolNames.length} Zerodha symbols from local JSON`);
+
+      return NextResponse.json(
+        {
+          success: true,
+          broker: 'zerodha',
+          count: symbolNames.length,
+          symbols: symbolNames,
+        },
+        { status: 200 }
+      );
+    }
 
     return NextResponse.json(
-      {
-        success: true,
-        broker: broker,
-        count: symbols.length,
-        symbols: symbols,
-      },
-      { status: 200 }
+      { error: 'Only zerodha broker supported' },
+      { status: 400 }
     );
   } catch (error: any) {
     console.error('Error fetching symbols:', error);

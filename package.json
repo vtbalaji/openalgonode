@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "update:zerodha-symbols": "ts-node scripts/updateZerodhaSymbols.ts"
   },
   "dependencies": {
     "crypto-js": "^4.2.0",

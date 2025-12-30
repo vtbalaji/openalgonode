@@ -1,0 +1,240 @@
+{
+  "_comment": "Zerodha Symbol Mappings - Loaded locally to avoid Firebase reads",
+  "_lastUpdated": "2025-12-30",
+  "_source": "Generated from Zerodha master list",
+
+  "NSE_RELIANCE": {
+    "symbol": "RELIANCE",
+    "token": 738561,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1
+  },
+  "NSE_TCS": {
+    "symbol": "TCS",
+    "token": 2953217,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1
+  },
+  "NSE_HDFCBANK": {
+    "symbol": "HDFCBANK",
+    "token": 341249,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1
+  },
+  "NSE_INFY": {
+    "symbol": "INFY",
+    "token": 408065,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1
+  },
+  "NSE_HINDUNILVR": {
+    "symbol": "HINDUNILVR",
+    "token": 356865,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1
+  },
+  "NSE_ICICIBANK": {
+    "symbol": "ICICIBANK",
+    "token": 1270529,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1
+  },
+  "NSE_BHARTIARTL": {
+    "symbol": "BHARTIARTL",
+    "token": 2714625,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1
+  },
+  "NSE_SBIN": {
+    "symbol": "SBIN",
+    "token": 779521,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1
+  },
+  "NSE_BAJFINANCE": {
+    "symbol": "BAJFINANCE",
+    "token": 81153,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1
+  },
+  "NSE_KOTAKBANK": {
+    "symbol": "KOTAKBANK",
+    "token": 492033,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1
+  },
+  "NSE_LT": {
+    "symbol": "LT",
+    "token": 2939649,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1
+  },
+  "NSE_ASIANPAINT": {
+    "symbol": "ASIANPAINT",
+    "token": 60417,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1
+  },
+  "NSE_AXISBANK": {
+    "symbol": "AXISBANK",
+    "token": 1510401,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1
+  },
+  "NSE_ITC": {
+    "symbol": "ITC",
+    "token": 424961,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1
+  },
+  "NSE_MARUTI": {
+    "symbol": "MARUTI",
+    "token": 2815745,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1
+  },
+  "NSE_SUNPHARMA": {
+    "symbol": "SUNPHARMA",
+    "token": 857857,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1
+  },
+  "NSE_TITAN": {
+    "symbol": "TITAN",
+    "token": 897537,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1
+  },
+  "NSE_ULTRACEMCO": {
+    "symbol": "ULTRACEMCO",
+    "token": 2952193,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1
+  },
+  "NSE_WIPRO": {
+    "symbol": "WIPRO",
+    "token": 969473,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1
+  },
+  "NSE_NESTLEIND": {
+    "symbol": "NESTLEIND",
+    "token": 4598529,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1
+  },
+  "NSE_POWERGRID": {
+    "symbol": "POWERGRID",
+    "token": 3834113,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1
+  },
+  "NSE_NTPC": {
+    "symbol": "NTPC",
+    "token": 2977281,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1
+  },
+  "NSE_TATAMOTORS": {
+    "symbol": "TATAMOTORS",
+    "token": 884737,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1
+  },
+  "NSE_M&M": {
+    "symbol": "M&M",
+    "token": 519937,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1
+  },
+  "NSE_TECHM": {
+    "symbol": "TECHM",
+    "token": 3465729,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1
+  },
+  "NSE_HCLTECH": {
+    "symbol": "HCLTECH",
+    "token": 1850625,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1
+  },
+  "NSE_ADANIPORTS": {
+    "symbol": "ADANIPORTS",
+    "token": 3861249,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1
+  },
+  "NSE_TATASTEEL": {
+    "symbol": "TATASTEEL",
+    "token": 895745,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1
+  },
+  "NSE_ONGC": {
+    "symbol": "ONGC",
+    "token": 633601,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1
+  },
+  "NSE_JSWSTEEL": {
+    "symbol": "JSWSTEEL",
+    "token": 3001089,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1
+  },
+  "NSE_NIFTY50": {
+    "symbol": "NIFTY 50",
+    "token": 256265,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1,
+    "isIndex": true
+  },
+  "NSE_NIFTYBANK": {
+    "symbol": "NIFTY BANK",
+    "token": 260105,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1,
+    "isIndex": true
+  },
+  "NSE_INDIA_VIX": {
+    "symbol": "INDIA VIX",
+    "token": 264969,
+    "exchange": "NSE",
+    "segment": "EQ",
+    "lotsize": 1,
+    "isIndex": true
+  }
+}

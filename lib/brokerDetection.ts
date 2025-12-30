@@ -1,24 +1,45 @@
 /**
  * Broker Detection Utility
  * Auto-detect user's active broker configuration
+ * CACHED to reduce Firebase quota usage
  */
 
 import { adminDb } from './firebaseAdmin';
 
+// In-memory cache: { userId: { brokers: string[], timestamp: number } }
+const brokerCache = new Map<string, { brokers: string[]; timestamp: number }>();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
 /**
- * Get user's configured brokers
+ * Get user's configured brokers (CACHED)
  * Returns list of all configured broker IDs (regardless of authentication status)
  * Used for broker selection/detection
+ *
+ * Cache: 5 minute TTL per user to reduce Firestore reads
  */
 export async function getConfiguredBrokers(userId: string): Promise<string[]> {
   try {
+    // Check cache first
+    const cached = brokerCache.get(userId);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+      console.log(`[BrokerCache] HIT for ${userId} - brokers: ${cached.brokers.join(',')}`);
+      return cached.brokers;
+    }
+
+    // Cache miss - fetch from Firebase
+    console.log(`[BrokerCache] MISS for ${userId} - fetching from Firebase`);
     const brokerSnapshot = await adminDb
       .collection('users')
       .doc(userId)
       .collection('brokerConfig')
       .get();
 
-    return brokerSnapshot.docs.map((doc) => doc.id);
+    const brokers = brokerSnapshot.docs.map((doc) => doc.id);
+
+    // Cache the result
+    brokerCache.set(userId, { brokers, timestamp: Date.now() });
+
+    return brokers;
   } catch (error) {
     console.error('Error getting configured brokers:', error);
     return [];
@@ -26,11 +47,33 @@ export async function getConfiguredBrokers(userId: string): Promise<string[]> {
 }
 
 /**
- * Get user's active brokers
+ * Clear cache for a user (call this after broker config changes)
+ */
+export function clearBrokerCache(userId: string): void {
+  brokerCache.delete(userId);
+  console.log(`[BrokerCache] Cleared for ${userId}`);
+}
+
+// In-memory cache for active brokers: { userId: { brokers: string[], timestamp: number } }
+const activeBrokerCache = new Map<string, { brokers: string[]; timestamp: number }>();
+
+/**
+ * Get user's active brokers (CACHED)
  * Returns list of active broker IDs (fully authenticated)
+ *
+ * Cache: 5 minute TTL per user to reduce Firestore reads
  */
 export async function getActiveBrokers(userId: string): Promise<string[]> {
   try {
+    // Check cache first
+    const cached = activeBrokerCache.get(userId);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+      console.log(`[ActiveBrokerCache] HIT for ${userId} - brokers: ${cached.brokers.join(',')}`);
+      return cached.brokers;
+    }
+
+    // Cache miss - fetch from Firebase
+    console.log(`[ActiveBrokerCache] MISS for ${userId} - fetching from Firebase`);
     const brokerSnapshot = await adminDb
       .collection('users')
       .doc(userId)
@@ -38,11 +81,24 @@ export async function getActiveBrokers(userId: string): Promise<string[]> {
       .where('status', '==', 'active')
       .get();
 
-    return brokerSnapshot.docs.map((doc) => doc.id);
+    const brokers = brokerSnapshot.docs.map((doc) => doc.id);
+
+    // Cache the result
+    activeBrokerCache.set(userId, { brokers, timestamp: Date.now() });
+
+    return brokers;
   } catch (error) {
     console.error('Error getting active brokers:', error);
     return [];
   }
+}
+
+/**
+ * Clear active broker cache for a user (call after broker status changes)
+ */
+export function clearActiveBrokerCache(userId: string): void {
+  activeBrokerCache.delete(userId);
+  console.log(`[ActiveBrokerCache] Cleared for ${userId}`);
 }
 
 /**

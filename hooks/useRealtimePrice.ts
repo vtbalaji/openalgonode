@@ -77,7 +77,14 @@ export function useRealtimePrice({ symbols, broker = 'zerodha' }: UseRealtimePri
     eventSource.onerror = (err) => {
       console.error('EventSource error:', err);
       setIsConnected(false);
-      setError('Connection error. Retrying...');
+
+      // Try to get more detailed error info
+      let errorMsg = 'Connection error. Retrying...';
+      if (eventSource.readyState === EventSource.CLOSED) {
+        errorMsg = 'Server unavailable. Please check your internet connection.';
+      }
+
+      setError(errorMsg);
 
       // Auto-reconnect after 5 seconds
       setTimeout(() => {

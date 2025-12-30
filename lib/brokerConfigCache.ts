@@ -23,8 +23,9 @@ interface CacheEntry {
 
 class BrokerConfigCache {
   private cache: Map<string, CacheEntry> = new Map();
-  private readonly TTL_MS = 5 * 60 * 1000; // 5 minutes
+  private readonly TTL_MS = 30 * 60 * 1000; // 30 minutes (increased to reduce Firebase reads)
   private readonly CHECK_INTERVAL = 60 * 1000; // Check every 1 minute
+  private failureCache: Map<string, number> = new Map(); // Track Firestore failures
 
   constructor() {
     // Periodically clean up expired entries

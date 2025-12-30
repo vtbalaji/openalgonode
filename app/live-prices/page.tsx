@@ -9,9 +9,9 @@ import { useState, useEffect } from 'react';
 import { RealtimePriceTicker } from '@/components/RealtimePriceTicker';
 
 export default function LivePricesPage() {
-  const [selectedSymbol, setSelectedSymbol] = useState<string>('RELIANCE');
+  const [selectedSymbol, setSelectedSymbol] = useState<string>('NIFTY 50');
   const [customSymbol, setCustomSymbol] = useState<string>('');
-  const [watchlist, setWatchlist] = useState<string[]>(['RELIANCE', 'TCS', 'INFY']);
+  const [watchlist, setWatchlist] = useState<string[]>(['NIFTY 50']);
   const [availableSymbols, setAvailableSymbols] = useState<string[]>([]);
 
   useEffect(() => {
@@ -69,7 +69,7 @@ export default function LivePricesPage() {
                     onChange={(e) => setCustomSymbol(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && handleAddSymbol()}
                     placeholder="e.g., RELIANCE"
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="flex-1 px-3 py-2 bg-white text-gray-900 border border-gray-300 rounded-lg placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none"
                     list="symbols-list"
                   />
                   <button
@@ -124,13 +124,13 @@ export default function LivePricesPage() {
                 ))}
               </div>
 
-              {/* Popular Symbols */}
+              {/* Popular Indices */}
               <div className="mt-6">
                 <h3 className="text-sm font-semibold text-gray-700 mb-2">
-                  Popular Symbols
+                  Popular Indices
                 </h3>
                 <div className="flex flex-wrap gap-2">
-                  {['RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'ICICIBANK', 'SBIN'].map((symbol) => (
+                  {['NIFTY 50', 'NIFTY BANK', 'INDIA VIX'].map((symbol) => (
                     <button
                       key={symbol}
                       onClick={() => {

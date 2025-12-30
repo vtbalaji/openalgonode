@@ -59,8 +59,21 @@ class TickerService extends EventEmitter {
 
   /**
    * Initialize ticker with API credentials
+   * Only creates a new ticker if not already initialized or credentials changed
    */
   initialize(apiKey: string, accessToken: string) {
+    // If already initialized with same credentials, skip
+    if (this.ticker && this.apiKey === apiKey && this.accessToken === accessToken) {
+      console.log('Ticker already initialized with same credentials, reusing');
+      return;
+    }
+
+    // If credentials changed, disconnect old ticker first
+    if (this.ticker && this.isConnected) {
+      console.log('Credentials changed, disconnecting old ticker');
+      this.ticker.disconnect();
+    }
+
     this.apiKey = apiKey;
     this.accessToken = accessToken;
 
@@ -69,6 +82,7 @@ class TickerService extends EventEmitter {
       access_token: this.accessToken,
     });
 
+    this.isConnected = false;
     this.setupEventHandlers();
   }
 

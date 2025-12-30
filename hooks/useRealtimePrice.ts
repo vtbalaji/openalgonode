@@ -44,7 +44,7 @@ export function useRealtimePrice({ symbols, broker = 'zerodha' }: UseRealtimePri
     }
 
     const symbolsParam = symbols.join(',');
-    const url = `/api/stream/prices?symbols=${symbolsParam}&userId=${user.uid}&broker=${broker}`;
+    const url = `/api/stream/prices?symbols=${encodeURIComponent(symbolsParam)}&userId=${encodeURIComponent(user.uid)}&broker=${broker}`;
 
     const eventSource = new EventSource(url);
     eventSourceRef.current = eventSource;

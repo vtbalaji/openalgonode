@@ -32,6 +32,7 @@ export default function ChartPage() {
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [chartHeight, setChartHeight] = useState(600);
 
   const [indicators, setIndicators] = useState<IndicatorConfig>({
     sma: true,
@@ -49,6 +50,26 @@ export default function ChartPage() {
     symbols: [symbol],
     broker: 'zerodha',
   });
+
+  // Set responsive chart height
+  useEffect(() => {
+    const updateChartHeight = () => {
+      if (typeof window !== 'undefined') {
+        const width = window.innerWidth;
+        if (width < 640) {
+          setChartHeight(400); // Mobile
+        } else if (width < 768) {
+          setChartHeight(500); // Tablet
+        } else {
+          setChartHeight(600); // Desktop
+        }
+      }
+    };
+
+    updateChartHeight();
+    window.addEventListener('resize', updateChartHeight);
+    return () => window.removeEventListener('resize', updateChartHeight);
+  }, []);
 
   // Fetch historical data
   const fetchChartData = async () => {
@@ -145,21 +166,21 @@ export default function ChartPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-3 sm:p-4 md:p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">
+        <div className="mb-4 md:mb-6">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-2">
             Trading Chart
           </h1>
-          <p className="text-gray-600">
+          <p className="text-sm md:text-base text-gray-600">
             Advanced charting with technical indicators
           </p>
         </div>
 
         {/* Controls */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-4 md:mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
             {/* Symbol Input */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -195,7 +216,7 @@ export default function ChartPage() {
                   <button
                     key={tf.value}
                     onClick={() => setInterval(tf.value)}
-                    className={'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ' + 
+                    className={'px-3 sm:px-4 py-2 rounded-lg text-sm font-medium transition-colors min-w-[44px] ' +
                       (interval === tf.value
                         ? 'bg-blue-600 text-white'
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -335,12 +356,12 @@ export default function ChartPage() {
         )}
 
         {!loading && !error && chartData.length > 0 && (
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="mb-4">
-              <h2 className="text-2xl font-bold text-gray-900">{symbol}</h2>
-              <p className="text-sm text-gray-600">
+          <div className="bg-white rounded-lg shadow-md p-3 sm:p-4 md:p-6">
+            <div className="mb-3 md:mb-4">
+              <h2 className="text-xl md:text-2xl font-bold text-gray-900">{symbol}</h2>
+              <p className="text-xs sm:text-sm text-gray-600">
                 Interval: <span className="font-semibold">{interval}</span>
-                <span className="ml-4">{chartData.length} candles</span>
+                <span className="ml-2 sm:ml-4">{chartData.length} candles</span>
               </p>
             </div>
             <AdvancedTradingChart
@@ -348,7 +369,7 @@ export default function ChartPage() {
               symbol={symbol}
               interval={interval}
               indicators={indicators}
-              height={600}
+              height={chartHeight}
             />
           </div>
         )}

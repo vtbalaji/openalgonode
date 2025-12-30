@@ -65,6 +65,8 @@ export function AdvancedTradingChart({
   const mainChartInstanceRef = useRef<IChartApi | null>(null);
   const rsiChartInstanceRef = useRef<IChartApi | null>(null);
 
+  const [isMobile, setIsMobile] = useState(false);
+
   const candlestickSeriesRef = useRef<any>(null);
   const volumeSeriesRef = useRef<any>(null);
   const smaSeriesRef = useRef<any>(null);
@@ -79,27 +81,68 @@ export function AdvancedTradingChart({
   const [visibleRange, setVisibleRange] = useState<any>(null);
   const visibleRangeRef = useRef<any>(null);
 
+  // Detect mobile screen
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 640);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
   // Initialize charts
   useEffect(() => {
     if (!mainChartRef.current) return;
 
+    const rsiHeight = isMobile ? 100 : 120;
     const mainChart = createChart(mainChartRef.current, {
       width: mainChartRef.current.clientWidth,
-      height: indicators.rsi ? height - 150 : height,
+      height: indicators.rsi ? height - rsiHeight - 30 : height,
       layout: {
         background: { color: '#ffffff' },
         textColor: '#333',
+        fontSize: isMobile ? 10 : 12,
       },
       grid: {
         vertLines: { color: '#f0f0f0' },
         horzLines: { color: '#f0f0f0' },
       },
-      crosshair: { mode: 1 },
-      rightPriceScale: { borderColor: '#d1d4dc' },
+      crosshair: {
+        mode: 1,
+        vertLine: {
+          width: isMobile ? 1 : 1,
+          labelBackgroundColor: isMobile ? '#9B7DFF' : '#2196F3',
+        },
+        horzLine: {
+          width: isMobile ? 1 : 1,
+          labelBackgroundColor: isMobile ? '#9B7DFF' : '#2196F3',
+        },
+      },
+      rightPriceScale: {
+        borderColor: '#d1d4dc',
+        scaleMargins: {
+          top: 0.1,
+          bottom: 0.2,
+        },
+      },
       timeScale: {
         borderColor: '#d1d4dc',
         timeVisible: true,
         secondsVisible: false,
+        barSpacing: isMobile ? 6 : 8,
+        minBarSpacing: isMobile ? 3 : 4,
+      },
+      handleScroll: {
+        mouseWheel: true,
+        pressedMouseMove: true,
+        horzTouchDrag: true,
+        vertTouchDrag: true,
+      },
+      handleScale: {
+        axisPressedMouseMove: true,
+        mouseWheel: true,
+        pinch: true,
       },
     });
 
@@ -131,10 +174,11 @@ export function AdvancedTradingChart({
     if (indicators.rsi && rsiChartRef.current) {
       const rsiChart = createChart(rsiChartRef.current, {
         width: rsiChartRef.current.clientWidth,
-        height: 120,
+        height: rsiHeight,
         layout: {
           background: { color: '#ffffff' },
           textColor: '#333',
+          fontSize: isMobile ? 10 : 12,
         },
         grid: {
           vertLines: { color: '#f0f0f0' },
@@ -147,6 +191,19 @@ export function AdvancedTradingChart({
         timeScale: {
           borderColor: '#d1d4dc',
           visible: false,
+          barSpacing: isMobile ? 6 : 8,
+          minBarSpacing: isMobile ? 3 : 4,
+        },
+        handleScroll: {
+          mouseWheel: true,
+          pressedMouseMove: true,
+          horzTouchDrag: true,
+          vertTouchDrag: true,
+        },
+        handleScale: {
+          axisPressedMouseMove: true,
+          mouseWheel: true,
+          pinch: true,
         },
       });
 
@@ -487,8 +544,8 @@ export function AdvancedTradingChart({
           <div
             className="absolute top-0 right-0 pointer-events-none z-50"
             style={{
-              width: '200px',
-              height: indicators.rsi ? height - 150 : height,
+              width: isMobile ? '100px' : '200px',
+              height: indicators.rsi ? height - (isMobile ? 100 : 120) - 30 : height,
             }}
           >
             {(() => {
@@ -497,7 +554,7 @@ export function AdvancedTradingChart({
               const minPrice = Math.min(...prices);
               const maxPrice = Math.max(...prices);
               const priceRange = maxPrice - minPrice;
-              const chartHeight = indicators.rsi ? height - 150 : height;
+              const chartHeight = indicators.rsi ? height - (isMobile ? 100 : 120) - 30 : height;
               const maxVolume = Math.max(...volumeProfileData.profile.map((r: any) => r.volume));
 
               // Find top 5 bars by volume for debugging
@@ -522,8 +579,9 @@ export function AdvancedTradingChart({
                   const pricePercent = (maxPrice - row.price) / priceRange;
                   const yCoord = pricePercent * chartHeight;
 
-                  // Calculate bar width
-                  const barWidth = Math.max(3, (row.volume / maxVolume) * 120);
+                  // Calculate bar width (responsive for mobile)
+                  const maxBarWidth = isMobile ? 60 : 120;
+                  const barWidth = Math.max(2, (row.volume / maxVolume) * maxBarWidth);
 
                   // Check if this is in the value area
                   const isInValueArea = row.price >= volumeProfileData.valueAreaLow &&
@@ -538,9 +596,9 @@ export function AdvancedTradingChart({
                       className="absolute"
                       style={{
                         top: yCoord + 'px',
-                        right: '70px',
+                        right: isMobile ? '35px' : '70px',
                         width: barWidth + 'px',
-                        height: '2px',
+                        height: isMobile ? '1.5px' : '2px',
                         backgroundColor: isPOC
                           ? '#FF0000'
                           : isInValueArea

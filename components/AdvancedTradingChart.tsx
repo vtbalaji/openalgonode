@@ -137,7 +137,7 @@ export function AdvancedTradingChart({
         mouseWheel: true,
         pressedMouseMove: true,
         horzTouchDrag: true,
-        vertTouchDrag: true,
+        vertTouchDrag: false, // Disable vertical drag to keep price/volume in sync
       },
       handleScale: {
         axisPressedMouseMove: true,
@@ -198,7 +198,7 @@ export function AdvancedTradingChart({
           mouseWheel: true,
           pressedMouseMove: true,
           horzTouchDrag: true,
-          vertTouchDrag: true,
+          vertTouchDrag: false, // Disable vertical drag to keep in sync with main chart
         },
         handleScale: {
           axisPressedMouseMove: true,

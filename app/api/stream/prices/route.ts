@@ -159,7 +159,7 @@ export async function GET(request: NextRequest) {
         const tickerService = getTickerService();
 
         // Get API key - default to Zerodha standard key
-        const apiKey = configData.api_key || 'kite3';
+        const apiKey = configData.apiKey || 'kite3';
 
         // Initialize ticker if not already initialized
         if (!tickerService.getConnectionStatus()) {

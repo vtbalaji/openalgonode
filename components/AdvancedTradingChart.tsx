@@ -222,14 +222,14 @@ export function AdvancedTradingChart({
         lineWidth: 1,
         lineStyle: 2,
       });
-      upperBand.setData(data.map(d => ({ time: d.time, value: 70 })));
+      upperBand.setData(data.map(d => ({ time: d.time as any, value: 70 })));
 
       const lowerBand = rsiChart.addLineSeries({
         color: '#26a69a',
         lineWidth: 1,
         lineStyle: 2,
       });
-      lowerBand.setData(data.map(d => ({ time: d.time, value: 30 })));
+      lowerBand.setData(data.map(d => ({ time: d.time as any, value: 30 })));
 
       // Sync time scales
       mainChart.timeScale().subscribeVisibleTimeRangeChange((timeRange) => {
@@ -328,7 +328,7 @@ export function AdvancedTradingChart({
       });
 
       const smaData = smaValues.map((value, index) => ({
-        time: data[index + indicators.smaPeriod - 1].time,
+        time: data[index + indicators.smaPeriod - 1].time as any,
         value: value,
       }));
 
@@ -363,7 +363,7 @@ export function AdvancedTradingChart({
       });
 
       const emaData = emaValues.map((value, index) => ({
-        time: data[index + indicators.emaPeriod - 1].time,
+        time: data[index + indicators.emaPeriod - 1].time as any,
         value: value,
       }));
 
@@ -383,7 +383,7 @@ export function AdvancedTradingChart({
     if (indicators.rsi && data.length >= indicators.rsiPeriod && rsiSeriesRef.current) {
       const rsiValues = RSI.calculate({ period: indicators.rsiPeriod, values: closePrices });
       const rsiData = rsiValues.map((value, index) => ({
-        time: data[index + indicators.rsiPeriod].time,
+        time: data[index + indicators.rsiPeriod].time as any,
         value: value,
       }));
 
@@ -475,7 +475,7 @@ export function AdvancedTradingChart({
         lineStyle: 0, // Solid line
         title: 'POC',
       });
-      pocLine.setData(data.map(d => ({ time: d.time, value: volumeProfileResult.poc })));
+      pocLine.setData(data.map(d => ({ time: d.time as any, value: volumeProfileResult.poc })));
       pocLineRef.current = pocLine;
 
       // Add Value Area High line
@@ -485,7 +485,7 @@ export function AdvancedTradingChart({
         lineStyle: 2, // Dashed line
         title: 'VA High',
       });
-      vaHighLine.setData(data.map(d => ({ time: d.time, value: volumeProfileResult.valueAreaHigh })));
+      vaHighLine.setData(data.map(d => ({ time: d.time as any, value: volumeProfileResult.valueAreaHigh })));
       valueAreaHighLineRef.current = vaHighLine;
 
       // Add Value Area Low line
@@ -495,7 +495,7 @@ export function AdvancedTradingChart({
         lineStyle: 2, // Dashed line
         title: 'VA Low',
       });
-      vaLowLine.setData(data.map(d => ({ time: d.time, value: volumeProfileResult.valueAreaLow })));
+      vaLowLine.setData(data.map(d => ({ time: d.time as any, value: volumeProfileResult.valueAreaLow })));
       valueAreaLowLineRef.current = vaLowLine;
 
     } else if (!indicators.volumeProfile) {

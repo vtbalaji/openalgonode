@@ -37,9 +37,9 @@ export function TradingChart({
 }: TradingChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
-  const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
-  const smaSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const candlestickSeriesRef = useRef<any>(null);
+  const volumeSeriesRef = useRef<any>(null);
+  const smaSeriesRef = useRef<any>(null);
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -142,7 +142,12 @@ export function TradingChart({
 
       // Remove old SMA series if exists
       if (smaSeriesRef.current && chartRef.current) {
-        chartRef.current.removeSeries(smaSeriesRef.current);
+        try {
+          chartRef.current.removeSeries(smaSeriesRef.current);
+          smaSeriesRef.current = null;
+        } catch (e) {
+          console.warn('Error removing SMA series:', e);
+        }
       }
 
       // Add new SMA series
@@ -154,7 +159,7 @@ export function TradingChart({
         });
 
         const smaData = smaValues.map((value, index) => ({
-          time: data[index + smaPeriod - 1].time,
+          time: data[index + smaPeriod - 1].time as any,
           value: value,
         }));
 

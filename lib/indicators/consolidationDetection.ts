@@ -29,6 +29,7 @@ export interface BreakoutSignal {
 
 /**
  * Detect consolidation boxes in price data
+ * PRIORITY: Most recent boxes first (right side of chart)
  * A box requires:
  * - At least 10 candles duration
  * - At least 2 touches on support and resistance
@@ -38,16 +39,18 @@ export function detectConsolidationBoxes(
   data: ChartData[],
   minDuration: number = 10,
   maxDuration: number = 50,
-  tolerancePercent: number = 0.3
+  tolerancePercent: number = 0.5
 ): ConsolidationBox[] {
   const boxes: ConsolidationBox[] = [];
 
   if (data.length < minDuration) return boxes;
 
-  // Sliding window approach
-  for (let i = 0; i < data.length - minDuration; i++) {
-    for (let duration = minDuration; duration <= maxDuration && i + duration < data.length; duration++) {
-      const window = data.slice(i, i + duration);
+  // CHANGED: Search backwards from most recent data to prioritize current boxes
+  // Start from the end of the data array
+  for (let endIdx = data.length; endIdx >= minDuration; endIdx--) {
+    for (let duration = minDuration; duration <= maxDuration && endIdx - duration >= 0; duration++) {
+      const startIdx = endIdx - duration;
+      const window = data.slice(startIdx, endIdx);
 
       // Find potential support and resistance
       const high = Math.max(...window.map(d => d.high));
@@ -71,33 +74,52 @@ export function detectConsolidationBoxes(
         }
       }
 
-      // Valid box: at least 2 touches on each level
-      if (supportTouches >= 2 && resistanceTouches >= 2) {
+      // Valid box: at least 2 touches on each level (relaxed for recent boxes)
+      const totalTouches = supportTouches + resistanceTouches;
+      const isRecent = endIdx >= data.length - 10; // Last 10 candles
+
+      // Relaxed criteria for recent boxes to catch forming consolidations
+      const meetsMinTouches = isRecent
+        ? (supportTouches >= 1 && resistanceTouches >= 1 && totalTouches >= 3)
+        : (supportTouches >= 2 && resistanceTouches >= 2);
+
+      if (meetsMinTouches) {
         // Check if this box overlaps with existing boxes
-        const overlaps = boxes.some(box =>
-          (i >= box.startIndex && i <= box.endIndex) ||
-          (i + duration >= box.startIndex && i + duration <= box.endIndex)
-        );
+        const overlaps = boxes.some(box => {
+          // Allow overlaps if this box is more recent
+          if (endIdx > box.endIndex) return false;
+
+          return (
+            (startIdx >= box.startIndex && startIdx <= box.endIndex) ||
+            (endIdx >= box.startIndex && endIdx <= box.endIndex)
+          );
+        });
 
         if (!overlaps) {
           boxes.push({
-            startIndex: i,
-            endIndex: i + duration,
+            startIndex: startIdx,
+            endIndex: endIdx,
             startTime: window[0].time,
             endTime: window[window.length - 1].time,
             support: low,
             resistance: high,
             height: range,
-            touchCount: supportTouches + resistanceTouches,
-            isActive: i + duration >= data.length - 3, // Active if within last 3 candles
+            touchCount: totalTouches,
+            isActive: endIdx >= data.length - 3, // Active if within last 3 candles
           });
+
+          // Stop searching this endIdx once we found a valid box
+          break;
         }
       }
     }
+
+    // Stop after finding 5 boxes to avoid processing too much data
+    if (boxes.length >= 5) break;
   }
 
-  // Return only the most recent/active boxes (last 3)
-  return boxes.slice(-3);
+  // Return boxes sorted by recency (most recent first)
+  return boxes.sort((a, b) => b.endIndex - a.endIndex).slice(0, 3);
 }
 
 /**

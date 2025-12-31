@@ -1010,6 +1010,155 @@ export function AdvancedTradingChart({
           </div>
         )}
 
+        {/* SMC Visual Overlays */}
+        {(() => {
+          if (!mainChartInstanceRef.current || data.length === 0) return null;
+
+          // Get chart dimensions and price range
+          const chartHeight = indicators.rsi ? height - (isMobile ? 100 : 120) - 30 : height;
+          const priceHigh = Math.max(...data.map(d => d.high));
+          const priceLow = Math.min(...data.map(d => d.low));
+          const priceRange = priceHigh - priceLow;
+
+          // Helper: Convert price to Y coordinate
+          const priceToY = (price: number) => {
+            const percent = (priceHigh - price) / priceRange;
+            return percent * chartHeight * 0.8; // 0.8 to account for margins
+          };
+
+          return (
+            <>
+              {/* Premium/Discount Zones */}
+              {indicators.showPremiumDiscount && smcPD && (
+                <>
+                  {/* Premium Zone (above 50%) */}
+                  <div
+                    className="absolute pointer-events-none z-10"
+                    style={{
+                      left: '70px',
+                      right: '70px',
+                      top: priceToY(smcPD.high) + 'px',
+                      height: (priceToY(smcPD.equilibrium) - priceToY(smcPD.high)) + 'px',
+                      backgroundColor: 'rgba(239, 68, 68, 0.1)', // Red tint for premium
+                      borderTop: '1px dashed rgba(239, 68, 68, 0.5)',
+                    }}
+                  >
+                    <span className="text-xs text-red-600 font-bold ml-2">PREMIUM</span>
+                  </div>
+
+                  {/* Equilibrium Line (50%) */}
+                  <div
+                    className="absolute pointer-events-none z-10"
+                    style={{
+                      left: '70px',
+                      right: '70px',
+                      top: priceToY(smcPD.equilibrium) + 'px',
+                      height: '2px',
+                      backgroundColor: 'rgba(16, 185, 129, 0.8)', // Green for equilibrium
+                    }}
+                  >
+                    <span className="text-xs text-green-600 font-bold ml-2 bg-white px-1">EQ: {smcPD.equilibrium.toFixed(2)}</span>
+                  </div>
+
+                  {/* Discount Zone (below 50%) */}
+                  <div
+                    className="absolute pointer-events-none z-10"
+                    style={{
+                      left: '70px',
+                      right: '70px',
+                      top: priceToY(smcPD.equilibrium) + 'px',
+                      height: (priceToY(smcPD.low) - priceToY(smcPD.equilibrium)) + 'px',
+                      backgroundColor: 'rgba(34, 197, 94, 0.1)', // Green tint for discount
+                      borderBottom: '1px dashed rgba(34, 197, 94, 0.5)',
+                    }}
+                  >
+                    <span className="text-xs text-green-600 font-bold ml-2">DISCOUNT</span>
+                  </div>
+                </>
+              )}
+
+              {/* Support/Resistance Levels */}
+              {indicators.showSupportResistance && smcSR.map((level, idx) => (
+                <div
+                  key={`sr-${idx}`}
+                  className="absolute pointer-events-none z-20"
+                  style={{
+                    left: '70px',
+                    right: '70px',
+                    top: priceToY(level.price) + 'px',
+                    height: '2px',
+                    backgroundColor: level.type === 'support'
+                      ? 'rgba(139, 92, 246, 0.7)' // Purple for support
+                      : 'rgba(249, 115, 22, 0.7)', // Orange for resistance
+                  }}
+                >
+                  <span className={`text-xs font-bold ml-2 px-1 ${
+                    level.type === 'support' ? 'text-purple-600 bg-purple-50' : 'text-orange-600 bg-orange-50'
+                  }`}>
+                    {level.type === 'support' ? 'S' : 'R'}: {level.price.toFixed(2)} ({level.strength}x)
+                  </span>
+                </div>
+              ))}
+
+              {/* Order Blocks */}
+              {indicators.showOrderBlocks && smcOrderBlocks.map((ob, idx) => {
+                const obTop = priceToY(ob.high);
+                const obBottom = priceToY(ob.low);
+                const obHeight = obBottom - obTop;
+
+                return (
+                  <div
+                    key={`ob-${idx}`}
+                    className="absolute pointer-events-none z-15"
+                    style={{
+                      left: '70px',
+                      width: '60px', // Fixed width for order block
+                      top: obTop + 'px',
+                      height: obHeight + 'px',
+                      backgroundColor: ob.type === 'bullish'
+                        ? 'rgba(34, 197, 94, 0.2)' // Green for bullish OB
+                        : 'rgba(239, 68, 68, 0.2)', // Red for bearish OB
+                      border: `2px solid ${ob.type === 'bullish' ? 'rgba(34, 197, 94, 0.6)' : 'rgba(239, 68, 68, 0.6)'}`,
+                    }}
+                  >
+                    <span className={`text-xs font-bold ${ob.type === 'bullish' ? 'text-green-700' : 'text-red-700'}`}>
+                      OB
+                    </span>
+                  </div>
+                );
+              })}
+
+              {/* Fair Value Gaps */}
+              {indicators.showFVG && smcFVG.map((fvg, idx) => {
+                const fvgTop = priceToY(fvg.top);
+                const fvgBottom = priceToY(fvg.bottom);
+                const fvgHeight = fvgBottom - fvgTop;
+
+                return (
+                  <div
+                    key={`fvg-${idx}`}
+                    className="absolute pointer-events-none z-15"
+                    style={{
+                      left: '70px',
+                      right: '70px',
+                      top: fvgTop + 'px',
+                      height: fvgHeight + 'px',
+                      backgroundColor: fvg.type === 'bullish'
+                        ? 'rgba(59, 130, 246, 0.15)' // Blue for bullish FVG
+                        : 'rgba(249, 115, 22, 0.15)', // Orange for bearish FVG
+                      border: `1px dashed ${fvg.type === 'bullish' ? 'rgba(59, 130, 246, 0.5)' : 'rgba(249, 115, 22, 0.5)'}`,
+                    }}
+                  >
+                    <span className={`text-xs font-bold ml-2 ${fvg.type === 'bullish' ? 'text-blue-600' : 'text-orange-600'}`}>
+                      FVG
+                    </span>
+                  </div>
+                );
+              })}
+            </>
+          );
+        })()}
+
         {/* SMC Info Badge */}
         {(indicators.showFVG || indicators.showOrderBlocks || indicators.showSupportResistance || indicators.showPremiumDiscount) && (
           <div

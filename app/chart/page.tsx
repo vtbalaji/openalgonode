@@ -97,7 +97,7 @@ export default function ChartPage() {
     try {
       const today = new Date();
       const from = new Date(today);
-      from.setDate(today.getDate() - 30); // Last 30 days
+      from.setDate(today.getDate() - 50); // Last 50 days
 
       const params = new URLSearchParams({
         symbol,

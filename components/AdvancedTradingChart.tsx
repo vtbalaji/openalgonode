@@ -742,8 +742,8 @@ export function AdvancedTradingChart({
         // Add Value Area High line
         valueAreaHighLineRef.current = candlestickSeriesRef.current.createPriceLine({
           price: volumeProfileResult.valueAreaHigh,
-          color: '#4ECDC4',
-          lineWidth: 1,
+          color: '#00BCD4', // Brighter cyan
+          lineWidth: 2, // Thicker line
           lineStyle: 2, // Dashed
           axisLabelVisible: false, // Hide from price scale
           title: '', // No title on scale
@@ -752,8 +752,8 @@ export function AdvancedTradingChart({
         // Add Value Area Low line
         valueAreaLowLineRef.current = candlestickSeriesRef.current.createPriceLine({
           price: volumeProfileResult.valueAreaLow,
-          color: '#4ECDC4',
-          lineWidth: 1,
+          color: '#00BCD4', // Brighter cyan
+          lineWidth: 2, // Thicker line
           lineStyle: 2, // Dashed
           axisLabelVisible: false, // Hide from price scale
           title: '', // No title on scale

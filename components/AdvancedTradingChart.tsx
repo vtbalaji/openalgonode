@@ -91,7 +91,6 @@ export function AdvancedTradingChart({
   const [volumeProfileData, setVolumeProfileData] = useState<any>(null);
   const [visibleRange, setVisibleRange] = useState<any>(null);
   const visibleRangeRef = useRef<any>(null);
-  const [vpLevels, setVpLevels] = useState<{ poc: number; vaHigh: number; vaLow: number } | null>(null);
 
   // Detect mobile screen
   useEffect(() => {
@@ -431,7 +430,7 @@ export function AdvancedTradingChart({
         fastEmaValues = EMA.calculate({ period: indicators.fastEma, values: closePrices });
         const fastEmaSeries = mainChartInstanceRef.current.addLineSeries({
           color: '#00BCD4',
-          lineWidth: 2,
+          lineWidth: 1,
           title: `Fast EMA(${indicators.fastEma})`,
         });
 
@@ -459,7 +458,7 @@ export function AdvancedTradingChart({
         slowEmaValues = EMA.calculate({ period: indicators.slowEma, values: closePrices });
         const slowEmaSeries = mainChartInstanceRef.current.addLineSeries({
           color: '#E91E63',
-          lineWidth: 2,
+          lineWidth: 1,
           title: `Slow EMA(${indicators.slowEma})`,
         });
 
@@ -729,14 +728,13 @@ export function AdvancedTradingChart({
         }
 
         // Add POC (Point of Control) line - highest volume price
-        // axisLabelVisible: false hides labels from price scales (reduces right side clutter)
         pocLineRef.current = candlestickSeriesRef.current.createPriceLine({
           price: volumeProfileResult.poc,
           color: '#FF6B6B',
           lineWidth: 2,
           lineStyle: 0, // Solid
-          axisLabelVisible: false, // Hide from price scale
-          title: '', // No title on scale
+          axisLabelVisible: true, // Show on price scale
+          title: 'POC',
         });
 
         // Add Value Area High line
@@ -745,8 +743,8 @@ export function AdvancedTradingChart({
           color: '#00BCD4', // Brighter cyan
           lineWidth: 2, // Thicker line
           lineStyle: 2, // Dashed
-          axisLabelVisible: false, // Hide from price scale
-          title: '', // No title on scale
+          axisLabelVisible: true, // Show on price scale
+          title: 'VA High',
         });
 
         // Add Value Area Low line
@@ -755,22 +753,14 @@ export function AdvancedTradingChart({
           color: '#00BCD4', // Brighter cyan
           lineWidth: 2, // Thicker line
           lineStyle: 2, // Dashed
-          axisLabelVisible: false, // Hide from price scale
-          title: '', // No title on scale
-        });
-
-        // Store levels for center labels
-        setVpLevels({
-          poc: volumeProfileResult.poc,
-          vaHigh: volumeProfileResult.valueAreaHigh,
-          vaLow: volumeProfileResult.valueAreaLow,
+          axisLabelVisible: true, // Show on price scale
+          title: 'VA Low',
         });
       }
 
     } else if (!indicators.volumeProfile) {
       // Remove all volume profile lines when disabled
       setVolumeProfileData(null);
-      setVpLevels(null);
 
       if (pocLineRef.current && candlestickSeriesRef.current) {
         try {
@@ -883,71 +873,6 @@ export function AdvancedTradingChart({
                   return null;
                 }
               });
-            })()}
-          </div>
-        )}
-
-        {/* Volume Profile Price Level Labels - Center of chart */}
-        {indicators.volumeProfile && vpLevels && volumeProfileData && (
-          <div
-            className="absolute top-0 left-0 w-full pointer-events-none z-[60]"
-            style={{
-              height: indicators.rsi ? height - (isMobile ? 100 : 120) - 30 : height,
-            }}
-          >
-            {(() => {
-              // Use the actual chart data's price range for accurate positioning
-              const dataHighs = data.map(d => d.high);
-              const dataLows = data.map(d => d.low);
-              const maxPrice = Math.max(...dataHighs);
-              const minPrice = Math.min(...dataLows);
-              const priceRange = maxPrice - minPrice;
-
-              // Chart has margins (10% top, 20% bottom based on scaleMargins)
-              const chartHeight = indicators.rsi ? height - (isMobile ? 100 : 120) - 30 : height;
-              const topMargin = 0.1;
-              const bottomMargin = 0.2;
-              const effectiveHeight = chartHeight * (1 - topMargin - bottomMargin);
-              const topOffset = chartHeight * topMargin;
-
-              // Calculate Y positions accounting for margins
-              const pocY = topOffset + ((maxPrice - vpLevels.poc) / priceRange) * effectiveHeight;
-              const vaHighY = topOffset + ((maxPrice - vpLevels.vaHigh) / priceRange) * effectiveHeight;
-              const vaLowY = topOffset + ((maxPrice - vpLevels.vaLow) / priceRange) * effectiveHeight;
-
-              return (
-                <>
-                  {/* POC Label */}
-                  <div
-                    className="absolute left-1/2 transform -translate-x-1/2 -translate-y-1/2"
-                    style={{ top: pocY + 'px' }}
-                  >
-                    <span className="px-2 py-0.5 bg-red-500 text-white text-xs font-bold rounded shadow-lg">
-                      POC {vpLevels.poc.toFixed(2)}
-                    </span>
-                  </div>
-
-                  {/* VA High Label */}
-                  <div
-                    className="absolute left-1/2 transform -translate-x-1/2 -translate-y-1/2"
-                    style={{ top: vaHighY + 'px' }}
-                  >
-                    <span className="px-2 py-0.5 bg-cyan-500 text-white text-xs font-semibold rounded shadow-md">
-                      VA High {vpLevels.vaHigh.toFixed(2)}
-                    </span>
-                  </div>
-
-                  {/* VA Low Label */}
-                  <div
-                    className="absolute left-1/2 transform -translate-x-1/2 -translate-y-1/2"
-                    style={{ top: vaLowY + 'px' }}
-                  >
-                    <span className="px-2 py-0.5 bg-cyan-500 text-white text-xs font-semibold rounded shadow-md">
-                      VA Low {vpLevels.vaLow.toFixed(2)}
-                    </span>
-                  </div>
-                </>
-              );
             })()}
           </div>
         )}

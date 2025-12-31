@@ -178,6 +178,14 @@ export function detectBreakouts(
 
         const targetPrice = candle.close + box.height;
 
+        console.log(`🟢 BUY SIGNAL DETECTED!
+Entry Price: ${candle.close.toFixed(2)} (candle closed above resistance ${box.resistance.toFixed(2)})
+Box Height: ${box.height.toFixed(2)}
+Target Price: ${targetPrice.toFixed(2)} (Entry ${candle.close.toFixed(2)} + Height ${box.height.toFixed(2)})
+Volume Confirmed: ${volumeConfirmed ? '✓ YES' : '✗ NO'}
+Signal Strength: ${strength}/10
+Stop Loss: ${(box.resistance - 1.5).toFixed(2)} (below broken resistance)`);
+
         signals.push({
           time: candle.time,
           type: 'bullish',
@@ -204,6 +212,14 @@ export function detectBreakouts(
         if (closeNearLow) strength += 1;
 
         const targetPrice = candle.close - box.height;
+
+        console.log(`🔴 SELL SIGNAL DETECTED!
+Entry Price: ${candle.close.toFixed(2)} (candle closed below support ${box.support.toFixed(2)})
+Box Height: ${box.height.toFixed(2)}
+Target Price: ${targetPrice.toFixed(2)} (Entry ${candle.close.toFixed(2)} - Height ${box.height.toFixed(2)})
+Volume Confirmed: ${volumeConfirmed ? '✓ YES' : '✗ NO'}
+Signal Strength: ${strength}/10
+Stop Loss: ${(box.support + 1.5).toFixed(2)} (above broken support)`);
 
         signals.push({
           time: candle.time,

@@ -938,15 +938,15 @@ export function AdvancedTradingChart({
       console.log(`[CONSOLIDATION] Detected ${boxes.length} boxes (${boxes.filter(b => b.isActive).length} active)`);
       console.log(`[BREAKOUT] Detected ${breakouts.length} breakout signals (${breakouts.filter(s => s.volumeConfirmed).length} volume-confirmed)`);
 
-      // Add breakout markers to chart
+      // Add breakout markers to chart with ENTRY PRICE
       if (breakouts.length > 0 && candlestickSeriesRef.current) {
         const breakoutMarkers = breakouts.map(signal => ({
           time: signal.time as any,
           position: signal.type === 'bullish' ? 'belowBar' : 'aboveBar',
           color: signal.type === 'bullish' ? '#00C853' : '#FF3D00',
           shape: signal.type === 'bullish' ? 'arrowUp' : 'arrowDown',
-          text: `${signal.type === 'bullish' ? 'BO↑' : 'BD↓'}${signal.volumeConfirmed ? '✓' : ''}`,
-          size: 2,
+          text: `${signal.type === 'bullish' ? 'BUY' : 'SELL'}@${signal.breakoutPrice.toFixed(2)}${signal.volumeConfirmed ? '✓' : ''}`,
+          size: 3, // Larger size for visibility
         }));
 
         candlestickSeriesRef.current.setMarkers(breakoutMarkers);

@@ -48,6 +48,12 @@ export default function ChartPage() {
     showSignals: true, // ✅ Main feature: Buy/Sell signals
     fastEma: 9, // ✅ Fast EMA (9) for day trading
     slowEma: 21, // ✅ Slow EMA (21) for day trading
+    // Filters for automated trading
+    adx: true, // ✅ ADX trend filter - avoid ranging markets
+    adxPeriod: 14,
+    adxThreshold: 25, // Only trade when ADX > 25 (strong trend)
+    useVolumeFilter: true, // ✅ Require above-average volume
+    useTimeFilter: true, // ✅ Only trade 9:30 AM - 3:00 PM IST
   });
 
   // Real-time price updates

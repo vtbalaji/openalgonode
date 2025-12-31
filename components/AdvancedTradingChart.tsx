@@ -18,7 +18,7 @@ import {
   LineData,
   HistogramData
 } from 'lightweight-charts';
-import { SMA, EMA, RSI, ATR } from 'technicalindicators';
+import { SMA, EMA, RSI, ATR, ADX } from 'technicalindicators';
 import { calculateVolumeProfile } from '@/lib/indicators/volumeProfile';
 
 export interface ChartData {
@@ -44,6 +44,12 @@ export interface IndicatorConfig {
   showSignals: boolean;
   fastEma: number;
   slowEma: number;
+  // Filters for automated trading
+  adx: boolean;
+  adxPeriod: number;
+  adxThreshold: number;
+  useVolumeFilter: boolean;
+  useTimeFilter: boolean;
 }
 
 export interface AdvancedTradingChartProps {
@@ -503,15 +509,40 @@ export function AdvancedTradingChart({
         slowEmaSeriesRef.current = slowEmaSeries;
       }
 
-      // Detect Buy/Sell signals based on EMA crossover
+      // Detect Buy/Sell signals based on EMA crossover with filters
       if (fastEmaValues.length > 0 && slowEmaValues.length > 0) {
         const buySignals: any[] = [];
         const sellSignals: any[] = [];
+
+        // Calculate ADX for trend filter
+        let adxValues: number[] = [];
+        if (indicators.adx && data.length >= indicators.adxPeriod) {
+          const highPrices = data.map(d => d.high);
+          const lowPrices = data.map(d => d.low);
+          const adxResults = ADX.calculate({
+            high: highPrices,
+            low: lowPrices,
+            close: closePrices,
+            period: indicators.adxPeriod,
+          });
+          // Extract just the ADX value from each result
+          adxValues = adxResults.map(result => result.adx);
+          console.log(`[ADX] Calculated ${adxValues.length} values, last ADX: ${adxValues[adxValues.length - 1]?.toFixed(2)}`);
+        }
+
+        // Calculate average volume for volume filter
+        let avgVolume = 0;
+        if (indicators.useVolumeFilter) {
+          const totalVolume = data.reduce((sum, d) => sum + d.volume, 0);
+          avgVolume = totalVolume / data.length;
+          console.log(`[VOLUME FILTER] Average volume: ${avgVolume.toFixed(0)}`);
+        }
 
         // Calculate offset between fast and slow EMA arrays
         const fastOffset = indicators.fastEma - 1;
         const slowOffset = indicators.slowEma - 1;
         const arrayOffset = slowOffset - fastOffset; // How many indices ahead fastEma is
+        const adxOffset = indicators.adx ? indicators.adxPeriod : 0; // ADX calculation offset
 
         // Iterate through slowEmaValues (shorter array) starting from index 1
         for (let i = 1; i < slowEmaValues.length; i++) {
@@ -528,11 +559,50 @@ export function AdvancedTradingChart({
 
           // Calculate the actual data index for this signal
           const dataIndex = i + slowOffset;
+          if (dataIndex >= data.length) continue;
+
+          const candle = data[dataIndex];
+
+          // === FILTER CHECKS ===
+
+          // 1. ADX Filter: Only trade in strong trends (ADX > threshold)
+          if (indicators.adx && adxValues.length > 0) {
+            const adxIndex = dataIndex - adxOffset;
+            if (adxIndex < 0 || adxIndex >= adxValues.length) continue;
+            const currentADX = adxValues[adxIndex];
+            if (currentADX < indicators.adxThreshold) {
+              continue; // Skip signal - weak trend
+            }
+          }
+
+          // 2. Volume Filter: Only trade with above-average volume
+          if (indicators.useVolumeFilter) {
+            if (candle.volume < avgVolume) {
+              continue; // Skip signal - low volume
+            }
+          }
+
+          // 3. Time Filter: Only trade during market hours (9:30 AM - 3:00 PM IST)
+          if (indicators.useTimeFilter) {
+            const candleTime = new Date(candle.time * 1000);
+            const istTime = new Date(candleTime.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+            const hour = istTime.getHours();
+            const minute = istTime.getMinutes();
+            const timeInMinutes = hour * 60 + minute;
+            const marketStart = 9 * 60 + 30; // 9:30 AM
+            const marketEnd = 15 * 60; // 3:00 PM
+
+            if (timeInMinutes < marketStart || timeInMinutes > marketEnd) {
+              continue; // Skip signal - outside trading hours
+            }
+          }
+
+          // === ALL FILTERS PASSED - ADD SIGNAL ===
 
           // Buy signal: Fast crosses above Slow (bullish)
           if (prevFast < prevSlow && currFast > currSlow) {
             buySignals.push({
-              time: data[dataIndex].time as any,
+              time: candle.time as any,
               position: 'belowBar',
               color: '#00C853', // Bright green
               shape: 'arrowUp', // Triangle pointing up
@@ -544,7 +614,7 @@ export function AdvancedTradingChart({
           // Sell signal: Fast crosses below Slow (bearish)
           if (prevFast > prevSlow && currFast < currSlow) {
             sellSignals.push({
-              time: data[dataIndex].time as any,
+              time: candle.time as any,
               position: 'aboveBar',
               color: '#D32F2F', // Bright red
               shape: 'arrowDown', // Triangle pointing down
@@ -561,9 +631,23 @@ export function AdvancedTradingChart({
           candlestickSeriesRef.current.setMarkers(allSignals);
         }
 
-        console.log(`[SIGNALS] Detected ${buySignals.length} buy signals and ${sellSignals.length} sell signals`);
-        console.log('Buy signals at:', buySignals.map(s => new Date(s.time * 1000).toLocaleString()));
-        console.log('Sell signals at:', sellSignals.map(s => new Date(s.time * 1000).toLocaleString()));
+        const filtersActive = indicators.adx || indicators.useVolumeFilter || indicators.useTimeFilter;
+        const filterNames = [
+          indicators.adx ? `ADX>${indicators.adxThreshold}` : '',
+          indicators.useVolumeFilter ? 'Volume' : '',
+          indicators.useTimeFilter ? 'Time(9:30-15:00)' : '',
+        ].filter(f => f).join(' + ');
+
+        console.log(`[SIGNALS] ${filtersActive ? 'FILTERED' : 'UNFILTERED'} - Detected ${buySignals.length} BUY and ${sellSignals.length} SELL signals`);
+        if (filtersActive) {
+          console.log(`[FILTERS ACTIVE] ${filterNames}`);
+        }
+        if (buySignals.length > 0) {
+          console.log('[BUY SIGNALS]', buySignals.map(s => new Date(s.time * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })));
+        }
+        if (sellSignals.length > 0) {
+          console.log('[SELL SIGNALS]', sellSignals.map(s => new Date(s.time * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })));
+        }
       }
     } else {
       // Remove signal-related series and clear markers when disabled

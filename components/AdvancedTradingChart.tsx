@@ -896,16 +896,24 @@ export function AdvancedTradingChart({
             }}
           >
             {(() => {
-              const prices = volumeProfileData.profile.map((r: any) => r.price);
-              const minPrice = Math.min(...prices);
-              const maxPrice = Math.max(...prices);
+              // Use the actual chart data's price range for accurate positioning
+              const dataHighs = data.map(d => d.high);
+              const dataLows = data.map(d => d.low);
+              const maxPrice = Math.max(...dataHighs);
+              const minPrice = Math.min(...dataLows);
               const priceRange = maxPrice - minPrice;
-              const chartHeight = indicators.rsi ? height - (isMobile ? 100 : 120) - 30 : height;
 
-              // Calculate Y positions
-              const pocY = ((maxPrice - vpLevels.poc) / priceRange) * chartHeight;
-              const vaHighY = ((maxPrice - vpLevels.vaHigh) / priceRange) * chartHeight;
-              const vaLowY = ((maxPrice - vpLevels.vaLow) / priceRange) * chartHeight;
+              // Chart has margins (10% top, 20% bottom based on scaleMargins)
+              const chartHeight = indicators.rsi ? height - (isMobile ? 100 : 120) - 30 : height;
+              const topMargin = 0.1;
+              const bottomMargin = 0.2;
+              const effectiveHeight = chartHeight * (1 - topMargin - bottomMargin);
+              const topOffset = chartHeight * topMargin;
+
+              // Calculate Y positions accounting for margins
+              const pocY = topOffset + ((maxPrice - vpLevels.poc) / priceRange) * effectiveHeight;
+              const vaHighY = topOffset + ((maxPrice - vpLevels.vaHigh) / priceRange) * effectiveHeight;
+              const vaLowY = topOffset + ((maxPrice - vpLevels.vaLow) / priceRange) * effectiveHeight;
 
               return (
                 <>

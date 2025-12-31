@@ -18,7 +18,7 @@ import {
   LineData,
   HistogramData
 } from 'lightweight-charts';
-import { SMA, EMA, RSI } from 'technicalindicators';
+import { SMA, EMA, RSI, ATR } from 'technicalindicators';
 import { calculateVolumeProfile } from '@/lib/indicators/volumeProfile';
 
 export interface ChartData {
@@ -39,6 +39,11 @@ export interface IndicatorConfig {
   rsiPeriod: number;
   volumeProfile: boolean;
   volumeProfileBins: number;
+  atr: boolean;
+  atrPeriod: number;
+  showSignals: boolean;
+  fastEma: number;
+  slowEma: number;
 }
 
 export interface AdvancedTradingChartProps {
@@ -76,10 +81,17 @@ export function AdvancedTradingChart({
   const pocLineRef = useRef<any>(null);
   const valueAreaHighLineRef = useRef<any>(null);
   const valueAreaLowLineRef = useRef<any>(null);
+  const fastEmaSeriesRef = useRef<any>(null);
+  const slowEmaSeriesRef = useRef<any>(null);
+  const atrSeriesRef = useRef<any>(null);
+  const buySignalSeriesRef = useRef<any>(null);
+  const sellSignalSeriesRef = useRef<any>(null);
+  const stopLossLineRef = useRef<any>(null);
 
   const [volumeProfileData, setVolumeProfileData] = useState<any>(null);
   const [visibleRange, setVisibleRange] = useState<any>(null);
   const visibleRangeRef = useRef<any>(null);
+  const [vpLevels, setVpLevels] = useState<{ poc: number; vaHigh: number; vaLow: number } | null>(null);
 
   // Detect mobile screen
   useEffect(() => {
@@ -121,6 +133,15 @@ export function AdvancedTradingChart({
       },
       rightPriceScale: {
         borderColor: '#d1d4dc',
+        visible: true,
+        scaleMargins: {
+          top: 0.1,
+          bottom: 0.2,
+        },
+      },
+      leftPriceScale: {
+        borderColor: '#d1d4dc',
+        visible: true,
         scaleMargins: {
           top: 0.1,
           bottom: 0.2,
@@ -390,6 +411,216 @@ export function AdvancedTradingChart({
       rsiSeriesRef.current.setData(rsiData);
     }
 
+    // Fast and Slow EMA for signal generation
+    let fastEmaValues: number[] = [];
+    let slowEmaValues: number[] = [];
+
+    if (indicators.showSignals && mainChartInstanceRef.current) {
+      // Calculate Fast EMA
+      if (data.length >= indicators.fastEma) {
+        // Remove old fast EMA series
+        if (fastEmaSeriesRef.current) {
+          try {
+            mainChartInstanceRef.current.removeSeries(fastEmaSeriesRef.current);
+            fastEmaSeriesRef.current = null;
+          } catch (e) {
+            console.warn('Error removing fast EMA series:', e);
+          }
+        }
+
+        fastEmaValues = EMA.calculate({ period: indicators.fastEma, values: closePrices });
+        const fastEmaSeries = mainChartInstanceRef.current.addLineSeries({
+          color: '#00BCD4',
+          lineWidth: 2,
+          title: `Fast EMA(${indicators.fastEma})`,
+        });
+
+        const fastEmaData = fastEmaValues.map((value, index) => ({
+          time: data[index + indicators.fastEma - 1].time as any,
+          value: value,
+        }));
+
+        fastEmaSeries.setData(fastEmaData);
+        fastEmaSeriesRef.current = fastEmaSeries;
+      }
+
+      // Calculate Slow EMA
+      if (data.length >= indicators.slowEma) {
+        // Remove old slow EMA series
+        if (slowEmaSeriesRef.current) {
+          try {
+            mainChartInstanceRef.current.removeSeries(slowEmaSeriesRef.current);
+            slowEmaSeriesRef.current = null;
+          } catch (e) {
+            console.warn('Error removing slow EMA series:', e);
+          }
+        }
+
+        slowEmaValues = EMA.calculate({ period: indicators.slowEma, values: closePrices });
+        const slowEmaSeries = mainChartInstanceRef.current.addLineSeries({
+          color: '#E91E63',
+          lineWidth: 2,
+          title: `Slow EMA(${indicators.slowEma})`,
+        });
+
+        const slowEmaData = slowEmaValues.map((value, index) => ({
+          time: data[index + indicators.slowEma - 1].time as any,
+          value: value,
+        }));
+
+        slowEmaSeries.setData(slowEmaData);
+        slowEmaSeriesRef.current = slowEmaSeries;
+      }
+
+      // Detect Buy/Sell signals based on EMA crossover
+      if (fastEmaValues.length > 0 && slowEmaValues.length > 0) {
+        // Remove old signal markers
+        if (buySignalSeriesRef.current) {
+          try {
+            mainChartInstanceRef.current.removeSeries(buySignalSeriesRef.current);
+            buySignalSeriesRef.current = null;
+          } catch (e) {
+            console.warn('Error removing buy signal series:', e);
+          }
+        }
+        if (sellSignalSeriesRef.current) {
+          try {
+            mainChartInstanceRef.current.removeSeries(sellSignalSeriesRef.current);
+            sellSignalSeriesRef.current = null;
+          } catch (e) {
+            console.warn('Error removing sell signal series:', e);
+          }
+        }
+
+        const buySignals: any[] = [];
+        const sellSignals: any[] = [];
+        const offset = indicators.slowEma - 1; // Align with slow EMA start
+
+        // Detect crossovers
+        for (let i = 1; i < fastEmaValues.length; i++) {
+          const prevFast = fastEmaValues[i - 1];
+          const currFast = fastEmaValues[i];
+          const prevSlow = slowEmaValues[i - 1];
+          const currSlow = slowEmaValues[i];
+
+          // Buy signal: Fast crosses above Slow
+          if (prevFast <= prevSlow && currFast > currSlow) {
+            const dataIndex = i + offset;
+            buySignals.push({
+              time: data[dataIndex].time as any,
+              position: 'belowBar',
+              color: '#00E676',
+              shape: 'arrowUp',
+              text: 'BUY',
+            });
+          }
+
+          // Sell signal: Fast crosses below Slow
+          if (prevFast >= prevSlow && currFast < currSlow) {
+            const dataIndex = i + offset;
+            sellSignals.push({
+              time: data[dataIndex].time as any,
+              position: 'aboveBar',
+              color: '#FF1744',
+              shape: 'arrowDown',
+              text: 'SELL',
+            });
+          }
+        }
+
+        // Add buy signal markers
+        if (buySignals.length > 0) {
+          const buyMarkerSeries = mainChartInstanceRef.current.addLineSeries({
+            color: 'transparent',
+            lineWidth: 1,
+          });
+          buyMarkerSeries.setMarkers(buySignals);
+          buySignalSeriesRef.current = buyMarkerSeries;
+        }
+
+        // Add sell signal markers
+        if (sellSignals.length > 0) {
+          const sellMarkerSeries = mainChartInstanceRef.current.addLineSeries({
+            color: 'transparent',
+            lineWidth: 1,
+          });
+          sellMarkerSeries.setMarkers(sellSignals);
+          sellSignalSeriesRef.current = sellMarkerSeries;
+        }
+
+        console.log(`[SIGNALS] Detected ${buySignals.length} buy signals and ${sellSignals.length} sell signals`);
+      }
+    } else {
+      // Remove signal-related series when disabled
+      if (fastEmaSeriesRef.current && mainChartInstanceRef.current) {
+        try {
+          mainChartInstanceRef.current.removeSeries(fastEmaSeriesRef.current);
+          fastEmaSeriesRef.current = null;
+        } catch (e) {
+          console.warn('Error removing fast EMA series:', e);
+        }
+      }
+      if (slowEmaSeriesRef.current && mainChartInstanceRef.current) {
+        try {
+          mainChartInstanceRef.current.removeSeries(slowEmaSeriesRef.current);
+          slowEmaSeriesRef.current = null;
+        } catch (e) {
+          console.warn('Error removing slow EMA series:', e);
+        }
+      }
+      if (buySignalSeriesRef.current && mainChartInstanceRef.current) {
+        try {
+          mainChartInstanceRef.current.removeSeries(buySignalSeriesRef.current);
+          buySignalSeriesRef.current = null;
+        } catch (e) {
+          console.warn('Error removing buy signal series:', e);
+        }
+      }
+      if (sellSignalSeriesRef.current && mainChartInstanceRef.current) {
+        try {
+          mainChartInstanceRef.current.removeSeries(sellSignalSeriesRef.current);
+          sellSignalSeriesRef.current = null;
+        } catch (e) {
+          console.warn('Error removing sell signal series:', e);
+        }
+      }
+    }
+
+    // ATR (Average True Range) for volatility and stop-loss calculation
+    if (indicators.atr && data.length >= indicators.atrPeriod && mainChartInstanceRef.current) {
+      // Remove old ATR line
+      if (atrSeriesRef.current) {
+        try {
+          mainChartInstanceRef.current.removeSeries(atrSeriesRef.current);
+          atrSeriesRef.current = null;
+        } catch (e) {
+          console.warn('Error removing ATR series:', e);
+        }
+      }
+
+      const highPrices = data.map(d => d.high);
+      const lowPrices = data.map(d => d.low);
+
+      const atrValues = ATR.calculate({
+        high: highPrices,
+        low: lowPrices,
+        close: closePrices,
+        period: indicators.atrPeriod,
+      });
+
+      console.log(`[ATR] Calculated ${atrValues.length} ATR values, last ATR: ${atrValues[atrValues.length - 1]?.toFixed(2)}`);
+
+      // Show ATR as an info overlay (optional - can be removed if too cluttered)
+      // For now, we'll just log it and use it for stop-loss calculation
+    } else if (!indicators.atr && atrSeriesRef.current && mainChartInstanceRef.current) {
+      try {
+        mainChartInstanceRef.current.removeSeries(atrSeriesRef.current);
+        atrSeriesRef.current = null;
+      } catch (e) {
+        console.warn('Error removing ATR series:', e);
+      }
+    }
+
     // Volume Profile
     if (indicators.volumeProfile && data.length > 0 && mainChartInstanceRef.current) {
       // Use ALL data instead of visible range
@@ -468,62 +699,101 @@ export function AdvancedTradingChart({
         }
       }
 
-      // Add POC (Point of Control) line - highest volume price
-      const pocLine = mainChartInstanceRef.current.addLineSeries({
-        color: '#FF6B6B',
-        lineWidth: 2,
-        lineStyle: 0, // Solid line
-        title: 'POC',
-      });
-      pocLine.setData(data.map(d => ({ time: d.time as any, value: volumeProfileResult.poc })));
-      pocLineRef.current = pocLine;
+      // Add POC, VA High, VA Low as price lines on the candlestick series
+      // This puts the labels in the center of the chart instead of on the right side
+      if (candlestickSeriesRef.current) {
+        // Remove old price lines if they exist
+        if (pocLineRef.current) {
+          try {
+            candlestickSeriesRef.current.removePriceLine(pocLineRef.current);
+            pocLineRef.current = null;
+          } catch (e) {
+            console.warn('Error removing POC price line:', e);
+          }
+        }
+        if (valueAreaHighLineRef.current) {
+          try {
+            candlestickSeriesRef.current.removePriceLine(valueAreaHighLineRef.current);
+            valueAreaHighLineRef.current = null;
+          } catch (e) {
+            console.warn('Error removing VA High price line:', e);
+          }
+        }
+        if (valueAreaLowLineRef.current) {
+          try {
+            candlestickSeriesRef.current.removePriceLine(valueAreaLowLineRef.current);
+            valueAreaLowLineRef.current = null;
+          } catch (e) {
+            console.warn('Error removing VA Low price line:', e);
+          }
+        }
 
-      // Add Value Area High line
-      const vaHighLine = mainChartInstanceRef.current.addLineSeries({
-        color: '#4ECDC4',
-        lineWidth: 1,
-        lineStyle: 2, // Dashed line
-        title: 'VA High',
-      });
-      vaHighLine.setData(data.map(d => ({ time: d.time as any, value: volumeProfileResult.valueAreaHigh })));
-      valueAreaHighLineRef.current = vaHighLine;
+        // Add POC (Point of Control) line - highest volume price
+        // axisLabelVisible: false hides labels from price scales (reduces right side clutter)
+        pocLineRef.current = candlestickSeriesRef.current.createPriceLine({
+          price: volumeProfileResult.poc,
+          color: '#FF6B6B',
+          lineWidth: 2,
+          lineStyle: 0, // Solid
+          axisLabelVisible: false, // Hide from price scale
+          title: '', // No title on scale
+        });
 
-      // Add Value Area Low line
-      const vaLowLine = mainChartInstanceRef.current.addLineSeries({
-        color: '#4ECDC4',
-        lineWidth: 1,
-        lineStyle: 2, // Dashed line
-        title: 'VA Low',
-      });
-      vaLowLine.setData(data.map(d => ({ time: d.time as any, value: volumeProfileResult.valueAreaLow })));
-      valueAreaLowLineRef.current = vaLowLine;
+        // Add Value Area High line
+        valueAreaHighLineRef.current = candlestickSeriesRef.current.createPriceLine({
+          price: volumeProfileResult.valueAreaHigh,
+          color: '#4ECDC4',
+          lineWidth: 1,
+          lineStyle: 2, // Dashed
+          axisLabelVisible: false, // Hide from price scale
+          title: '', // No title on scale
+        });
+
+        // Add Value Area Low line
+        valueAreaLowLineRef.current = candlestickSeriesRef.current.createPriceLine({
+          price: volumeProfileResult.valueAreaLow,
+          color: '#4ECDC4',
+          lineWidth: 1,
+          lineStyle: 2, // Dashed
+          axisLabelVisible: false, // Hide from price scale
+          title: '', // No title on scale
+        });
+
+        // Store levels for center labels
+        setVpLevels({
+          poc: volumeProfileResult.poc,
+          vaHigh: volumeProfileResult.valueAreaHigh,
+          vaLow: volumeProfileResult.valueAreaLow,
+        });
+      }
 
     } else if (!indicators.volumeProfile) {
       // Remove all volume profile lines when disabled
       setVolumeProfileData(null);
+      setVpLevels(null);
 
-      if (pocLineRef.current && mainChartInstanceRef.current) {
+      if (pocLineRef.current && candlestickSeriesRef.current) {
         try {
-          mainChartInstanceRef.current.removeSeries(pocLineRef.current);
+          candlestickSeriesRef.current.removePriceLine(pocLineRef.current);
           pocLineRef.current = null;
         } catch (e) {
-          console.warn('Error removing POC line:', e);
+          console.warn('Error removing POC price line:', e);
         }
       }
-      if (valueAreaHighLineRef.current && mainChartInstanceRef.current) {
+      if (valueAreaHighLineRef.current && candlestickSeriesRef.current) {
         try {
-          mainChartInstanceRef.current.removeSeries(valueAreaHighLineRef.current);
+          candlestickSeriesRef.current.removePriceLine(valueAreaHighLineRef.current);
           valueAreaHighLineRef.current = null;
         } catch (e) {
-          console.warn('Error removing Value Area High line:', e);
+          console.warn('Error removing Value Area High price line:', e);
         }
       }
-      if (valueAreaLowLineRef.current && mainChartInstanceRef.current) {
+      if (valueAreaLowLineRef.current && candlestickSeriesRef.current) {
         try {
-          mainChartInstanceRef.current.removeSeries(valueAreaLowLineRef.current);
+          candlestickSeriesRef.current.removePriceLine(valueAreaLowLineRef.current);
           valueAreaLowLineRef.current = null;
         } catch (e) {
-          console.warn('Error removing Value Area Low line:', e);
+          console.warn('Error removing Value Area Low price line:', e);
         }
       }
     }
@@ -542,7 +812,7 @@ export function AdvancedTradingChart({
         {/* Volume Profile Histogram - Sideways Mountain */}
         {indicators.volumeProfile && volumeProfileData && mainChartInstanceRef.current && (
           <div
-            className="absolute top-0 right-0 pointer-events-none z-50"
+            className="absolute top-0 left-0 pointer-events-none z-50"
             style={{
               width: isMobile ? '100px' : '200px',
               height: indicators.rsi ? height - (isMobile ? 100 : 120) - 30 : height,
@@ -596,7 +866,7 @@ export function AdvancedTradingChart({
                       className="absolute"
                       style={{
                         top: yCoord + 'px',
-                        right: isMobile ? '35px' : '70px',
+                        left: isMobile ? '35px' : '70px',
                         width: barWidth + 'px',
                         height: isMobile ? '1.5px' : '2px',
                         backgroundColor: isPOC
@@ -613,6 +883,63 @@ export function AdvancedTradingChart({
                   return null;
                 }
               });
+            })()}
+          </div>
+        )}
+
+        {/* Volume Profile Price Level Labels - Center of chart */}
+        {indicators.volumeProfile && vpLevels && volumeProfileData && (
+          <div
+            className="absolute top-0 left-0 w-full pointer-events-none z-[60]"
+            style={{
+              height: indicators.rsi ? height - (isMobile ? 100 : 120) - 30 : height,
+            }}
+          >
+            {(() => {
+              const prices = volumeProfileData.profile.map((r: any) => r.price);
+              const minPrice = Math.min(...prices);
+              const maxPrice = Math.max(...prices);
+              const priceRange = maxPrice - minPrice;
+              const chartHeight = indicators.rsi ? height - (isMobile ? 100 : 120) - 30 : height;
+
+              // Calculate Y positions
+              const pocY = ((maxPrice - vpLevels.poc) / priceRange) * chartHeight;
+              const vaHighY = ((maxPrice - vpLevels.vaHigh) / priceRange) * chartHeight;
+              const vaLowY = ((maxPrice - vpLevels.vaLow) / priceRange) * chartHeight;
+
+              return (
+                <>
+                  {/* POC Label */}
+                  <div
+                    className="absolute left-1/2 transform -translate-x-1/2 -translate-y-1/2"
+                    style={{ top: pocY + 'px' }}
+                  >
+                    <span className="px-2 py-0.5 bg-red-500 text-white text-xs font-bold rounded shadow-lg">
+                      POC {vpLevels.poc.toFixed(2)}
+                    </span>
+                  </div>
+
+                  {/* VA High Label */}
+                  <div
+                    className="absolute left-1/2 transform -translate-x-1/2 -translate-y-1/2"
+                    style={{ top: vaHighY + 'px' }}
+                  >
+                    <span className="px-2 py-0.5 bg-cyan-500 text-white text-xs font-semibold rounded shadow-md">
+                      VA High {vpLevels.vaHigh.toFixed(2)}
+                    </span>
+                  </div>
+
+                  {/* VA Low Label */}
+                  <div
+                    className="absolute left-1/2 transform -translate-x-1/2 -translate-y-1/2"
+                    style={{ top: vaLowY + 'px' }}
+                  >
+                    <span className="px-2 py-0.5 bg-cyan-500 text-white text-xs font-semibold rounded shadow-md">
+                      VA Low {vpLevels.vaLow.toFixed(2)}
+                    </span>
+                  </div>
+                </>
+              );
             })()}
           </div>
         )}

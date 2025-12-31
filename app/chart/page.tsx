@@ -35,14 +35,19 @@ export default function ChartPage() {
   const [chartHeight, setChartHeight] = useState(600);
 
   const [indicators, setIndicators] = useState<IndicatorConfig>({
-    sma: true,
+    sma: false,
     smaPeriod: 20,
-    ema: true,
+    ema: false,
     emaPeriod: 12,
-    rsi: true,
+    rsi: false, // Disable RSI by default - keep chart clean
     rsiPeriod: 14,
-    volumeProfile: false,
-    volumeProfileBins: 150, // More bins = smoother mountain
+    volumeProfile: false, // Disable Volume Profile - too cluttered
+    volumeProfileBins: 150,
+    atr: true, // ATR calculated in background for stop-loss
+    atrPeriod: 14,
+    showSignals: true, // ✅ Main feature: Buy/Sell signals
+    fastEma: 9, // ✅ Fast EMA (9) for day trading
+    slowEma: 21, // ✅ Slow EMA (21) for day trading
   });
 
   // Real-time price updates
@@ -158,7 +163,7 @@ export default function ChartPage() {
     }));
   };
 
-  const updateIndicatorPeriod = (indicator: 'smaPeriod' | 'emaPeriod' | 'rsiPeriod' | 'volumeProfileBins', value: number) => {
+  const updateIndicatorPeriod = (indicator: 'smaPeriod' | 'emaPeriod' | 'rsiPeriod' | 'volumeProfileBins' | 'atrPeriod' | 'fastEma' | 'slowEma', value: number) => {
     setIndicators((prev) => ({
       ...prev,
       [indicator]: value,
@@ -337,6 +342,84 @@ export default function ChartPage() {
                   max="200"
                 />
               </div>
+            </div>
+
+            {/* Day Trading Strategy Section */}
+            <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-green-50 rounded-lg border border-blue-200">
+              <h3 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                <span className="text-lg">📊</span> Day Trading Strategy (EMA Crossover + ATR)
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* Show Buy/Sell Signals */}
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="showSignals"
+                    checked={indicators.showSignals}
+                    onChange={() => toggleIndicator('showSignals')}
+                    className="w-4 h-4 text-green-600 rounded focus:ring-2"
+                  />
+                  <label htmlFor="showSignals" className="text-sm font-bold text-gray-800">
+                    Buy/Sell Signals
+                  </label>
+                </div>
+
+                {/* Fast EMA */}
+                <div className="flex items-center gap-3">
+                  <label className="text-sm font-medium text-gray-700">Fast EMA</label>
+                  <input
+                    type="number"
+                    value={indicators.fastEma}
+                    onChange={(e) => updateIndicatorPeriod('fastEma', parseInt(e.target.value))}
+                    disabled={!indicators.showSignals}
+                    className="w-16 px-2 py-1 text-sm border border-gray-300 rounded disabled:bg-gray-100 text-gray-900"
+                    min="1"
+                    max="50"
+                  />
+                  <span className="text-xs text-gray-500">(Day: 9)</span>
+                </div>
+
+                {/* Slow EMA */}
+                <div className="flex items-center gap-3">
+                  <label className="text-sm font-medium text-gray-700">Slow EMA</label>
+                  <input
+                    type="number"
+                    value={indicators.slowEma}
+                    onChange={(e) => updateIndicatorPeriod('slowEma', parseInt(e.target.value))}
+                    disabled={!indicators.showSignals}
+                    className="w-16 px-2 py-1 text-sm border border-gray-300 rounded disabled:bg-gray-100 text-gray-900"
+                    min="1"
+                    max="200"
+                  />
+                  <span className="text-xs text-gray-500">(Day: 21)</span>
+                </div>
+
+                {/* ATR */}
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="atr"
+                    checked={indicators.atr}
+                    onChange={() => toggleIndicator('atr')}
+                    className="w-4 h-4 text-indigo-600 rounded focus:ring-2"
+                  />
+                  <label htmlFor="atr" className="text-sm font-medium text-gray-700">
+                    ATR
+                  </label>
+                  <input
+                    type="number"
+                    value={indicators.atrPeriod}
+                    onChange={(e) => updateIndicatorPeriod('atrPeriod', parseInt(e.target.value))}
+                    disabled={!indicators.atr}
+                    className="w-16 px-2 py-1 text-sm border border-gray-300 rounded disabled:bg-gray-100 text-gray-900"
+                    min="1"
+                    max="50"
+                  />
+                </div>
+              </div>
+              <p className="mt-2 text-xs text-gray-600">
+                💡 <strong>Strategy:</strong> Buy when Fast EMA crosses <strong>above</strong> Slow EMA. Sell when Fast EMA crosses <strong>below</strong> Slow EMA. ATR helps calculate dynamic stop-loss levels.
+              </p>
             </div>
           </div>
         </div>

@@ -175,6 +175,7 @@ export function AdvancedTradingChart({
       borderVisible: false,
       wickUpColor: '#26a69a',
       wickDownColor: '#ef5350',
+      priceScaleId: 'left', // Use left price scale for POC/VA labels
     });
     candlestickSeriesRef.current = candlestickSeries;
 
@@ -432,6 +433,7 @@ export function AdvancedTradingChart({
           color: '#00BCD4',
           lineWidth: 1,
           title: `Fast EMA(${indicators.fastEma})`,
+          priceScaleId: 'left', // Use left price scale for label
         });
 
         const fastEmaData = fastEmaValues.map((value, index) => ({
@@ -460,6 +462,7 @@ export function AdvancedTradingChart({
           color: '#E91E63',
           lineWidth: 1,
           title: `Slow EMA(${indicators.slowEma})`,
+          priceScaleId: 'left', // Use left price scale for label
         });
 
         const slowEmaData = slowEmaValues.map((value, index) => ({

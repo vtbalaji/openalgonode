@@ -59,6 +59,10 @@ export default function ChartPage() {
     showOrderBlocks: false,
     showSupportResistance: false,
     showPremiumDiscount: false,
+    // Consolidation breakout trading
+    showConsolidation: false,
+    consolidationMinDuration: 10,
+    consolidationMaxDuration: 50,
   });
 
   // Real-time price updates
@@ -498,6 +502,79 @@ export default function ChartPage() {
               <p className="mt-2 text-xs text-gray-600">
                 ⚠️ <strong>Note:</strong> SMC indicators are for manual analysis only. The automated bot uses EMA + filters above. Study these patterns to understand institutional behavior.
               </p>
+            </div>
+
+            {/* Consolidation Breakout Section */}
+            <div className="mt-4 p-4 bg-gradient-to-r from-red-50 to-green-50 rounded-lg border border-red-200">
+              <h3 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                <span className="text-lg">📊</span> Consolidation Box Breakout Trading
+              </h3>
+
+              <div className="flex items-center gap-3 mb-4">
+                <input
+                  type="checkbox"
+                  id="showConsolidation"
+                  checked={indicators.showConsolidation}
+                  onChange={() => toggleIndicator('showConsolidation')}
+                  className="w-4 h-4 text-red-600 rounded focus:ring-2"
+                />
+                <label htmlFor="showConsolidation" className="text-sm font-medium text-gray-700">
+                  Enable Consolidation Detection & Breakout Signals
+                </label>
+              </div>
+
+              {indicators.showConsolidation && (
+                <div className="grid grid-cols-2 gap-4 mb-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Min Duration (candles)
+                    </label>
+                    <input
+                      type="number"
+                      min="5"
+                      max="30"
+                      value={indicators.consolidationMinDuration}
+                      onChange={(e) => setIndicators({
+                        ...indicators,
+                        consolidationMinDuration: parseInt(e.target.value) || 10
+                      })}
+                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:border-red-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Max Duration (candles)
+                    </label>
+                    <input
+                      type="number"
+                      min="20"
+                      max="100"
+                      value={indicators.consolidationMaxDuration}
+                      onChange={(e) => setIndicators({
+                        ...indicators,
+                        consolidationMaxDuration: parseInt(e.target.value) || 50
+                      })}
+                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:border-red-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2 text-xs text-gray-700 bg-white p-3 rounded border border-gray-200">
+                <p><strong>How it works:</strong></p>
+                <ul className="list-disc list-inside space-y-1 ml-2">
+                  <li>🟥 <strong>Red line</strong> = Resistance (upper box boundary)</li>
+                  <li>🟩 <strong>Green line</strong> = Support (lower box boundary)</li>
+                  <li>⬆️ <strong>Green arrow</strong> = Bullish breakout (buy signal)</li>
+                  <li>⬇️ <strong>Red arrow</strong> = Bearish breakdown (sell signal)</li>
+                  <li>🎯 <strong>Target</strong> = Box height projected from breakout price</li>
+                  <li>✓ = Volume confirmed (1.5x average volume)</li>
+                </ul>
+                <p className="mt-2 text-gray-600">
+                  <strong>Strategy:</strong> Wait for price to break above resistance or below support with strong volume.
+                  Target is calculated by projecting the box height from the breakout point.
+                </p>
+              </div>
             </div>
           </div>
         </div>

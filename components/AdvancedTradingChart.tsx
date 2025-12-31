@@ -30,6 +30,12 @@ import {
   type SupportResistanceLevel,
   type PremiumDiscountZone,
 } from '@/lib/indicators/smcIndicators';
+import {
+  detectConsolidationBoxes,
+  detectBreakouts,
+  type ConsolidationBox,
+  type BreakoutSignal,
+} from '@/lib/indicators/consolidationDetection';
 
 export interface ChartData {
   time: number;
@@ -65,6 +71,10 @@ export interface IndicatorConfig {
   showOrderBlocks: boolean;
   showSupportResistance: boolean;
   showPremiumDiscount: boolean;
+  // Consolidation breakout trading
+  showConsolidation: boolean;
+  consolidationMinDuration: number;
+  consolidationMaxDuration: number;
 }
 
 export interface AdvancedTradingChartProps {
@@ -119,6 +129,10 @@ export function AdvancedTradingChart({
   const [smcOrderBlocks, setSMCOrderBlocks] = useState<OrderBlock[]>([]);
   const [smcSR, setSMCSR] = useState<SupportResistanceLevel[]>([]);
   const [smcPD, setSMCPD] = useState<PremiumDiscountZone | null>(null);
+
+  // Consolidation box & breakout signals
+  const [consolidationBoxes, setConsolidationBoxes] = useState<ConsolidationBox[]>([]);
+  const [breakoutSignals, setBreakoutSignals] = useState<BreakoutSignal[]>([]);
 
   // Detect mobile screen
   useEffect(() => {
@@ -909,6 +923,39 @@ export function AdvancedTradingChart({
       setSMCPD(null);
     }
 
+    // Calculate consolidation boxes and breakouts
+    if (indicators.showConsolidation) {
+      const boxes = detectConsolidationBoxes(
+        data,
+        indicators.consolidationMinDuration,
+        indicators.consolidationMaxDuration
+      );
+      setConsolidationBoxes(boxes);
+
+      const breakouts = detectBreakouts(data, boxes);
+      setBreakoutSignals(breakouts);
+
+      console.log(`[CONSOLIDATION] Detected ${boxes.length} boxes (${boxes.filter(b => b.isActive).length} active)`);
+      console.log(`[BREAKOUT] Detected ${breakouts.length} breakout signals (${breakouts.filter(s => s.volumeConfirmed).length} volume-confirmed)`);
+
+      // Add breakout markers to chart
+      if (breakouts.length > 0 && candlestickSeriesRef.current) {
+        const breakoutMarkers = breakouts.map(signal => ({
+          time: signal.time as any,
+          position: signal.type === 'bullish' ? 'belowBar' : 'aboveBar',
+          color: signal.type === 'bullish' ? '#00C853' : '#FF3D00',
+          shape: signal.type === 'bullish' ? 'arrowUp' : 'arrowDown',
+          text: `${signal.type === 'bullish' ? 'BO↑' : 'BD↓'}${signal.volumeConfirmed ? '✓' : ''}`,
+          size: 2,
+        }));
+
+        candlestickSeriesRef.current.setMarkers(breakoutMarkers);
+      }
+    } else {
+      setConsolidationBoxes([]);
+      setBreakoutSignals([]);
+    }
+
     // Fit content
     if (mainChartInstanceRef.current) {
       mainChartInstanceRef.current.timeScale().fitContent();
@@ -1155,9 +1202,125 @@ export function AdvancedTradingChart({
                   </div>
                 );
               })}
+
+              {/* Consolidation Box Lines */}
+              {indicators.showConsolidation && consolidationBoxes.map((box, idx) => {
+                const resistanceLine = priceToY(box.resistance);
+                const supportLine = priceToY(box.support);
+
+                return (
+                  <div key={`consolidation-${idx}`}>
+                    {/* Resistance Line (Upper) */}
+                    <div
+                      className="absolute pointer-events-none z-25"
+                      style={{
+                        left: isMobile ? '35px' : '70px',
+                        right: isMobile ? '35px' : '70px',
+                        top: resistanceLine + 'px',
+                        height: '2px',
+                        backgroundColor: box.isActive ? 'rgba(220, 38, 38, 0.8)' : 'rgba(220, 38, 38, 0.4)',
+                        borderTop: `2px ${box.isActive ? 'solid' : 'dashed'} rgba(220, 38, 38, 0.8)`,
+                      }}
+                    >
+                      <span
+                        className="text-xs font-bold ml-2"
+                        style={{
+                          color: 'rgb(220, 38, 38)',
+                          backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          display: 'inline-block',
+                          marginTop: '-12px',
+                        }}
+                      >
+                        R: {box.resistance.toFixed(2)}
+                      </span>
+                    </div>
+
+                    {/* Support Line (Lower) */}
+                    <div
+                      className="absolute pointer-events-none z-25"
+                      style={{
+                        left: isMobile ? '35px' : '70px',
+                        right: isMobile ? '35px' : '70px',
+                        top: supportLine + 'px',
+                        height: '2px',
+                        backgroundColor: box.isActive ? 'rgba(34, 197, 94, 0.8)' : 'rgba(34, 197, 94, 0.4)',
+                        borderTop: `2px ${box.isActive ? 'solid' : 'dashed'} rgba(34, 197, 94, 0.8)`,
+                      }}
+                    >
+                      <span
+                        className="text-xs font-bold ml-2"
+                        style={{
+                          color: 'rgb(34, 197, 94)',
+                          backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          display: 'inline-block',
+                          marginTop: '-12px',
+                        }}
+                      >
+                        S: {box.support.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Breakout Target Price Labels */}
+              {indicators.showConsolidation && breakoutSignals.map((signal, idx) => {
+                const targetY = priceToY(signal.targetPrice);
+
+                return (
+                  <div
+                    key={`target-${idx}`}
+                    className="absolute pointer-events-none z-30"
+                    style={{
+                      left: isMobile ? '35px' : '70px',
+                      top: targetY + 'px',
+                      marginTop: '-12px',
+                    }}
+                  >
+                    <div
+                      className="text-xs font-bold px-3 py-1 rounded shadow-lg"
+                      style={{
+                        backgroundColor: signal.type === 'bullish' ? 'rgba(0, 200, 83, 0.95)' : 'rgba(255, 61, 0, 0.95)',
+                        color: 'white',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      <span>🎯 Target: {signal.targetPrice.toFixed(2)}</span>
+                      {signal.volumeConfirmed && <span>✓</span>}
+                      <span className="text-[10px] opacity-80">({signal.strength}/10)</span>
+                    </div>
+                  </div>
+                );
+              })}
             </>
           );
         })()}
+
+        {/* Consolidation Info Badge */}
+        {indicators.showConsolidation && (consolidationBoxes.length > 0 || breakoutSignals.length > 0) && (
+          <div
+            className="absolute top-2 right-2 px-3 py-2 bg-gradient-to-r from-red-500 to-green-600 text-white rounded-lg shadow-lg z-50 pointer-events-none"
+            style={{ fontSize: isMobile ? '10px' : '12px' }}
+          >
+            <div className="font-bold mb-1">📊 Consolidation</div>
+            {consolidationBoxes.length > 0 && (
+              <div className="text-xs">
+                Boxes: {consolidationBoxes.length} ({consolidationBoxes.filter(b => b.isActive).length} active)
+              </div>
+            )}
+            {breakoutSignals.length > 0 && (
+              <div className="text-xs">
+                Breakouts: {breakoutSignals.length} ({breakoutSignals.filter(s => s.volumeConfirmed).length} vol✓)
+              </div>
+            )}
+          </div>
+        )}
 
         {/* SMC Info Badge */}
         {(indicators.showFVG || indicators.showOrderBlocks || indicators.showSupportResistance || indicators.showPremiumDiscount) && (

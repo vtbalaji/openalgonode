@@ -116,6 +116,20 @@ export function AdvancedTradingChart({
         textColor: '#333',
         fontSize: isMobile ? 10 : 12,
       },
+      localization: {
+        timeFormatter: (timestamp: number) => {
+          // Convert Unix timestamp to IST (UTC+5:30)
+          const date = new Date(timestamp * 1000);
+          // Format in IST timezone
+          return date.toLocaleString('en-IN', {
+            timeZone: 'Asia/Kolkata',
+            hour: '2-digit',
+            minute: '2-digit',
+            day: '2-digit',
+            month: 'short',
+          });
+        },
+      },
       grid: {
         vertLines: { color: '#f0f0f0' },
         horzLines: { color: '#f0f0f0' },
@@ -201,6 +215,20 @@ export function AdvancedTradingChart({
           background: { color: '#ffffff' },
           textColor: '#333',
           fontSize: isMobile ? 10 : 12,
+        },
+        localization: {
+          timeFormatter: (timestamp: number) => {
+            // Convert Unix timestamp to IST (UTC+5:30)
+            const date = new Date(timestamp * 1000);
+            // Format in IST timezone
+            return date.toLocaleString('en-IN', {
+              timeZone: 'Asia/Kolkata',
+              hour: '2-digit',
+              minute: '2-digit',
+              day: '2-digit',
+              month: 'short',
+            });
+          },
         },
         grid: {
           vertLines: { color: '#f0f0f0' },

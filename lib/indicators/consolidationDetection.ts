@@ -38,14 +38,18 @@ export interface BreakoutSignal {
 export function detectConsolidationBoxes(
   data: ChartData[],
   minDuration: number = 10,
-  maxDuration: number = 50,
-  tolerancePercent: number = 1.0 // Increased from 0.5% to 1.0% for wider boxes
+  maxDuration: number = 100, // Increased from 50 to 100 to catch longer boxes
+  tolerancePercent: number = 1.5 // Increased from 1.0% to 1.5% for even wider boxes
 ): ConsolidationBox[] {
   const boxes: ConsolidationBox[] = [];
 
   if (data.length < minDuration) return boxes;
 
-  console.log(`[CONSOLIDATION-DEBUG] Scanning ${data.length} candles, looking for boxes ${minDuration}-${maxDuration} candles long`);
+  const recentDataStart = data.length - 30;
+  const recentDataTime = recentDataStart >= 0 ? new Date(data[recentDataStart].time * 1000) : null;
+
+  console.log(`[CONSOLIDATION-DEBUG] Scanning ONLY last 30 candles (from ${recentDataTime?.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) || 'start'})`);
+  console.log(`[CONSOLIDATION-DEBUG] Looking for boxes ${minDuration}-${maxDuration} candles long with ${tolerancePercent}% tolerance`);
 
   // CHANGED: Search backwards from most recent data to prioritize current boxes
   // Start from the end of the data array
@@ -76,14 +80,17 @@ export function detectConsolidationBoxes(
         }
       }
 
-      // Valid box: at least 2 touches on each level (relaxed for recent boxes)
+      // Valid box: at least 2 touches on each level
       const totalTouches = supportTouches + resistanceTouches;
-      const isRecent = endIdx >= data.length - 20; // Last 20 candles (more aggressive)
 
-      // VERY RELAXED criteria for recent boxes to catch forming consolidations
-      const meetsMinTouches = isRecent
-        ? (supportTouches >= 1 && resistanceTouches >= 1 && totalTouches >= 2) // Even looser!
-        : (supportTouches >= 2 && resistanceTouches >= 2);
+      // ONLY look at boxes ending in the last 30 candles (recent/current trading)
+      const isRecent = endIdx >= data.length - 30;
+
+      // Skip boxes that ended too long ago - we only want CURRENT consolidation
+      if (!isRecent) continue;
+
+      // Need at least 2 total touches to be considered a valid box
+      const meetsMinTouches = supportTouches >= 1 && resistanceTouches >= 1 && totalTouches >= 2;
 
       if (meetsMinTouches) {
         // Check if this box overlaps with existing boxes
@@ -119,13 +126,19 @@ export function detectConsolidationBoxes(
       }
     }
 
-    // Stop after finding 5 boxes to avoid processing too much data
+    // Stop after finding 5 boxes - we only want the most recent ones
     if (boxes.length >= 5) break;
   }
 
-  // Return boxes sorted by recency (most recent first)
+  // Return boxes sorted by recency (most recent first) - show top 3
   const sortedBoxes = boxes.sort((a, b) => b.endIndex - a.endIndex).slice(0, 3);
-  console.log(`[CONSOLIDATION-DEBUG] Returning ${sortedBoxes.length} boxes total (${sortedBoxes.filter(b => b.isActive).length} active)`);
+  console.log(`[CONSOLIDATION-DEBUG] Found ${boxes.length} boxes in last 30 candles, returning top ${sortedBoxes.length} (${sortedBoxes.filter(b => b.isActive).length} active)`);
+
+  // Log all detected boxes for debugging
+  sortedBoxes.forEach((box, idx) => {
+    const candlesAgo = data.length - box.endIndex;
+    console.log(`  Box ${idx + 1}: Support=${box.support.toFixed(2)}, Resistance=${box.resistance.toFixed(2)}, Duration=${box.endIndex - box.startIndex}, CandlesAgo=${candlesAgo}, Active=${box.isActive}`);
+  });
 
   return sortedBoxes;
 }

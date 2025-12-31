@@ -41,28 +41,27 @@ export default function ChartPage() {
     emaPeriod: 12,
     rsi: false, // Disable RSI by default - keep chart clean
     rsiPeriod: 14,
-    volumeProfile: false, // Disable Volume Profile - too cluttered
+    volumeProfile: true, // Overall Volume Profile (all data) - enabled by default
+    volumeProfileVisible: true, // Visible Range Volume Profile (current view only) - enabled by default
     volumeProfileBins: 150,
-    atr: true, // ATR calculated in background for stop-loss
-    atrPeriod: 14,
     showSignals: true, // ✅ Main feature: Buy/Sell signals
     fastEma: 9, // ✅ Fast EMA (9) for day trading
     slowEma: 21, // ✅ Slow EMA (21) for day trading
     // Filters for automated trading
-    adx: true, // ✅ ADX trend filter - avoid ranging markets
+    adx: false, // Optional: ADX trend filter to avoid ranging markets
     adxPeriod: 14,
     adxThreshold: 25, // Only trade when ADX > 25 (strong trend)
-    useVolumeFilter: true, // ✅ Require above-average volume
-    useTimeFilter: true, // ✅ Only trade 9:30 AM - 3:00 PM IST
+    useVolumeFilter: false, // Removed - volume covered by POC
+    useTimeFilter: false, // Removed - user preference
     // SMC indicators (for manual learning - disabled by default)
     showFVG: false,
     showOrderBlocks: false,
     showSupportResistance: false,
     showPremiumDiscount: false,
-    // Consolidation breakout trading
-    showConsolidation: true, // Enable by default
+    // Consolidation breakout trading - DISABLED (not working correctly)
+    showConsolidation: false,
     consolidationMinDuration: 10,
-    consolidationMaxDuration: 50,
+    consolidationMaxDuration: 100,
   });
 
   // Real-time price updates
@@ -178,7 +177,7 @@ export default function ChartPage() {
     }));
   };
 
-  const updateIndicatorPeriod = (indicator: 'smaPeriod' | 'emaPeriod' | 'rsiPeriod' | 'volumeProfileBins' | 'atrPeriod' | 'fastEma' | 'slowEma', value: number) => {
+  const updateIndicatorPeriod = (indicator: 'smaPeriod' | 'emaPeriod' | 'rsiPeriod' | 'volumeProfileBins' | 'fastEma' | 'slowEma', value: number) => {
     setIndicators((prev) => ({
       ...prev,
       [indicator]: value,
@@ -335,34 +334,12 @@ export default function ChartPage() {
                 />
               </div>
 
-              {/* Volume Profile */}
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="volumeProfile"
-                  checked={indicators.volumeProfile}
-                  onChange={() => toggleIndicator('volumeProfile')}
-                  className="w-4 h-4 text-red-600 rounded focus:ring-2"
-                />
-                <label htmlFor="volumeProfile" className="text-sm font-medium text-gray-700">
-                  Vol Profile
-                </label>
-                <input
-                  type="number"
-                  value={indicators.volumeProfileBins}
-                  onChange={(e) => updateIndicatorPeriod('volumeProfileBins', parseInt(e.target.value))}
-                  disabled={!indicators.volumeProfile}
-                  className="w-16 px-2 py-1 text-sm border border-gray-300 rounded disabled:bg-gray-100 text-gray-900"
-                  min="10"
-                  max="200"
-                />
-              </div>
             </div>
 
             {/* Day Trading Strategy Section */}
             <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-green-50 rounded-lg border border-blue-200">
               <h3 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                <span className="text-lg">📊</span> Day Trading Strategy (EMA Crossover + ATR)
+                <span className="text-lg">📊</span> Day Trading Strategy (POC Breakout + EMA)
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 {/* Show Buy/Sell Signals */}
@@ -391,7 +368,7 @@ export default function ChartPage() {
                     min="1"
                     max="50"
                   />
-                  <span className="text-xs text-gray-500">(Day: 9)</span>
+                  <span className="text-xs text-gray-500">(9)</span>
                 </div>
 
                 {/* Slow EMA */}
@@ -406,34 +383,69 @@ export default function ChartPage() {
                     min="1"
                     max="200"
                   />
-                  <span className="text-xs text-gray-500">(Day: 21)</span>
+                  <span className="text-xs text-gray-500">(21)</span>
                 </div>
 
-                {/* ATR */}
+                {/* ADX Trend Filter (Optional) */}
                 <div className="flex items-center gap-3">
                   <input
                     type="checkbox"
-                    id="atr"
-                    checked={indicators.atr}
-                    onChange={() => toggleIndicator('atr')}
-                    className="w-4 h-4 text-indigo-600 rounded focus:ring-2"
+                    id="adx"
+                    checked={indicators.adx}
+                    onChange={() => toggleIndicator('adx')}
+                    className="w-4 h-4 text-purple-600 rounded focus:ring-2"
                   />
-                  <label htmlFor="atr" className="text-sm font-medium text-gray-700">
-                    ATR
+                  <label htmlFor="adx" className="text-sm font-medium text-gray-700">
+                    ADX Filter
                   </label>
+                  <span className="text-xs text-gray-500">(Optional)</span>
+                </div>
+
+                {/* Volume Profile - Overall */}
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="volumeProfile"
+                    checked={indicators.volumeProfile}
+                    onChange={() => toggleIndicator('volumeProfile')}
+                    className="w-4 h-4 text-red-600 rounded focus:ring-2"
+                  />
+                  <label htmlFor="volumeProfile" className="text-sm font-medium text-gray-700">
+                    VP: Overall
+                  </label>
+                </div>
+
+                {/* Volume Profile - Visible Range */}
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="volumeProfileVisible"
+                    checked={indicators.volumeProfileVisible}
+                    onChange={() => toggleIndicator('volumeProfileVisible')}
+                    className="w-4 h-4 text-blue-600 rounded focus:ring-2"
+                  />
+                  <label htmlFor="volumeProfileVisible" className="text-sm font-medium text-gray-700">
+                    VP: Visible
+                  </label>
+                </div>
+
+                {/* VP Bins */}
+                <div className="flex items-center gap-3">
+                  <label className="text-sm font-medium text-gray-700">VP Bins</label>
                   <input
                     type="number"
-                    value={indicators.atrPeriod}
-                    onChange={(e) => updateIndicatorPeriod('atrPeriod', parseInt(e.target.value))}
-                    disabled={!indicators.atr}
+                    value={indicators.volumeProfileBins}
+                    onChange={(e) => updateIndicatorPeriod('volumeProfileBins', parseInt(e.target.value))}
+                    disabled={!indicators.volumeProfile && !indicators.volumeProfileVisible}
                     className="w-16 px-2 py-1 text-sm border border-gray-300 rounded disabled:bg-gray-100 text-gray-900"
-                    min="1"
-                    max="50"
+                    min="10"
+                    max="200"
                   />
+                  <span className="text-xs text-gray-500">(150)</span>
                 </div>
               </div>
               <p className="mt-2 text-xs text-gray-600">
-                💡 <strong>Strategy:</strong> Buy when Fast EMA crosses <strong>above</strong> Slow EMA. Sell when Fast EMA crosses <strong>below</strong> Slow EMA. ATR helps calculate dynamic stop-loss levels.
+                💡 <strong>BUY:</strong> Signal triggers when <strong>all 3 conditions become true</strong>: (1) Price above POC (overall - red line), (2) Price above both EMAs, (3) Fast EMA above Slow EMA. Signal shows on the candle where the last condition completes. <strong>SELL:</strong> Fast EMA crosses below Slow EMA. ADX filter requires strong trend (ADX &gt; 25).
               </p>
             </div>
 
@@ -504,78 +516,15 @@ export default function ChartPage() {
               </p>
             </div>
 
-            {/* Consolidation Breakout Section */}
-            <div className="mt-4 p-4 bg-gradient-to-r from-red-50 to-green-50 rounded-lg border border-red-200">
-              <h3 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                <span className="text-lg">📊</span> Consolidation Box Breakout Trading
-              </h3>
-
-              <div className="flex items-center gap-3 mb-4">
-                <input
-                  type="checkbox"
-                  id="showConsolidation"
-                  checked={indicators.showConsolidation}
-                  onChange={() => toggleIndicator('showConsolidation')}
-                  className="w-4 h-4 text-red-600 rounded focus:ring-2"
-                />
-                <label htmlFor="showConsolidation" className="text-sm font-medium text-gray-700">
-                  Enable Consolidation Detection & Breakout Signals
-                </label>
+            {/* Consolidation Breakout Section - HIDDEN (feature disabled) */}
+            {false && (
+              <div className="mt-4 p-4 bg-gradient-to-r from-red-50 to-green-50 rounded-lg border border-red-200">
+                <h3 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                  <span className="text-lg">📊</span> Consolidation Box Breakout Trading (Disabled)
+                </h3>
+                <p className="text-xs text-gray-600">This feature has been disabled due to detection issues.</p>
               </div>
-
-              {indicators.showConsolidation && (
-                <div className="grid grid-cols-2 gap-4 mb-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">
-                      Min Duration (candles)
-                    </label>
-                    <input
-                      type="number"
-                      min="5"
-                      max="30"
-                      value={indicators.consolidationMinDuration}
-                      onChange={(e) => setIndicators({
-                        ...indicators,
-                        consolidationMinDuration: parseInt(e.target.value) || 10
-                      })}
-                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:border-red-500 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">
-                      Max Duration (candles)
-                    </label>
-                    <input
-                      type="number"
-                      min="20"
-                      max="100"
-                      value={indicators.consolidationMaxDuration}
-                      onChange={(e) => setIndicators({
-                        ...indicators,
-                        consolidationMaxDuration: parseInt(e.target.value) || 50
-                      })}
-                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:border-red-500 focus:outline-none"
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div className="space-y-2 text-xs text-gray-700 bg-white p-3 rounded border border-gray-200">
-                <p><strong>How it works:</strong></p>
-                <ul className="list-disc list-inside space-y-1 ml-2">
-                  <li>🟥 <strong>Red line</strong> = Resistance (upper box boundary)</li>
-                  <li>🟩 <strong>Green line</strong> = Support (lower box boundary)</li>
-                  <li>⬆️ <strong>Green arrow</strong> = Bullish breakout (buy signal)</li>
-                  <li>⬇️ <strong>Red arrow</strong> = Bearish breakdown (sell signal)</li>
-                  <li>🎯 <strong>Target</strong> = Box height projected from breakout price</li>
-                  <li>✓ = Volume confirmed (1.5x average volume)</li>
-                </ul>
-                <p className="mt-2 text-gray-600">
-                  <strong>Strategy:</strong> Wait for price to break above resistance or below support with strong volume.
-                  Target is calculated by projecting the box height from the breakout point.
-                </p>
-              </div>
-            </div>
+            )}
           </div>
         </div>
 

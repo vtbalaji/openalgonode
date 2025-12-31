@@ -18,7 +18,7 @@ import {
   LineData,
   HistogramData
 } from 'lightweight-charts';
-import { SMA, EMA, RSI, ATR, ADX } from 'technicalindicators';
+import { SMA, EMA, RSI, ADX } from 'technicalindicators';
 import { calculateVolumeProfile } from '@/lib/indicators/volumeProfile';
 import {
   calculateFairValueGaps,
@@ -54,9 +54,8 @@ export interface IndicatorConfig {
   rsi: boolean;
   rsiPeriod: number;
   volumeProfile: boolean;
+  volumeProfileVisible: boolean;
   volumeProfileBins: number;
-  atr: boolean;
-  atrPeriod: number;
   showSignals: boolean;
   fastEma: number;
   slowEma: number;
@@ -112,17 +111,21 @@ export function AdvancedTradingChart({
   const pocLineRef = useRef<any>(null);
   const valueAreaHighLineRef = useRef<any>(null);
   const valueAreaLowLineRef = useRef<any>(null);
+  // Visible range VP refs
+  const pocLineVisibleRef = useRef<any>(null);
+  const valueAreaHighLineVisibleRef = useRef<any>(null);
+  const valueAreaLowLineVisibleRef = useRef<any>(null);
   const fastEmaSeriesRef = useRef<any>(null);
   const slowEmaSeriesRef = useRef<any>(null);
-  const atrSeriesRef = useRef<any>(null);
   const buySignalSeriesRef = useRef<any>(null);
   const sellSignalSeriesRef = useRef<any>(null);
   const stopLossLineRef = useRef<any>(null);
 
   const [volumeProfileData, setVolumeProfileData] = useState<any>(null);
+  const [volumeProfileVisibleData, setVolumeProfileVisibleData] = useState<any>(null);
   const [visibleRange, setVisibleRange] = useState<any>(null);
   const visibleRangeRef = useRef<any>(null);
-  const [currentATR, setCurrentATR] = useState<number | null>(null);
+  const emaSignalsRef = useRef<any[]>([]);
 
   // SMC data states
   const [smcFVG, setSMCFVG] = useState<FairValueGap[]>([]);
@@ -544,12 +547,12 @@ export function AdvancedTradingChart({
         slowEmaSeriesRef.current = slowEmaSeries;
       }
 
-      // Detect Buy/Sell signals based on EMA crossover with filters
+      // Detect Buy/Sell signals based on POC breakout (BUY) and EMA crossover (SELL)
       if (fastEmaValues.length > 0 && slowEmaValues.length > 0) {
         const buySignals: any[] = [];
         const sellSignals: any[] = [];
 
-        // Calculate ADX for trend filter
+        // Calculate ADX for optional trend filter
         let adxValues: number[] = [];
         if (indicators.adx && data.length >= indicators.adxPeriod) {
           const highPrices = data.map(d => d.high);
@@ -565,12 +568,14 @@ export function AdvancedTradingChart({
           console.log(`[ADX] Calculated ${adxValues.length} values, last ADX: ${adxValues[adxValues.length - 1]?.toFixed(2)}`);
         }
 
-        // Calculate average volume for volume filter
-        let avgVolume = 0;
-        if (indicators.useVolumeFilter) {
-          const totalVolume = data.reduce((sum, d) => sum + d.volume, 0);
-          avgVolume = totalVolume / data.length;
-          console.log(`[VOLUME FILTER] Average volume: ${avgVolume.toFixed(0)}`);
+        // Use OVERALL POC (doesn't change when zooming) instead of visible POC
+        // This prevents signals from appearing in wrong places when user zooms/pans
+        const overallPOC = volumeProfileData?.poc || null;
+
+        if (overallPOC) {
+          console.log(`[SIGNALS] Using overall POC: ${overallPOC.toFixed(2)} for buy signals (stable, doesn't change with zoom)`);
+        } else {
+          console.warn(`[SIGNALS] No overall POC available! Enable "VP: Overall" to get buy signals based on POC breakout.`);
         }
 
         // Calculate offset between fast and slow EMA arrays
@@ -594,88 +599,91 @@ export function AdvancedTradingChart({
 
           // Calculate the actual data index for this signal
           const dataIndex = i + slowOffset;
-          if (dataIndex >= data.length) continue;
+          if (dataIndex >= data.length || dataIndex < 1) continue;
 
           const candle = data[dataIndex];
+          const prevCandle = data[dataIndex - 1];
 
-          // === FILTER CHECKS ===
-
-          // 1. ADX Filter: Only trade in strong trends (ADX > threshold)
+          // === ADX FILTER (Optional) ===
+          let passedADX = true;
           if (indicators.adx && adxValues.length > 0) {
             const adxIndex = dataIndex - adxOffset;
-            if (adxIndex < 0 || adxIndex >= adxValues.length) continue;
-            const currentADX = adxValues[adxIndex];
-            if (currentADX < indicators.adxThreshold) {
-              continue; // Skip signal - weak trend
+            if (adxIndex >= 0 && adxIndex < adxValues.length) {
+              const currentADX = adxValues[adxIndex];
+              if (currentADX < indicators.adxThreshold) {
+                passedADX = false; // Weak trend
+              }
             }
           }
 
-          // 2. Volume Filter: Only trade with above-average volume
-          if (indicators.useVolumeFilter) {
-            if (candle.volume < avgVolume) {
-              continue; // Skip signal - low volume
+          // === BUY SIGNAL: All conditions met (any condition can trigger when others already true) ===
+          if (overallPOC && passedADX) {
+            const prevClose = prevCandle.close;
+            const currClose = candle.close;
+
+            // Current state of all conditions
+            const priceAbovePOC = currClose > overallPOC;
+            const priceAboveBothEMAs = currClose > currFast && currClose > currSlow;
+            const fastAboveSlow = currFast > currSlow;
+
+            // Previous state of all conditions
+            const prevPriceAbovePOC = prevClose > overallPOC;
+            const prevPriceAboveBothEMAs = prevClose > prevFast && prevClose > prevSlow;
+            const prevFastAboveSlow = prevFast > prevSlow;
+
+            // All conditions are TRUE now
+            const allConditionsMet = priceAbovePOC && priceAboveBothEMAs && fastAboveSlow;
+
+            // At least one condition JUST became true (wasn't true before)
+            const anyConditionJustBecameTrue =
+              (priceAbovePOC && !prevPriceAbovePOC) ||           // Price just crossed above POC
+              (priceAboveBothEMAs && !prevPriceAboveBothEMAs) || // Price just crossed above EMAs
+              (fastAboveSlow && !prevFastAboveSlow);             // Fast EMA just crossed above Slow
+
+            // Signal: All conditions met AND at least one just became true
+            if (allConditionsMet && anyConditionJustBecameTrue) {
+              const triggerReason =
+                (priceAbovePOC && !prevPriceAbovePOC) ? 'POC breakout' :
+                (priceAboveBothEMAs && !prevPriceAboveBothEMAs) ? 'Price above EMAs' :
+                'EMA crossover';
+
+              console.log(`[BUY SIGNAL] Triggered by: ${triggerReason} at ${new Date(candle.time * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} | Price: ${currClose.toFixed(2)} | POC: ${overallPOC.toFixed(2)} | Fast: ${currFast.toFixed(2)} | Slow: ${currSlow.toFixed(2)}`);
+
+              buySignals.push({
+                time: candle.time as any,
+                position: 'belowBar',
+                color: '#00C853', // Bright green
+                shape: 'arrowUp', // Triangle pointing up
+                text: 'BUY',
+                size: 2,
+              });
             }
           }
 
-          // 3. Time Filter: Only trade during market hours (9:30 AM - 3:00 PM IST)
-          if (indicators.useTimeFilter) {
-            const candleTime = new Date(candle.time * 1000);
-            const istTime = new Date(candleTime.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
-            const hour = istTime.getHours();
-            const minute = istTime.getMinutes();
-            const timeInMinutes = hour * 60 + minute;
-            const marketStart = 9 * 60 + 30; // 9:30 AM
-            const marketEnd = 15 * 60; // 3:00 PM
-
-            if (timeInMinutes < marketStart || timeInMinutes > marketEnd) {
-              continue; // Skip signal - outside trading hours
+          // === SELL SIGNAL: Fast EMA crosses BELOW Slow EMA ===
+          if (passedADX) {
+            if (prevFast > prevSlow && currFast < currSlow) {
+              sellSignals.push({
+                time: candle.time as any,
+                position: 'aboveBar',
+                color: '#D32F2F', // Bright red
+                shape: 'arrowDown', // Triangle pointing down
+                text: 'SELL',
+                size: 2,
+              });
             }
-          }
-
-          // === ALL FILTERS PASSED - ADD SIGNAL ===
-
-          // Buy signal: Fast crosses above Slow (bullish)
-          if (prevFast < prevSlow && currFast > currSlow) {
-            buySignals.push({
-              time: candle.time as any,
-              position: 'belowBar',
-              color: '#00C853', // Bright green
-              shape: 'arrowUp', // Triangle pointing up
-              text: 'BUY',
-              size: 2, // Make it bigger
-            });
-          }
-
-          // Sell signal: Fast crosses below Slow (bearish)
-          if (prevFast > prevSlow && currFast < currSlow) {
-            sellSignals.push({
-              time: candle.time as any,
-              position: 'aboveBar',
-              color: '#D32F2F', // Bright red
-              shape: 'arrowDown', // Triangle pointing down
-              text: 'SELL',
-              size: 2, // Make it bigger
-            });
           }
         }
 
-        // Combine buy and sell signals and add to candlestick series
-        const allSignals = [...buySignals, ...sellSignals].sort((a, b) => a.time - b.time);
+        // Combine buy and sell signals - will be merged with consolidation markers later
+        const allEmaSignals = [...buySignals, ...sellSignals].sort((a, b) => a.time - b.time);
 
-        if (allSignals.length > 0 && candlestickSeriesRef.current) {
-          candlestickSeriesRef.current.setMarkers(allSignals);
-        }
+        // Store in ref for later merging with consolidation signals
+        emaSignalsRef.current = allEmaSignals;
 
-        const filtersActive = indicators.adx || indicators.useVolumeFilter || indicators.useTimeFilter;
-        const filterNames = [
-          indicators.adx ? `ADX>${indicators.adxThreshold}` : '',
-          indicators.useVolumeFilter ? 'Volume' : '',
-          indicators.useTimeFilter ? 'Time(9:30-15:00)' : '',
-        ].filter(f => f).join(' + ');
-
-        console.log(`[SIGNALS] ${filtersActive ? 'FILTERED' : 'UNFILTERED'} - Detected ${buySignals.length} BUY and ${sellSignals.length} SELL signals`);
-        if (filtersActive) {
-          console.log(`[FILTERS ACTIVE] ${filterNames}`);
+        console.log(`[SIGNALS] BUY: ${buySignals.length} (POC breakout + above EMAs) | SELL: ${sellSignals.length} (EMA crossover)`);
+        if (indicators.adx) {
+          console.log(`[FILTER] ADX > ${indicators.adxThreshold} - Strong trend filter enabled`);
         }
         if (buySignals.length > 0) {
           console.log('[BUY SIGNALS]', buySignals.map(s => new Date(s.time * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })));
@@ -685,7 +693,9 @@ export function AdvancedTradingChart({
         }
       }
     } else {
-      // Remove signal-related series and clear markers when disabled
+      // Remove signal-related series and clear EMA markers when disabled
+      emaSignalsRef.current = [];
+
       if (candlestickSeriesRef.current) {
         candlestickSeriesRef.current.setMarkers([]);
       }
@@ -704,45 +714,6 @@ export function AdvancedTradingChart({
           slowEmaSeriesRef.current = null;
         } catch (e) {
           console.warn('Error removing slow EMA series:', e);
-        }
-      }
-    }
-
-    // ATR (Average True Range) for volatility and stop-loss calculation
-    if (indicators.atr && data.length >= indicators.atrPeriod && mainChartInstanceRef.current) {
-      // Remove old ATR line
-      if (atrSeriesRef.current) {
-        try {
-          mainChartInstanceRef.current.removeSeries(atrSeriesRef.current);
-          atrSeriesRef.current = null;
-        } catch (e) {
-          console.warn('Error removing ATR series:', e);
-        }
-      }
-
-      const highPrices = data.map(d => d.high);
-      const lowPrices = data.map(d => d.low);
-
-      const atrValues = ATR.calculate({
-        high: highPrices,
-        low: lowPrices,
-        close: closePrices,
-        period: indicators.atrPeriod,
-      });
-
-      const lastATR = atrValues[atrValues.length - 1];
-      setCurrentATR(lastATR || null);
-
-      console.log(`[ATR] Calculated ${atrValues.length} ATR values, last ATR: ${lastATR?.toFixed(2)}`);
-    } else {
-      setCurrentATR(null);
-
-      if (atrSeriesRef.current && mainChartInstanceRef.current) {
-        try {
-          mainChartInstanceRef.current.removeSeries(atrSeriesRef.current);
-          atrSeriesRef.current = null;
-        } catch (e) {
-          console.warn('Error removing ATR series:', e);
         }
       }
     }
@@ -888,6 +859,132 @@ export function AdvancedTradingChart({
       }
     }
 
+    // Volume Profile - Visible Range Only
+    if (indicators.volumeProfileVisible && data.length > 0 && mainChartInstanceRef.current && visibleRangeRef.current) {
+      // Get visible time range
+      const { from, to } = visibleRangeRef.current;
+
+      // Filter data to visible range only
+      const visibleData = data.filter(d => d.time >= from && d.time <= to);
+
+      if (visibleData.length > 10) {
+        console.log('[VP-VISIBLE] Calculating for visible range:', {
+          totalCandles: data.length,
+          visibleCandles: visibleData.length,
+          dateRange: {
+            from: new Date(from * 1000).toISOString(),
+            to: new Date(to * 1000).toISOString(),
+          },
+        });
+
+        // Calculate volume profile for visible range only
+        const volumeProfileVisibleResult = calculateVolumeProfile(
+          visibleData,
+          indicators.volumeProfileBins || 50,
+          0.70
+        );
+
+        // Store for histogram rendering
+        setVolumeProfileVisibleData(volumeProfileVisibleResult);
+
+        // Get top 5 bars by volume
+        const top5BarsVisible = [...volumeProfileVisibleResult.profile]
+          .sort((a, b) => b.volume - a.volume)
+          .slice(0, 5)
+          .map((bar, i) => `${i + 1}. Price ${bar.price.toFixed(2)}: Volume ${bar.volume.toFixed(0)}`);
+
+        console.log('[VP-VISIBLE] Top 5 bars:', top5BarsVisible);
+        console.log(`[VP-VISIBLE] POC: ${volumeProfileVisibleResult.poc.toFixed(2)}`);
+
+        // Add POC, VA High, VA Low as price lines (in different color - blue)
+        if (candlestickSeriesRef.current) {
+          // Remove old visible VP price lines if they exist
+          if (pocLineVisibleRef.current) {
+            try {
+              candlestickSeriesRef.current.removePriceLine(pocLineVisibleRef.current);
+              pocLineVisibleRef.current = null;
+            } catch (e) {
+              console.warn('Error removing visible POC price line:', e);
+            }
+          }
+          if (valueAreaHighLineVisibleRef.current) {
+            try {
+              candlestickSeriesRef.current.removePriceLine(valueAreaHighLineVisibleRef.current);
+              valueAreaHighLineVisibleRef.current = null;
+            } catch (e) {
+              console.warn('Error removing visible VA High price line:', e);
+            }
+          }
+          if (valueAreaLowLineVisibleRef.current) {
+            try {
+              candlestickSeriesRef.current.removePriceLine(valueAreaLowLineVisibleRef.current);
+              valueAreaLowLineVisibleRef.current = null;
+            } catch (e) {
+              console.warn('Error removing visible VA Low price line:', e);
+            }
+          }
+
+          // Add POC (Point of Control) line - blue for visible range
+          pocLineVisibleRef.current = candlestickSeriesRef.current.createPriceLine({
+            price: volumeProfileVisibleResult.poc,
+            color: '#2196F3', // Blue
+            lineWidth: 2,
+            lineStyle: 0, // Solid
+            axisLabelVisible: true,
+            title: 'POC-V',
+          });
+
+          // Add Value Area High line - blue dashed
+          valueAreaHighLineVisibleRef.current = candlestickSeriesRef.current.createPriceLine({
+            price: volumeProfileVisibleResult.valueAreaHigh,
+            color: '#64B5F6', // Light blue
+            lineWidth: 2,
+            lineStyle: 2, // Dashed
+            axisLabelVisible: true,
+            title: 'VA-V High',
+          });
+
+          // Add Value Area Low line - blue dashed
+          valueAreaLowLineVisibleRef.current = candlestickSeriesRef.current.createPriceLine({
+            price: volumeProfileVisibleResult.valueAreaLow,
+            color: '#64B5F6', // Light blue
+            lineWidth: 2,
+            lineStyle: 2, // Dashed
+            axisLabelVisible: true,
+            title: 'VA-V Low',
+          });
+        }
+      }
+    } else if (!indicators.volumeProfileVisible) {
+      // Remove visible range volume profile when disabled
+      setVolumeProfileVisibleData(null);
+
+      if (pocLineVisibleRef.current && candlestickSeriesRef.current) {
+        try {
+          candlestickSeriesRef.current.removePriceLine(pocLineVisibleRef.current);
+          pocLineVisibleRef.current = null;
+        } catch (e) {
+          console.warn('Error removing visible POC price line:', e);
+        }
+      }
+      if (valueAreaHighLineVisibleRef.current && candlestickSeriesRef.current) {
+        try {
+          candlestickSeriesRef.current.removePriceLine(valueAreaHighLineVisibleRef.current);
+          valueAreaHighLineVisibleRef.current = null;
+        } catch (e) {
+          console.warn('Error removing visible VA High price line:', e);
+        }
+      }
+      if (valueAreaLowLineVisibleRef.current && candlestickSeriesRef.current) {
+        try {
+          candlestickSeriesRef.current.removePriceLine(valueAreaLowLineVisibleRef.current);
+          valueAreaLowLineVisibleRef.current = null;
+        } catch (e) {
+          console.warn('Error removing visible VA Low price line:', e);
+        }
+      }
+    }
+
     // Calculate SMC indicators if enabled
     if (indicators.showFVG) {
       const fvg = calculateFairValueGaps(data);
@@ -923,8 +1020,8 @@ export function AdvancedTradingChart({
       setSMCPD(null);
     }
 
-    // Calculate consolidation boxes and breakouts
-    if (indicators.showConsolidation) {
+    // Calculate consolidation boxes and breakouts - DISABLED
+    if (false && indicators.showConsolidation) {
       const boxes = detectConsolidationBoxes(
         data,
         indicators.consolidationMinDuration,
@@ -939,7 +1036,8 @@ export function AdvancedTradingChart({
       console.log(`[BREAKOUT] Detected ${breakouts.length} breakout signals (${breakouts.filter(s => s.volumeConfirmed).length} volume-confirmed)`);
 
       // Add breakout markers to chart with ENTRY PRICE
-      if (breakouts.length > 0 && candlestickSeriesRef.current) {
+      // IMPORTANT: Merge with existing EMA markers instead of overwriting
+      if (candlestickSeriesRef.current) {
         const breakoutMarkers = breakouts.map(signal => ({
           time: signal.time as any,
           position: signal.type === 'bullish' ? 'belowBar' : 'aboveBar',
@@ -949,11 +1047,24 @@ export function AdvancedTradingChart({
           size: 3, // Larger size for visibility
         }));
 
-        candlestickSeriesRef.current.setMarkers(breakoutMarkers);
+        // Get EMA markers from ref (set earlier in this useEffect)
+        const emaMarkers = emaSignalsRef.current || [];
+
+        // Combine EMA markers + Consolidation markers
+        const allMarkers = [...emaMarkers, ...breakoutMarkers];
+
+        console.log(`[MARKERS] Setting ${allMarkers.length} total markers (${emaMarkers.length} EMA + ${breakoutMarkers.length} consolidation)`);
+
+        candlestickSeriesRef.current.setMarkers(allMarkers);
       }
     } else {
       setConsolidationBoxes([]);
       setBreakoutSignals([]);
+
+      // If consolidation disabled but EMA signals exist, set them
+      if (candlestickSeriesRef.current && emaSignalsRef.current.length > 0) {
+        candlestickSeriesRef.current.setMarkers(emaSignalsRef.current);
+      }
     }
 
     // Fit content
@@ -1003,9 +1114,13 @@ export function AdvancedTradingChart({
 
               return volumeProfileData.profile.map((row: any, index: number) => {
                 try {
-                  // Calculate Y position manually (inverted because chart grows downward)
-                  const pricePercent = (maxPrice - row.price) / priceRange;
-                  const yCoord = pricePercent * chartHeight;
+                  // Use TradingView's price-to-coordinate API for accurate positioning
+                  const yCoord = candlestickSeriesRef.current?.priceToCoordinate(row.price);
+
+                  // Skip if price is outside visible range
+                  if (yCoord === null || yCoord === undefined) {
+                    return null;
+                  }
 
                   // Calculate bar width (responsive for mobile)
                   const maxBarWidth = isMobile ? 60 : 120;
@@ -1045,15 +1160,78 @@ export function AdvancedTradingChart({
           </div>
         )}
 
-        {/* ATR Overlay Badge */}
-        {indicators.atr && currentATR !== null && (
+        {/* Volume Profile Histogram - Visible Range (on right side in green) */}
+        {indicators.volumeProfileVisible && volumeProfileVisibleData && mainChartInstanceRef.current && (
           <div
-            className="absolute top-2 right-2 px-3 py-1.5 bg-indigo-600 text-white rounded-lg shadow-lg z-50 pointer-events-none"
-            style={{ fontSize: isMobile ? '11px' : '13px' }}
+            className="absolute top-0 right-0 pointer-events-none z-50"
+            style={{
+              width: isMobile ? '100px' : '200px',
+              height: indicators.rsi ? height - (isMobile ? 100 : 120) - 30 : height,
+            }}
           >
-            <div className="font-bold">ATR({indicators.atrPeriod})</div>
-            <div className="text-lg font-mono">{currentATR.toFixed(2)}</div>
-            <div className="text-xs opacity-90">Stop: {(currentATR * 1.5).toFixed(2)}</div>
+            {(() => {
+              // Get price range from profile
+              const prices = volumeProfileVisibleData.profile.map((r: any) => r.price);
+              const minPrice = Math.min(...prices);
+              const maxPrice = Math.max(...prices);
+              const priceRange = maxPrice - minPrice;
+              const chartHeight = indicators.rsi ? height - (isMobile ? 100 : 120) - 30 : height;
+              const maxVolume = Math.max(...volumeProfileVisibleData.profile.map((r: any) => r.volume));
+
+              console.log('[VP-VISIBLE] Rendering:', {
+                minPrice: minPrice.toFixed(2),
+                maxPrice: maxPrice.toFixed(2),
+                priceRange: priceRange.toFixed(2),
+                chartHeight,
+                barCount: volumeProfileVisibleData.profile.length,
+                poc: volumeProfileVisibleData.poc.toFixed(2),
+              });
+
+              return volumeProfileVisibleData.profile.map((row: any, index: number) => {
+                try {
+                  // Use TradingView's price-to-coordinate API for accurate positioning
+                  const yCoord = candlestickSeriesRef.current?.priceToCoordinate(row.price);
+
+                  // Skip if price is outside visible range
+                  if (yCoord === null || yCoord === undefined) {
+                    return null;
+                  }
+
+                  // Calculate bar width (responsive for mobile) - extend from right side
+                  const maxBarWidth = isMobile ? 60 : 120;
+                  const barWidth = Math.max(2, (row.volume / maxVolume) * maxBarWidth);
+
+                  // Check if this is in the value area
+                  const isInValueArea = row.price >= volumeProfileVisibleData.valueAreaLow &&
+                                        row.price <= volumeProfileVisibleData.valueAreaHigh;
+
+                  // Check if this is POC
+                  const isPOC = Math.abs(row.price - volumeProfileVisibleData.poc) < (volumeProfileVisibleData.poc * 0.001);
+
+                  return (
+                    <div
+                      key={index}
+                      className="absolute"
+                      style={{
+                        top: yCoord + 'px',
+                        right: isMobile ? '35px' : '70px',
+                        width: barWidth + 'px',
+                        height: isMobile ? '1.5px' : '2px',
+                        backgroundColor: isPOC
+                          ? '#2196F3' // Blue for visible POC
+                          : isInValueArea
+                            ? 'rgba(76, 175, 80, 0.9)' // Green for visible VA
+                            : 'rgba(156, 163, 175, 0.7)', // Gray for rest
+                        boxShadow: isPOC ? '0 0 4px rgba(33,150,243,1)' : 'none',
+                      }}
+                    />
+                  );
+                } catch (e) {
+                  console.error('[VP-VISIBLE] Error rendering bar:', e);
+                  return null;
+                }
+              });
+            })()}
           </div>
         )}
 
@@ -1203,8 +1381,8 @@ export function AdvancedTradingChart({
                 );
               })}
 
-              {/* Consolidation Box Lines */}
-              {indicators.showConsolidation && consolidationBoxes.map((box, idx) => {
+              {/* Consolidation Box Lines - HIDDEN (feature disabled) */}
+              {false && indicators.showConsolidation && consolidationBoxes.map((box, idx) => {
                 const resistanceLine = priceToY(box.resistance);
                 const supportLine = priceToY(box.support);
 
@@ -1267,8 +1445,8 @@ export function AdvancedTradingChart({
                 );
               })}
 
-              {/* Breakout Target Price Labels */}
-              {indicators.showConsolidation && breakoutSignals.map((signal, idx) => {
+              {/* Breakout Target Price Labels - HIDDEN (feature disabled) */}
+              {false && indicators.showConsolidation && breakoutSignals.map((signal, idx) => {
                 const targetY = priceToY(signal.targetPrice);
 
                 return (
@@ -1302,10 +1480,10 @@ export function AdvancedTradingChart({
           );
         })()}
 
-        {/* Consolidation Info Badge */}
-        {indicators.showConsolidation && (consolidationBoxes.length > 0 || breakoutSignals.length > 0) && (
+        {/* Consolidation Info Badge - HIDDEN (feature disabled) */}
+        {false && indicators.showConsolidation && (consolidationBoxes.length > 0 || breakoutSignals.length > 0) && (
           <div
-            className="absolute top-2 right-2 px-3 py-2 bg-gradient-to-r from-red-500 to-green-600 text-white rounded-lg shadow-lg z-50 pointer-events-none"
+            className="absolute top-2 left-2 px-3 py-2 bg-gradient-to-r from-red-500 to-green-600 text-white rounded-lg shadow-lg z-50 pointer-events-none"
             style={{ fontSize: isMobile ? '10px' : '12px' }}
           >
             <div className="font-bold mb-1">📊 Consolidation</div>

@@ -250,7 +250,7 @@ export default function OrderStatusPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          orderid: selectedOrder.order_id,
+          order_id: selectedOrder.order_id,
           broker: 'zerodha',
         }),
       });
@@ -286,7 +286,7 @@ export default function OrderStatusPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          orderid: selectedOrder.order_id,
+          order_id: selectedOrder.order_id,
           broker: 'zerodha',
           quantity: editFormData.quantity,
           price: editFormData.price,

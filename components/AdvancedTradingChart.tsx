@@ -91,6 +91,7 @@ export function AdvancedTradingChart({
   const [volumeProfileData, setVolumeProfileData] = useState<any>(null);
   const [visibleRange, setVisibleRange] = useState<any>(null);
   const visibleRangeRef = useRef<any>(null);
+  const [currentATR, setCurrentATR] = useState<number | null>(null);
 
   // Detect mobile screen
   useEffect(() => {
@@ -476,84 +477,72 @@ export function AdvancedTradingChart({
 
       // Detect Buy/Sell signals based on EMA crossover
       if (fastEmaValues.length > 0 && slowEmaValues.length > 0) {
-        // Remove old signal markers
-        if (buySignalSeriesRef.current) {
-          try {
-            mainChartInstanceRef.current.removeSeries(buySignalSeriesRef.current);
-            buySignalSeriesRef.current = null;
-          } catch (e) {
-            console.warn('Error removing buy signal series:', e);
-          }
-        }
-        if (sellSignalSeriesRef.current) {
-          try {
-            mainChartInstanceRef.current.removeSeries(sellSignalSeriesRef.current);
-            sellSignalSeriesRef.current = null;
-          } catch (e) {
-            console.warn('Error removing sell signal series:', e);
-          }
-        }
-
         const buySignals: any[] = [];
         const sellSignals: any[] = [];
-        const offset = indicators.slowEma - 1; // Align with slow EMA start
 
-        // Detect crossovers
-        for (let i = 1; i < fastEmaValues.length; i++) {
-          const prevFast = fastEmaValues[i - 1];
-          const currFast = fastEmaValues[i];
+        // Calculate offset between fast and slow EMA arrays
+        const fastOffset = indicators.fastEma - 1;
+        const slowOffset = indicators.slowEma - 1;
+        const arrayOffset = slowOffset - fastOffset; // How many indices ahead fastEma is
+
+        // Iterate through slowEmaValues (shorter array) starting from index 1
+        for (let i = 1; i < slowEmaValues.length; i++) {
+          // Get corresponding indices in fastEmaValues
+          const fastIndex = i + arrayOffset;
+
+          // Make sure we have valid indices
+          if (fastIndex < 1 || fastIndex >= fastEmaValues.length) continue;
+
           const prevSlow = slowEmaValues[i - 1];
           const currSlow = slowEmaValues[i];
+          const prevFast = fastEmaValues[fastIndex - 1];
+          const currFast = fastEmaValues[fastIndex];
 
-          // Buy signal: Fast crosses above Slow
-          if (prevFast <= prevSlow && currFast > currSlow) {
-            const dataIndex = i + offset;
+          // Calculate the actual data index for this signal
+          const dataIndex = i + slowOffset;
+
+          // Buy signal: Fast crosses above Slow (bullish)
+          if (prevFast < prevSlow && currFast > currSlow) {
             buySignals.push({
               time: data[dataIndex].time as any,
               position: 'belowBar',
-              color: '#00E676',
-              shape: 'arrowUp',
+              color: '#00C853', // Bright green
+              shape: 'arrowUp', // Triangle pointing up
               text: 'BUY',
+              size: 2, // Make it bigger
             });
           }
 
-          // Sell signal: Fast crosses below Slow
-          if (prevFast >= prevSlow && currFast < currSlow) {
-            const dataIndex = i + offset;
+          // Sell signal: Fast crosses below Slow (bearish)
+          if (prevFast > prevSlow && currFast < currSlow) {
             sellSignals.push({
               time: data[dataIndex].time as any,
               position: 'aboveBar',
-              color: '#FF1744',
-              shape: 'arrowDown',
+              color: '#D32F2F', // Bright red
+              shape: 'arrowDown', // Triangle pointing down
               text: 'SELL',
+              size: 2, // Make it bigger
             });
           }
         }
 
-        // Add buy signal markers
-        if (buySignals.length > 0) {
-          const buyMarkerSeries = mainChartInstanceRef.current.addLineSeries({
-            color: 'transparent',
-            lineWidth: 1,
-          });
-          buyMarkerSeries.setMarkers(buySignals);
-          buySignalSeriesRef.current = buyMarkerSeries;
-        }
+        // Combine buy and sell signals and add to candlestick series
+        const allSignals = [...buySignals, ...sellSignals].sort((a, b) => a.time - b.time);
 
-        // Add sell signal markers
-        if (sellSignals.length > 0) {
-          const sellMarkerSeries = mainChartInstanceRef.current.addLineSeries({
-            color: 'transparent',
-            lineWidth: 1,
-          });
-          sellMarkerSeries.setMarkers(sellSignals);
-          sellSignalSeriesRef.current = sellMarkerSeries;
+        if (allSignals.length > 0 && candlestickSeriesRef.current) {
+          candlestickSeriesRef.current.setMarkers(allSignals);
         }
 
         console.log(`[SIGNALS] Detected ${buySignals.length} buy signals and ${sellSignals.length} sell signals`);
+        console.log('Buy signals at:', buySignals.map(s => new Date(s.time * 1000).toLocaleString()));
+        console.log('Sell signals at:', sellSignals.map(s => new Date(s.time * 1000).toLocaleString()));
       }
     } else {
-      // Remove signal-related series when disabled
+      // Remove signal-related series and clear markers when disabled
+      if (candlestickSeriesRef.current) {
+        candlestickSeriesRef.current.setMarkers([]);
+      }
+
       if (fastEmaSeriesRef.current && mainChartInstanceRef.current) {
         try {
           mainChartInstanceRef.current.removeSeries(fastEmaSeriesRef.current);
@@ -568,22 +557,6 @@ export function AdvancedTradingChart({
           slowEmaSeriesRef.current = null;
         } catch (e) {
           console.warn('Error removing slow EMA series:', e);
-        }
-      }
-      if (buySignalSeriesRef.current && mainChartInstanceRef.current) {
-        try {
-          mainChartInstanceRef.current.removeSeries(buySignalSeriesRef.current);
-          buySignalSeriesRef.current = null;
-        } catch (e) {
-          console.warn('Error removing buy signal series:', e);
-        }
-      }
-      if (sellSignalSeriesRef.current && mainChartInstanceRef.current) {
-        try {
-          mainChartInstanceRef.current.removeSeries(sellSignalSeriesRef.current);
-          sellSignalSeriesRef.current = null;
-        } catch (e) {
-          console.warn('Error removing sell signal series:', e);
         }
       }
     }
@@ -610,16 +583,20 @@ export function AdvancedTradingChart({
         period: indicators.atrPeriod,
       });
 
-      console.log(`[ATR] Calculated ${atrValues.length} ATR values, last ATR: ${atrValues[atrValues.length - 1]?.toFixed(2)}`);
+      const lastATR = atrValues[atrValues.length - 1];
+      setCurrentATR(lastATR || null);
 
-      // Show ATR as an info overlay (optional - can be removed if too cluttered)
-      // For now, we'll just log it and use it for stop-loss calculation
-    } else if (!indicators.atr && atrSeriesRef.current && mainChartInstanceRef.current) {
-      try {
-        mainChartInstanceRef.current.removeSeries(atrSeriesRef.current);
-        atrSeriesRef.current = null;
-      } catch (e) {
-        console.warn('Error removing ATR series:', e);
+      console.log(`[ATR] Calculated ${atrValues.length} ATR values, last ATR: ${lastATR?.toFixed(2)}`);
+    } else {
+      setCurrentATR(null);
+
+      if (atrSeriesRef.current && mainChartInstanceRef.current) {
+        try {
+          mainChartInstanceRef.current.removeSeries(atrSeriesRef.current);
+          atrSeriesRef.current = null;
+        } catch (e) {
+          console.warn('Error removing ATR series:', e);
+        }
       }
     }
 
@@ -675,34 +652,7 @@ export function AdvancedTradingChart({
 
       console.log('[VOLUME PROFILE] Top 5 bars by volume:', top5Bars);
 
-      // Remove old series if they exist
-      if (pocLineRef.current) {
-        try {
-          mainChartInstanceRef.current.removeSeries(pocLineRef.current);
-          pocLineRef.current = null;
-        } catch (e) {
-          console.warn('Error removing POC line:', e);
-        }
-      }
-      if (valueAreaHighLineRef.current) {
-        try {
-          mainChartInstanceRef.current.removeSeries(valueAreaHighLineRef.current);
-          valueAreaHighLineRef.current = null;
-        } catch (e) {
-          console.warn('Error removing Value Area High line:', e);
-        }
-      }
-      if (valueAreaLowLineRef.current) {
-        try {
-          mainChartInstanceRef.current.removeSeries(valueAreaLowLineRef.current);
-          valueAreaLowLineRef.current = null;
-        } catch (e) {
-          console.warn('Error removing Value Area Low line:', e);
-        }
-      }
-
       // Add POC, VA High, VA Low as price lines on the candlestick series
-      // This puts the labels in the center of the chart instead of on the right side
       if (candlestickSeriesRef.current) {
         // Remove old price lines if they exist
         if (pocLineRef.current) {
@@ -877,6 +827,18 @@ export function AdvancedTradingChart({
                 }
               });
             })()}
+          </div>
+        )}
+
+        {/* ATR Overlay Badge */}
+        {indicators.atr && currentATR !== null && (
+          <div
+            className="absolute top-2 right-2 px-3 py-1.5 bg-indigo-600 text-white rounded-lg shadow-lg z-50 pointer-events-none"
+            style={{ fontSize: isMobile ? '11px' : '13px' }}
+          >
+            <div className="font-bold">ATR({indicators.atrPeriod})</div>
+            <div className="text-lg font-mono">{currentATR.toFixed(2)}</div>
+            <div className="text-xs opacity-90">Stop: {(currentATR * 1.5).toFixed(2)}</div>
           </div>
         )}
       </div>

@@ -39,11 +39,13 @@ export function detectConsolidationBoxes(
   data: ChartData[],
   minDuration: number = 10,
   maxDuration: number = 50,
-  tolerancePercent: number = 0.5
+  tolerancePercent: number = 1.0 // Increased from 0.5% to 1.0% for wider boxes
 ): ConsolidationBox[] {
   const boxes: ConsolidationBox[] = [];
 
   if (data.length < minDuration) return boxes;
+
+  console.log(`[CONSOLIDATION-DEBUG] Scanning ${data.length} candles, looking for boxes ${minDuration}-${maxDuration} candles long`);
 
   // CHANGED: Search backwards from most recent data to prioritize current boxes
   // Start from the end of the data array
@@ -76,11 +78,11 @@ export function detectConsolidationBoxes(
 
       // Valid box: at least 2 touches on each level (relaxed for recent boxes)
       const totalTouches = supportTouches + resistanceTouches;
-      const isRecent = endIdx >= data.length - 10; // Last 10 candles
+      const isRecent = endIdx >= data.length - 20; // Last 20 candles (more aggressive)
 
-      // Relaxed criteria for recent boxes to catch forming consolidations
+      // VERY RELAXED criteria for recent boxes to catch forming consolidations
       const meetsMinTouches = isRecent
-        ? (supportTouches >= 1 && resistanceTouches >= 1 && totalTouches >= 3)
+        ? (supportTouches >= 1 && resistanceTouches >= 1 && totalTouches >= 2) // Even looser!
         : (supportTouches >= 2 && resistanceTouches >= 2);
 
       if (meetsMinTouches) {
@@ -96,6 +98,9 @@ export function detectConsolidationBoxes(
         });
 
         if (!overlaps) {
+          const isActiveBox = endIdx >= data.length - 3;
+          console.log(`[CONSOLIDATION-DEBUG] Found box: Support=${low.toFixed(2)}, Resistance=${high.toFixed(2)}, Height=${range.toFixed(2)}, Touches=${totalTouches}, Duration=${duration}, Active=${isActiveBox}`);
+
           boxes.push({
             startIndex: startIdx,
             endIndex: endIdx,
@@ -105,7 +110,7 @@ export function detectConsolidationBoxes(
             resistance: high,
             height: range,
             touchCount: totalTouches,
-            isActive: endIdx >= data.length - 3, // Active if within last 3 candles
+            isActive: isActiveBox,
           });
 
           // Stop searching this endIdx once we found a valid box
@@ -119,7 +124,10 @@ export function detectConsolidationBoxes(
   }
 
   // Return boxes sorted by recency (most recent first)
-  return boxes.sort((a, b) => b.endIndex - a.endIndex).slice(0, 3);
+  const sortedBoxes = boxes.sort((a, b) => b.endIndex - a.endIndex).slice(0, 3);
+  console.log(`[CONSOLIDATION-DEBUG] Returning ${sortedBoxes.length} boxes total (${sortedBoxes.filter(b => b.isActive).length} active)`);
+
+  return sortedBoxes;
 }
 
 /**

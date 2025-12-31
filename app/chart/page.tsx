@@ -60,7 +60,7 @@ export default function ChartPage() {
     showSupportResistance: false,
     showPremiumDiscount: false,
     // Consolidation breakout trading
-    showConsolidation: false,
+    showConsolidation: true, // Enable by default
     consolidationMinDuration: 10,
     consolidationMaxDuration: 50,
   });

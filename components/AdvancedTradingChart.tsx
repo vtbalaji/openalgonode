@@ -20,6 +20,16 @@ import {
 } from 'lightweight-charts';
 import { SMA, EMA, RSI, ATR, ADX } from 'technicalindicators';
 import { calculateVolumeProfile } from '@/lib/indicators/volumeProfile';
+import {
+  calculateFairValueGaps,
+  calculateOrderBlocks,
+  calculateSupportResistance,
+  calculatePremiumDiscount,
+  type FairValueGap,
+  type OrderBlock,
+  type SupportResistanceLevel,
+  type PremiumDiscountZone,
+} from '@/lib/indicators/smcIndicators';
 
 export interface ChartData {
   time: number;
@@ -50,6 +60,11 @@ export interface IndicatorConfig {
   adxThreshold: number;
   useVolumeFilter: boolean;
   useTimeFilter: boolean;
+  // SMC indicators (for manual learning)
+  showFVG: boolean; // Fair Value Gaps
+  showOrderBlocks: boolean;
+  showSupportResistance: boolean;
+  showPremiumDiscount: boolean;
 }
 
 export interface AdvancedTradingChartProps {
@@ -98,6 +113,12 @@ export function AdvancedTradingChart({
   const [visibleRange, setVisibleRange] = useState<any>(null);
   const visibleRangeRef = useRef<any>(null);
   const [currentATR, setCurrentATR] = useState<number | null>(null);
+
+  // SMC data states
+  const [smcFVG, setSMCFVG] = useState<FairValueGap[]>([]);
+  const [smcOrderBlocks, setSMCOrderBlocks] = useState<OrderBlock[]>([]);
+  const [smcSR, setSMCSR] = useState<SupportResistanceLevel[]>([]);
+  const [smcPD, setSMCPD] = useState<PremiumDiscountZone | null>(null);
 
   // Detect mobile screen
   useEffect(() => {
@@ -853,6 +874,41 @@ export function AdvancedTradingChart({
       }
     }
 
+    // Calculate SMC indicators if enabled
+    if (indicators.showFVG) {
+      const fvg = calculateFairValueGaps(data);
+      setSMCFVG(fvg);
+      console.log(`[SMC] Fair Value Gaps: ${fvg.length} unfilled gaps`);
+    } else {
+      setSMCFVG([]);
+    }
+
+    if (indicators.showOrderBlocks) {
+      const ob = calculateOrderBlocks(data);
+      setSMCOrderBlocks(ob);
+      console.log(`[SMC] Order Blocks: ${ob.length} blocks (${ob.filter(o => o.type === 'bullish').length} bullish, ${ob.filter(o => o.type === 'bearish').length} bearish)`);
+    } else {
+      setSMCOrderBlocks([]);
+    }
+
+    if (indicators.showSupportResistance) {
+      const sr = calculateSupportResistance(data);
+      setSMCSR(sr);
+      console.log(`[SMC] Support/Resistance: ${sr.length} levels`);
+    } else {
+      setSMCSR([]);
+    }
+
+    if (indicators.showPremiumDiscount) {
+      const pd = calculatePremiumDiscount(data);
+      setSMCPD(pd);
+      if (pd) {
+        console.log(`[SMC] Premium/Discount: High=${pd.high.toFixed(2)}, Low=${pd.low.toFixed(2)}, Eq=${pd.equilibrium.toFixed(2)}`);
+      }
+    } else {
+      setSMCPD(null);
+    }
+
     // Fit content
     if (mainChartInstanceRef.current) {
       mainChartInstanceRef.current.timeScale().fitContent();
@@ -951,6 +1007,28 @@ export function AdvancedTradingChart({
             <div className="font-bold">ATR({indicators.atrPeriod})</div>
             <div className="text-lg font-mono">{currentATR.toFixed(2)}</div>
             <div className="text-xs opacity-90">Stop: {(currentATR * 1.5).toFixed(2)}</div>
+          </div>
+        )}
+
+        {/* SMC Info Badge */}
+        {(indicators.showFVG || indicators.showOrderBlocks || indicators.showSupportResistance || indicators.showPremiumDiscount) && (
+          <div
+            className="absolute bottom-2 left-2 px-3 py-2 bg-gradient-to-r from-orange-500 to-purple-600 text-white rounded-lg shadow-lg z-50 pointer-events-none"
+            style={{ fontSize: isMobile ? '10px' : '12px' }}
+          >
+            <div className="font-bold mb-1">🎓 SMC Active</div>
+            {indicators.showFVG && smcFVG.length > 0 && (
+              <div className="text-xs">FVG: {smcFVG.length} gaps</div>
+            )}
+            {indicators.showOrderBlocks && smcOrderBlocks.length > 0 && (
+              <div className="text-xs">OB: {smcOrderBlocks.length} blocks</div>
+            )}
+            {indicators.showSupportResistance && smcSR.length > 0 && (
+              <div className="text-xs">S/R: {smcSR.length} levels</div>
+            )}
+            {indicators.showPremiumDiscount && smcPD && (
+              <div className="text-xs">P/D: {smcPD.equilibrium.toFixed(2)}</div>
+            )}
           </div>
         )}
       </div>

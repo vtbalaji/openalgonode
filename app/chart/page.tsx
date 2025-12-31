@@ -54,6 +54,11 @@ export default function ChartPage() {
     adxThreshold: 25, // Only trade when ADX > 25 (strong trend)
     useVolumeFilter: true, // ✅ Require above-average volume
     useTimeFilter: true, // ✅ Only trade 9:30 AM - 3:00 PM IST
+    // SMC indicators (for manual learning - disabled by default)
+    showFVG: false,
+    showOrderBlocks: false,
+    showSupportResistance: false,
+    showPremiumDiscount: false,
   });
 
   // Real-time price updates
@@ -425,6 +430,73 @@ export default function ChartPage() {
               </div>
               <p className="mt-2 text-xs text-gray-600">
                 💡 <strong>Strategy:</strong> Buy when Fast EMA crosses <strong>above</strong> Slow EMA. Sell when Fast EMA crosses <strong>below</strong> Slow EMA. ATR helps calculate dynamic stop-loss levels.
+              </p>
+            </div>
+
+            {/* SMC Indicators Section - For Manual Learning */}
+            <div className="mt-4 p-4 bg-gradient-to-r from-orange-50 to-purple-50 rounded-lg border border-orange-200">
+              <h3 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                <span className="text-lg">🎓</span> Smart Money Concepts (Manual Learning Only)
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {/* Fair Value Gaps */}
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="showFVG"
+                    checked={indicators.showFVG}
+                    onChange={() => toggleIndicator('showFVG')}
+                    className="w-4 h-4 text-blue-600 rounded focus:ring-2"
+                  />
+                  <label htmlFor="showFVG" className="text-sm font-medium text-gray-700">
+                    Fair Value Gaps
+                  </label>
+                </div>
+
+                {/* Order Blocks */}
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="showOrderBlocks"
+                    checked={indicators.showOrderBlocks}
+                    onChange={() => toggleIndicator('showOrderBlocks')}
+                    className="w-4 h-4 text-orange-600 rounded focus:ring-2"
+                  />
+                  <label htmlFor="showOrderBlocks" className="text-sm font-medium text-gray-700">
+                    Order Blocks
+                  </label>
+                </div>
+
+                {/* Support/Resistance */}
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="showSupportResistance"
+                    checked={indicators.showSupportResistance}
+                    onChange={() => toggleIndicator('showSupportResistance')}
+                    className="w-4 h-4 text-purple-600 rounded focus:ring-2"
+                  />
+                  <label htmlFor="showSupportResistance" className="text-sm font-medium text-gray-700">
+                    Support/Resistance
+                  </label>
+                </div>
+
+                {/* Premium/Discount */}
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="showPremiumDiscount"
+                    checked={indicators.showPremiumDiscount}
+                    onChange={() => toggleIndicator('showPremiumDiscount')}
+                    className="w-4 h-4 text-teal-600 rounded focus:ring-2"
+                  />
+                  <label htmlFor="showPremiumDiscount" className="text-sm font-medium text-gray-700">
+                    Premium/Discount
+                  </label>
+                </div>
+              </div>
+              <p className="mt-2 text-xs text-gray-600">
+                ⚠️ <strong>Note:</strong> SMC indicators are for manual analysis only. The automated bot uses EMA + filters above. Study these patterns to understand institutional behavior.
               </p>
             </div>
           </div>

@@ -1163,8 +1163,9 @@ export function AdvancedTradingChart({
         {/* Volume Profile Histogram - Visible Range (on right side in green) */}
         {indicators.volumeProfileVisible && volumeProfileVisibleData && mainChartInstanceRef.current && (
           <div
-            className="absolute top-0 right-0 pointer-events-none z-50"
+            className="absolute top-0 pointer-events-none z-50"
             style={{
+              right: isMobile ? '35px' : '70px', // Start from right price axis line
               width: isMobile ? '100px' : '200px',
               height: indicators.rsi ? height - (isMobile ? 100 : 120) - 30 : height,
             }}
@@ -1197,7 +1198,7 @@ export function AdvancedTradingChart({
                     return null;
                   }
 
-                  // Calculate bar width (responsive for mobile) - extend from right side
+                  // Calculate bar width (responsive for mobile) - extend outward to the right
                   const maxBarWidth = isMobile ? 60 : 120;
                   const barWidth = Math.max(2, (row.volume / maxVolume) * maxBarWidth);
 
@@ -1214,7 +1215,7 @@ export function AdvancedTradingChart({
                       className="absolute"
                       style={{
                         top: yCoord + 'px',
-                        right: isMobile ? '35px' : '70px',
+                        left: '0px', // Start from price axis line and extend outward to the right
                         width: barWidth + 'px',
                         height: isMobile ? '1.5px' : '2px',
                         backgroundColor: isPOC

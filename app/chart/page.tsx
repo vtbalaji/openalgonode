@@ -28,11 +28,12 @@ export default function ChartPage() {
   const { user } = useAuth();
   const [symbol, setSymbol] = useState('NIFTY26JANFUT');
   const [customSymbol, setCustomSymbol] = useState('');
-  const [interval, setInterval] = useState('5minute');
+  const [interval, setInterval] = useState('3minute');
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [chartHeight, setChartHeight] = useState(600);
+  const [lookbackDays, setLookbackDays] = useState(50);
 
   const [indicators, setIndicators] = useState<IndicatorConfig>({
     sma: false,
@@ -46,7 +47,7 @@ export default function ChartPage() {
     volumeProfileBins: 150,
     showSignals: true, // ✅ Main feature: Buy/Sell signals
     fastEma: 9, // ✅ Fast EMA (9) for day trading
-    slowEma: 21, // ✅ Slow EMA (21) for day trading
+    slowEma: 32, // ✅ Slow EMA (32) for day trading
     // Filters for automated trading
     adx: false, // Optional: ADX trend filter to avoid ranging markets
     adxPeriod: 14,
@@ -100,7 +101,7 @@ export default function ChartPage() {
     try {
       const today = new Date();
       const from = new Date(today);
-      from.setDate(today.getDate() - 50); // Last 50 days
+      from.setDate(today.getDate() - lookbackDays);
 
       const params = new URLSearchParams({
         symbol,
@@ -136,7 +137,7 @@ export default function ChartPage() {
     if (user && symbol) {
       fetchChartData();
     }
-  }, [user, symbol, interval]);
+  }, [user, symbol, interval, lookbackDays]);
 
   // Update chart with real-time data
   useEffect(() => {
@@ -185,160 +186,84 @@ export default function ChartPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-3 sm:p-4 md:p-6">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-3 sm:p-4">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-4 md:mb-6">
-          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-2">
+        <div className="mb-2 flex items-center justify-between">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
             Trading Chart
           </h1>
-          <p className="text-sm md:text-base text-gray-600">
-            Advanced charting with technical indicators
-          </p>
+          {/* Real-time Status */}
+          <div className={'flex items-center gap-2 px-3 py-1 rounded-lg ' +
+            (isConnected ? 'bg-green-50' : 'bg-red-50')}>
+            <div className={'w-2 h-2 rounded-full ' +
+              (isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500')}></div>
+            <span className={'text-sm font-medium ' +
+              (isConnected ? 'text-green-700' : 'text-red-700')}>
+              {isConnected ? 'Live' : 'Disconnected'}
+            </span>
+          </div>
         </div>
 
         {/* Controls */}
-        <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-4 md:mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+        <div className="bg-white rounded-lg shadow-md p-3 mb-3">
+          <div className="flex flex-wrap items-end gap-3">
             {/* Symbol Input */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Symbol
-              </label>
-              <form onSubmit={handleSymbolSubmit} className="flex gap-2">
+            <div className="flex-shrink-0">
+              <form onSubmit={handleSymbolSubmit} className="flex gap-2 items-center">
                 <input
                   type="text"
                   value={customSymbol}
                   onChange={(e) => setCustomSymbol(e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900"
+                  className="w-56 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm"
                   placeholder="e.g., RELIANCE, NIFTY25DEC25900CE"
                 />
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm whitespace-nowrap"
                 >
                   Load
                 </button>
+                <span className="text-xs text-gray-500 whitespace-nowrap">
+                  Current: <span className="font-semibold">{symbol}</span>
+                </span>
               </form>
-              <p className="mt-1 text-xs text-gray-500">
-                Current: <span className="font-semibold">{symbol}</span>
-              </p>
             </div>
 
             {/* Timeframe Selector */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Timeframe
-              </label>
-              <div className="flex flex-wrap gap-2">
+            <div className="flex-shrink-0">
+              <select
+                value={interval}
+                onChange={(e) => setInterval(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm"
+              >
                 {TIMEFRAMES.map((tf) => (
-                  <button
-                    key={tf.value}
-                    onClick={() => setInterval(tf.value)}
-                    className={'px-3 sm:px-4 py-2 rounded-lg text-sm font-medium transition-colors min-w-[44px] ' +
-                      (interval === tf.value
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      )}
-                  >
+                  <option key={tf.value} value={tf.value}>
                     {tf.label}
-                  </button>
+                  </option>
                 ))}
-              </div>
+              </select>
             </div>
 
-            {/* Real-time Status */}
-            <div className="flex items-center justify-end">
-              <div className={'flex items-center gap-2 px-4 py-2 rounded-lg ' + 
-                (isConnected ? 'bg-green-50' : 'bg-red-50')}>
-                <div className={'w-2 h-2 rounded-full ' + 
-                  (isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500')}></div>
-                <span className={'text-sm font-medium ' + 
-                  (isConnected ? 'text-green-700' : 'text-red-700')}>
-                  {isConnected ? 'Live' : 'Disconnected'}
-                </span>
-              </div>
+            {/* Lookback Days */}
+            <div className="flex-shrink-0 flex items-center gap-2">
+              <span className="text-xs text-gray-600 whitespace-nowrap">Lookback:</span>
+              <input
+                type="number"
+                min="1"
+                max="100"
+                value={lookbackDays}
+                onChange={(e) => setLookbackDays(Math.max(1, Math.min(100, parseInt(e.target.value) || 50)))}
+                className="w-16 px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm"
+              />
+              <span className="text-xs text-gray-500">days</span>
             </div>
           </div>
 
-          {/* Indicators */}
-          <div className="mt-6 pt-6 border-t border-gray-200">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Indicators</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* SMA */}
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="sma"
-                  checked={indicators.sma}
-                  onChange={() => toggleIndicator('sma')}
-                  className="w-4 h-4 text-blue-600 rounded focus:ring-2"
-                />
-                <label htmlFor="sma" className="text-sm font-medium text-gray-700">
-                  SMA
-                </label>
-                <input
-                  type="number"
-                  value={indicators.smaPeriod}
-                  onChange={(e) => updateIndicatorPeriod('smaPeriod', parseInt(e.target.value))}
-                  disabled={!indicators.sma}
-                  className="w-16 px-2 py-1 text-sm border border-gray-300 rounded disabled:bg-gray-100 text-gray-900"
-                  min="1"
-                  max="200"
-                />
-              </div>
-
-              {/* EMA */}
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="ema"
-                  checked={indicators.ema}
-                  onChange={() => toggleIndicator('ema')}
-                  className="w-4 h-4 text-orange-600 rounded focus:ring-2"
-                />
-                <label htmlFor="ema" className="text-sm font-medium text-gray-700">
-                  EMA
-                </label>
-                <input
-                  type="number"
-                  value={indicators.emaPeriod}
-                  onChange={(e) => updateIndicatorPeriod('emaPeriod', parseInt(e.target.value))}
-                  disabled={!indicators.ema}
-                  className="w-16 px-2 py-1 text-sm border border-gray-300 rounded disabled:bg-gray-100 text-gray-900"
-                  min="1"
-                  max="200"
-                />
-              </div>
-
-              {/* RSI */}
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="rsi"
-                  checked={indicators.rsi}
-                  onChange={() => toggleIndicator('rsi')}
-                  className="w-4 h-4 text-purple-600 rounded focus:ring-2"
-                />
-                <label htmlFor="rsi" className="text-sm font-medium text-gray-700">
-                  RSI
-                </label>
-                <input
-                  type="number"
-                  value={indicators.rsiPeriod}
-                  onChange={(e) => updateIndicatorPeriod('rsiPeriod', parseInt(e.target.value))}
-                  disabled={!indicators.rsi}
-                  className="w-16 px-2 py-1 text-sm border border-gray-300 rounded disabled:bg-gray-100 text-gray-900"
-                  min="1"
-                  max="100"
-                />
-              </div>
-
-            </div>
-
-            {/* Day Trading Strategy Section */}
-            <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-green-50 rounded-lg border border-blue-200">
-              <h3 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+          {/* Day Trading Strategy Section */}
+          <div className="pt-4">
+            <div className="p-3 bg-gradient-to-r from-blue-50 to-green-50 rounded-lg border border-blue-200">
+              <h3 className="text-sm font-semibold text-gray-800 mb-2 flex items-center gap-2">
                 <span className="text-lg">📊</span> Day Trading Strategy (POC Breakout + EMA)
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -383,7 +308,7 @@ export default function ChartPage() {
                     min="1"
                     max="200"
                   />
-                  <span className="text-xs text-gray-500">(21)</span>
+                  <span className="text-xs text-gray-500">(32)</span>
                 </div>
 
                 {/* ADX Trend Filter (Optional) */}
@@ -443,15 +368,38 @@ export default function ChartPage() {
                   />
                   <span className="text-xs text-gray-500">(150)</span>
                 </div>
-              </div>
-              <p className="mt-2 text-xs text-gray-600">
-                💡 <strong>BUY:</strong> Signal triggers when <strong>all 3 conditions become true</strong>: (1) Price above POC (overall - red line), (2) Price above both EMAs, (3) Fast EMA above Slow EMA. Signal shows on the candle where the last condition completes. <strong>SELL:</strong> Fast EMA crosses below Slow EMA. ADX filter requires strong trend (ADX &gt; 25).
-              </p>
-            </div>
 
-            {/* SMC Indicators Section - For Manual Learning */}
-            <div className="mt-4 p-4 bg-gradient-to-r from-orange-50 to-purple-50 rounded-lg border border-orange-200">
-              <h3 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                {/* RSI */}
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="rsi"
+                    checked={indicators.rsi}
+                    onChange={() => toggleIndicator('rsi')}
+                    className="w-4 h-4 text-purple-600 rounded focus:ring-2"
+                  />
+                  <label htmlFor="rsi" className="text-sm font-medium text-gray-700">
+                    RSI
+                  </label>
+                  <input
+                    type="number"
+                    value={indicators.rsiPeriod}
+                    onChange={(e) => updateIndicatorPeriod('rsiPeriod', parseInt(e.target.value))}
+                    disabled={!indicators.rsi}
+                    className="w-16 px-2 py-1 text-sm border border-gray-300 rounded disabled:bg-gray-100 text-gray-900"
+                    min="1"
+                    max="100"
+                  />
+                  <span className="text-xs text-gray-500">(14)</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* SMC Indicators Section - For Manual Learning */}
+          <div className="mt-3">
+            <div className="p-3 bg-gradient-to-r from-orange-50 to-purple-50 rounded-lg border border-orange-200">
+              <h3 className="text-sm font-semibold text-gray-800 mb-2 flex items-center gap-2">
                 <span className="text-lg">🎓</span> Smart Money Concepts (Manual Learning Only)
               </h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -511,9 +459,6 @@ export default function ChartPage() {
                   </label>
                 </div>
               </div>
-              <p className="mt-2 text-xs text-gray-600">
-                ⚠️ <strong>Note:</strong> SMC indicators are for manual analysis only. The automated bot uses EMA + filters above. Study these patterns to understand institutional behavior.
-              </p>
             </div>
 
             {/* Consolidation Breakout Section - HIDDEN (feature disabled) */}
@@ -558,6 +503,29 @@ export default function ChartPage() {
               indicators={indicators}
               height={chartHeight}
             />
+          </div>
+        )}
+
+        {/* Strategy Information - Bottom */}
+        {!loading && !error && chartData.length > 0 && (
+          <div className="mt-4 space-y-3">
+            {/* Day Trading Strategy Explanation */}
+            <div className="bg-gradient-to-r from-blue-50 to-green-50 rounded-lg border border-blue-200 p-3">
+              <p className="text-xs text-gray-700 leading-relaxed">
+                <span className="font-semibold">💡 Day Trading Strategy (POC Breakout + EMA):</span>
+                <br />
+                <strong>BUY:</strong> Signal triggers when <strong>all 3 conditions become true</strong>: (1) Price above POC (overall - red line), (2) Price above both EMAs, (3) Fast EMA above Slow EMA. Signal shows on the candle where the last condition completes.
+                <br />
+                <strong>SELL:</strong> Fast EMA crosses below Slow EMA. ADX filter requires strong trend (ADX &gt; 25).
+              </p>
+            </div>
+
+            {/* SMC Explanation */}
+            <div className="bg-gradient-to-r from-orange-50 to-purple-50 rounded-lg border border-orange-200 p-3">
+              <p className="text-xs text-gray-700 leading-relaxed">
+                <span className="font-semibold">⚠️ Smart Money Concepts Note:</span> SMC indicators are for manual analysis only. The automated bot uses EMA + filters above. Study these patterns to understand institutional behavior.
+              </p>
+            </div>
           </div>
         )}
 

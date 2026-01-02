@@ -8,7 +8,7 @@ export default function FibonacciChartPage() {
   const [symbol, setSymbol] = useState('NIFTY 50');
   const [interval, setInterval] = useState('60minute');
   const [chartHeight, setChartHeight] = useState(600);
-  const [lookbackDays, setLookbackDays] = useState(10);
+  const [lookbackDays, setLookbackDays] = useState(50);
   const userId = 'ZnT1kjZKElV6NJte2wgoDU5dF8j2';
 
   const [indicators, setIndicators] = useState({

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import FibonacciTradingChart from '@/components/FibonacciTradingChart';
 import { useRealtimePrice } from '@/hooks/useRealtimePrice';
 
@@ -69,8 +70,39 @@ export default function FibonacciChartPage() {
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">Fibonacci Trading Chart</h1>
-          <p className="text-gray-600">Advanced Fibonacci retracement & extension analysis with real-time data</p>
+          <div className="flex justify-between items-start mb-3">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-800 mb-2">Fibonacci Trading Chart</h1>
+              <p className="text-gray-600">Advanced Fibonacci retracement & extension analysis with real-time data</p>
+            </div>
+            {/* Dashboard Links */}
+            <div className="flex gap-2">
+              <Link
+                href="/"
+                className="px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 rounded-lg transition-colors"
+              >
+                📊 Dashboard
+              </Link>
+              <Link
+                href="/chart"
+                className="px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 rounded-lg transition-colors"
+              >
+                📈 Trading
+              </Link>
+              <Link
+                href="/orders/place"
+                className="px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 rounded-lg transition-colors"
+              >
+                ➕ Place Order
+              </Link>
+              <Link
+                href="/orders/status"
+                className="px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 rounded-lg transition-colors"
+              >
+                📋 Orders
+              </Link>
+            </div>
+          </div>
         </div>
 
         {/* Controls */}

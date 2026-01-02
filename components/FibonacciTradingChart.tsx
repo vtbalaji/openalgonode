@@ -1114,7 +1114,7 @@ export default function FibonacciTradingChart({
                               const lineStyle = getLineStyle(dProj.ratio);
 
                               return (
-                                <React.Fragment key={`d-target-${idx}`}>
+                                <div key={`d-target-${idx}`}>
                                   {/* Horizontal target line */}
                                   <div
                                     className="absolute"
@@ -1143,7 +1143,7 @@ export default function FibonacciTradingChart({
                                   >
                                     {dProj.label}
                                   </div>
-                                </React.Fragment>
+                                </div>
                               );
                             })}
 

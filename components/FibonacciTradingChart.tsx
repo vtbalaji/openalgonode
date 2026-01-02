@@ -1042,6 +1042,131 @@ export default function FibonacciTradingChart({
                         )}
                       </>
                     )}
+
+                    {/* Projected D Zone - Show when C exists to indicate potential D targets */}
+                    {C && setup.dProjections && setup.dProjections.length > 0 && cX !== null && cX !== undefined && (() => {
+                      try {
+                        // Get D projection prices
+                        const d_100 = setup.dProjections.find(d => d.ratio === 1.0);    // AB=CD
+                        const d_1618 = setup.dProjections.find(d => d.ratio === 1.618); // Golden ratio
+
+                        if (!d_100 || !d_1618) return null;
+
+                        // Convert prices to Y coordinates
+                        const d100_y = candlestickSeriesRef.current?.priceToCoordinate(d_100.price);
+                        const d1618_y = candlestickSeriesRef.current?.priceToCoordinate(d_1618.price);
+
+                        if (d100_y === null || d100_y === undefined || d1618_y === null || d1618_y === undefined) {
+                          return null;
+                        }
+
+                        // Calculate zone dimensions (from AB=CD to 161.8%)
+                        const zoneTop = Math.min(d100_y, d1618_y);
+                        const zoneHeight = Math.abs(d1618_y - d100_y);
+
+                        // Position zone to the right of C
+                        const zoneLeftOffset = cX + 20;
+                        const zoneWidth = 120;
+
+                        return (
+                          <>
+                            {/* Shaded D Zone Rectangle */}
+                            <div
+                              className="absolute"
+                              style={{
+                                left: zoneLeftOffset + 'px',
+                                top: zoneTop + 'px',
+                                width: zoneWidth + 'px',
+                                height: zoneHeight + 'px',
+                                backgroundColor: '#8B5CF620', // Purple with 20% opacity
+                                border: '2px dashed #8B5CF6',
+                                borderRadius: '4px',
+                              }}
+                            />
+
+                            {/* D Zone Main Label */}
+                            <div
+                              className="absolute text-xs font-bold px-2 py-1 rounded"
+                              style={{
+                                left: (zoneLeftOffset + 5) + 'px',
+                                top: (zoneTop + zoneHeight / 2 - 10) + 'px',
+                                color: '#8B5CF6',
+                                backgroundColor: 'rgba(255,255,255,0.95)',
+                                border: '1px solid #8B5CF6',
+                              }}
+                            >
+                              D Zone
+                            </div>
+
+                            {/* Individual D Target Lines and Labels */}
+                            {setup.dProjections.map((dProj, idx) => {
+                              const dY = candlestickSeriesRef.current?.priceToCoordinate(dProj.price);
+
+                              if (dY === null || dY === undefined) return null;
+
+                              // Line weight based on importance
+                              const getLineStyle = (ratio: number) => {
+                                if (ratio === 1.0) return { opacity: 0.8, width: '2px' }; // AB=CD - primary
+                                if (ratio === 1.618) return { opacity: 0.9, width: '3px' }; // Golden - strongest
+                                return { opacity: 0.6, width: '1.5px' }; // Others
+                              };
+
+                              const lineStyle = getLineStyle(dProj.ratio);
+
+                              return (
+                                <React.Fragment key={`d-target-${idx}`}>
+                                  {/* Horizontal target line */}
+                                  <div
+                                    className="absolute"
+                                    style={{
+                                      left: zoneLeftOffset + 'px',
+                                      top: dY + 'px',
+                                      width: zoneWidth + 'px',
+                                      height: lineStyle.width,
+                                      backgroundColor: '#8B5CF6',
+                                      opacity: lineStyle.opacity,
+                                    }}
+                                  />
+
+                                  {/* Target label */}
+                                  <div
+                                    className="absolute text-xs font-semibold px-1.5 py-0.5 rounded"
+                                    style={{
+                                      left: (zoneLeftOffset + zoneWidth + 5) + 'px',
+                                      top: (dY - 10) + 'px',
+                                      color: '#8B5CF6',
+                                      backgroundColor: 'rgba(255,255,255,0.9)',
+                                      border: '1px solid #8B5CF6',
+                                      fontSize: '10px',
+                                      whiteSpace: 'nowrap',
+                                    }}
+                                  >
+                                    {dProj.label}
+                                  </div>
+                                </React.Fragment>
+                              );
+                            })}
+
+                            {/* AB=CD Ratio Notation */}
+                            <div
+                              className="absolute text-xs font-bold px-2 py-1 rounded"
+                              style={{
+                                left: (zoneLeftOffset + 5) + 'px',
+                                top: (zoneTop - 25) + 'px',
+                                color: '#8B5CF6',
+                                backgroundColor: 'rgba(255,255,255,0.95)',
+                                border: '1px solid #8B5CF6',
+                              }}
+                            >
+                              AB=CD
+                            </div>
+                          </>
+                        );
+                      } catch (e) {
+                        console.error('[HARMONIC] Error drawing D zone:', e);
+                        return null;
+                      }
+                    })()}
                   </>
                 );
               } catch (e) {

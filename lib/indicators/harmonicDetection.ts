@@ -9,6 +9,12 @@ export interface Point {
   index: number;
 }
 
+export interface DProjection {
+  ratio: number;  // 1.0, 1.27, 1.618, 2.0
+  price: number;  // Calculated D price level
+  label: string;  // "D 100%", "D 127%", "D 161.8%", "D 200%"
+}
+
 export interface HarmonicSetup {
   type: 'bullish' | 'bearish';
   points: {
@@ -27,6 +33,7 @@ export interface HarmonicSetup {
   stopLoss: number | null;
   target1: number | null; // B point
   target2: number | null; // 127.2% extension
+  dProjections: DProjection[] | null; // D targets when C exists
 }
 
 export interface ChartData {
@@ -60,6 +67,44 @@ function isInRange(
 ): boolean {
   const range = max - min;
   return value >= min - range * tolerance && value <= max + range * tolerance;
+}
+
+/**
+ * Calculate D projection levels based on AB=CD harmonic principle
+ * When C point is confirmed, D projections show where the final leg may end
+ * @param C_price - Price at point C
+ * @param AB_range - Distance from A to B
+ * @param type - 'bullish' or 'bearish' pattern
+ * @returns Array of D projection targets with ratios and prices
+ */
+function calculateDProjections(
+  C_price: number,
+  AB_range: number,
+  type: 'bullish' | 'bearish'
+): DProjection[] {
+  const projections: DProjection[] = [];
+
+  // D projection ratios (standard harmonic ratios)
+  const ratios = [
+    { ratio: 1.0, label: 'D 100%' },       // AB=CD (most common)
+    { ratio: 1.27, label: 'D 127%' },      // Fibonacci extension
+    { ratio: 1.618, label: 'D 161.8%' },   // Golden ratio
+    { ratio: 2.0, label: 'D 200%' },       // Extended target
+  ];
+
+  for (const { ratio, label } of ratios) {
+    const projection_distance = AB_range * ratio;
+
+    // For bullish: D is above C (C + projection)
+    // For bearish: D is below C (C - projection)
+    const price = type === 'bullish'
+      ? C_price + projection_distance
+      : C_price - projection_distance;
+
+    projections.push({ ratio, price, label });
+  }
+
+  return projections;
 }
 
 /**
@@ -184,6 +229,9 @@ export function detectHarmonicPatterns(
     const target1 = B.price; // First target at B
     const target2 = B.price + AB_range * 0.272; // 127.2% extension
 
+    // Calculate D projections if C exists
+    const dProjections = C ? calculateDProjections(C.price, AB_range, 'bullish') : null;
+
     setups.push({
       type: 'bullish',
       points: { X, A, B, C },
@@ -197,6 +245,7 @@ export function detectHarmonicPatterns(
       stopLoss,
       target1,
       target2,
+      dProjections,
     });
   } else if (isBearish) {
     // Bearish setup: X (low) → A (high) → B (retracement down) → C (pullback up)
@@ -289,6 +338,9 @@ export function detectHarmonicPatterns(
     const target1 = B.price;
     const target2 = B.price - AB_range * 0.272;
 
+    // Calculate D projections if C exists
+    const dProjections = C ? calculateDProjections(C.price, AB_range, 'bearish') : null;
+
     setups.push({
       type: 'bearish',
       points: { X, A, B, C },
@@ -302,6 +354,7 @@ export function detectHarmonicPatterns(
       stopLoss,
       target1,
       target2,
+      dProjections,
     });
   }
 

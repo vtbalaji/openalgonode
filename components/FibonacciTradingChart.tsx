@@ -386,9 +386,9 @@ export default function FibonacciTradingChart({
       return { swingHigh: null, swingLow: null };
     }
 
-    // Exclude last 5 candles to avoid using current/recent price action as X point
-    // This allows patterns to form with historical context
-    const historyLength = Math.max(10, Math.floor(data.length * 0.8)); // Use 80% of data, min 10 candles
+    // Exclude only last 5 candles to avoid using immediate current price as X point
+    // This allows recent patterns to form while excluding just the latest candle
+    const historyLength = Math.max(10, data.length - 5); // Use all but last 5 candles, min 10 candles
     const recentData = data.slice(0, historyLength);
 
     console.log('[FIB] Finding absolute high/low in', recentData.length, 'candles (excluding last', data.length - historyLength, ')');

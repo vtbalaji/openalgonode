@@ -457,8 +457,8 @@ export default function FibonacciTradingChart({
     // Add retracement levels
     retracementLevels.forEach(level => {
       const price = isUptrend
-        ? high - (diff * level.ratio)
-        : low + (diff * level.ratio);
+        ? low + (diff * level.ratio)
+        : high - (diff * level.ratio);
 
       levels.push({
         price,

@@ -18,10 +18,6 @@ export default function FibonacciChartPage() {
     showHarmonicPattern: false, // Early harmonic pattern detection (XABCD)
     showSignals: true, // Fibonacci-based buy/sell signals
 
-    // Fibonacci Info Badge Preferences
-    fibRetracementPosition: 'left' as 'left' | 'right', // Position of the info badge
-    fibRetracementSize: 'small' as 'small' | 'medium', // Size of the info badge
-
     // Volume Profile - removed from UI but keep for internal use
     volumeProfile: false,
     volumeProfileVisible: false,
@@ -199,41 +195,6 @@ export default function FibonacciChartPage() {
               💡 <strong>Strategy:</strong> Buy at Fibonacci support levels (38.2%, 50%, 61.8%) with trend confirmation.
               <strong> Harmonic:</strong> Early entry when price retraces to B (38.2%-61.8%), pulls back to C (38.2%-88.6%), then resumes trend.
             </p>
-
-            {/* Info Badge Preferences */}
-            {indicators.showFibRetracement && (
-              <div className="mt-3 pt-3 border-t border-purple-200 grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div>
-                  <label className="text-xs font-medium text-gray-700 block mb-1">Badge Position</label>
-                  <select
-                    value={indicators.fibRetracementPosition}
-                    onChange={(e) => setIndicators((prev) => ({
-                      ...prev,
-                      fibRetracementPosition: e.target.value as 'left' | 'right',
-                    }))}
-                    className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:ring-2 focus:ring-purple-500 text-gray-900"
-                  >
-                    <option value="left">Left</option>
-                    <option value="right">Right</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-medium text-gray-700 block mb-1">Badge Size</label>
-                  <select
-                    value={indicators.fibRetracementSize}
-                    onChange={(e) => setIndicators((prev) => ({
-                      ...prev,
-                      fibRetracementSize: e.target.value as 'small' | 'medium',
-                    }))}
-                    className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:ring-2 focus:ring-purple-500 text-gray-900"
-                  >
-                    <option value="small">Small</option>
-                    <option value="medium">Medium</option>
-                  </select>
-                </div>
-              </div>
-            )}
           </div>
         </div>
 

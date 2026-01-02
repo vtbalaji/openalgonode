@@ -775,23 +775,11 @@ export default function FibonacciTradingChart({
 
         {/* Fibonacci Info Badge */}
         {indicators.showFibRetracement && swingHigh && swingLow && fibLevels.length > 0 && (
-          <div
-            className={`absolute top-2 ${indicators.fibRetracementPosition === 'left' ? 'left-2' : 'right-2'}
-              bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-lg shadow-lg z-50 pointer-events-none
-              ${indicators.fibRetracementSize === 'small' ? 'px-2 py-1.5' : 'px-3 py-2'}`}
-          >
-            <div className={`font-bold ${indicators.fibRetracementSize === 'small' ? 'text-[10px]' : 'text-xs'}`}>
-              Fibonacci Retracement
-            </div>
-            <div className={`${indicators.fibRetracementSize === 'small' ? 'text-[9px]' : 'text-xs'} ${indicators.fibRetracementSize === 'small' ? 'mt-0.5' : 'mt-1'}`}>
-              High: {swingHigh.price.toFixed(2)}
-            </div>
-            <div className={`${indicators.fibRetracementSize === 'small' ? 'text-[9px]' : 'text-xs'}`}>
-              Low: {swingLow.price.toFixed(2)}
-            </div>
-            <div className={`${indicators.fibRetracementSize === 'small' ? 'text-[9px]' : 'text-xs'} opacity-90 ${indicators.fibRetracementSize === 'small' ? 'mt-0.5' : 'mt-1'}`}>
-              Range: {(swingHigh.price - swingLow.price).toFixed(2)} pts
-            </div>
+          <div className="absolute top-2 left-2 px-2 py-1.5 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-lg shadow-lg z-50 pointer-events-none">
+            <div className="font-bold text-[10px]">Fibonacci Retracement</div>
+            <div className="text-[9px] mt-0.5">High: {swingHigh.price.toFixed(2)}</div>
+            <div className="text-[9px]">Low: {swingLow.price.toFixed(2)}</div>
+            <div className="text-[9px] opacity-90 mt-0.5">Range: {(swingHigh.price - swingLow.price).toFixed(2)} pts</div>
           </div>
         )}
 

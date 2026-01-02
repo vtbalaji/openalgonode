@@ -437,13 +437,13 @@ export default function FibonacciTradingChart({
     const diff = high - low;
 
     const retracementLevels = [
-      { ratio: 0, label: isUptrend ? 'Fib 0% (High)' : 'Fib 0% (Low)', color: '#9C27B0' },
+      { ratio: 0, label: isUptrend ? 'Fib 0% (Low)' : 'Fib 0% (High)', color: '#9C27B0' },
       { ratio: 0.236, label: 'Fib 23.6%', color: '#E91E63' },
       { ratio: 0.382, label: 'Fib 38.2%', color: '#FF5722' },
       { ratio: 0.5, label: 'Fib 50%', color: '#FF9800' },
       { ratio: 0.618, label: 'Fib 61.8%', color: '#FFC107' },
       { ratio: 0.786, label: 'Fib 78.6%', color: '#8BC34A' },
-      { ratio: 1, label: isUptrend ? 'Fib 100% (Low)' : 'Fib 100% (High)', color: '#4CAF50' },
+      { ratio: 1, label: isUptrend ? 'Fib 100% (High)' : 'Fib 100% (Low)', color: '#4CAF50' },
     ];
 
     const extensionLevels = [

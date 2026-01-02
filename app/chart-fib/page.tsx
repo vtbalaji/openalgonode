@@ -6,7 +6,7 @@ import { useRealtimePrice } from '@/hooks/useRealtimePrice';
 
 export default function FibonacciChartPage() {
   const [symbol, setSymbol] = useState('NIFTY 50');
-  const [interval, setInterval] = useState('5minute');
+  const [interval, setInterval] = useState('minute');
   const [chartHeight, setChartHeight] = useState(600);
   const [lookbackDays, setLookbackDays] = useState(10);
   const userId = 'ZnT1kjZKElV6NJte2wgoDU5dF8j2';
@@ -100,11 +100,11 @@ export default function FibonacciChartPage() {
                 onChange={(e) => setInterval(e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900"
               >
-                <option value="1minute">1 Minute</option>
+                <option value="minute">1 Minute</option>
                 <option value="5minute">5 Minute</option>
                 <option value="15minute">15 Minute</option>
-                <option value="1hour">1 Hour</option>
-                <option value="1day">1 Day</option>
+                <option value="60minute">1 Hour</option>
+                <option value="day">1 Day</option>
               </select>
             </div>
 

@@ -114,6 +114,10 @@ export async function GET(request: NextRequest) {
     }));
 
     console.log('[CHART-HISTORICAL] Returning ' + chartData.length + ' candles');
+    if (chartData.length > 0) {
+      console.log('[CHART-HISTORICAL] First candle:', JSON.stringify(chartData[0]));
+      console.log('[CHART-HISTORICAL] Last candle:', JSON.stringify(chartData[chartData.length - 1]));
+    }
 
     return NextResponse.json({
       success: true,

@@ -65,11 +65,6 @@ export interface IndicatorConfig {
   adxThreshold: number;
   useVolumeFilter: boolean;
   useTimeFilter: boolean;
-  // SMC indicators (for manual learning)
-  showFVG: boolean; // Fair Value Gaps
-  showOrderBlocks: boolean;
-  showSupportResistance: boolean;
-  showPremiumDiscount: boolean;
   // Consolidation breakout trading
   showConsolidation: boolean;
   consolidationMinDuration: number;
@@ -985,41 +980,6 @@ export function AdvancedTradingChart({
       }
     }
 
-    // Calculate SMC indicators if enabled
-    if (indicators.showFVG) {
-      const fvg = calculateFairValueGaps(data);
-      setSMCFVG(fvg);
-      console.log(`[SMC] Fair Value Gaps: ${fvg.length} unfilled gaps`);
-    } else {
-      setSMCFVG([]);
-    }
-
-    if (indicators.showOrderBlocks) {
-      const ob = calculateOrderBlocks(data);
-      setSMCOrderBlocks(ob);
-      console.log(`[SMC] Order Blocks: ${ob.length} blocks (${ob.filter(o => o.type === 'bullish').length} bullish, ${ob.filter(o => o.type === 'bearish').length} bearish)`);
-    } else {
-      setSMCOrderBlocks([]);
-    }
-
-    if (indicators.showSupportResistance) {
-      const sr = calculateSupportResistance(data);
-      setSMCSR(sr);
-      console.log(`[SMC] Support/Resistance: ${sr.length} levels`);
-    } else {
-      setSMCSR([]);
-    }
-
-    if (indicators.showPremiumDiscount) {
-      const pd = calculatePremiumDiscount(data);
-      setSMCPD(pd);
-      if (pd) {
-        console.log(`[SMC] Premium/Discount: High=${pd.high.toFixed(2)}, Low=${pd.low.toFixed(2)}, Eq=${pd.equilibrium.toFixed(2)}`);
-      }
-    } else {
-      setSMCPD(null);
-    }
-
     // Calculate consolidation boxes and breakouts - DISABLED
     if (false && indicators.showConsolidation) {
       const boxes = detectConsolidationBoxes(
@@ -1254,8 +1214,7 @@ export function AdvancedTradingChart({
 
           return (
             <>
-              {/* Premium/Discount Zones */}
-              {indicators.showPremiumDiscount && smcPD && (
+              {false && smcPD && (
                 <>
                   {/* Premium Zone (above 50%) */}
                   <div
@@ -1263,8 +1222,8 @@ export function AdvancedTradingChart({
                     style={{
                       left: '70px',
                       right: '70px',
-                      top: priceToY(smcPD.high) + 'px',
-                      height: (priceToY(smcPD.equilibrium) - priceToY(smcPD.high)) + 'px',
+                      top: priceToY(smcPD!.high) + 'px',
+                      height: (priceToY(smcPD!.equilibrium) - priceToY(smcPD!.high)) + 'px',
                       backgroundColor: 'rgba(239, 68, 68, 0.1)', // Red tint for premium
                       borderTop: '1px dashed rgba(239, 68, 68, 0.5)',
                     }}
@@ -1278,12 +1237,12 @@ export function AdvancedTradingChart({
                     style={{
                       left: '70px',
                       right: '70px',
-                      top: priceToY(smcPD.equilibrium) + 'px',
+                      top: priceToY(smcPD!.equilibrium) + 'px',
                       height: '2px',
                       backgroundColor: 'rgba(16, 185, 129, 0.8)', // Green for equilibrium
                     }}
                   >
-                    <span className="text-xs text-green-600 font-bold ml-2 bg-white px-1">EQ: {smcPD.equilibrium.toFixed(2)}</span>
+                    <span className="text-xs text-green-600 font-bold ml-2 bg-white px-1">EQ: {smcPD!.equilibrium.toFixed(2)}</span>
                   </div>
 
                   {/* Discount Zone (below 50%) */}
@@ -1292,8 +1251,8 @@ export function AdvancedTradingChart({
                     style={{
                       left: '70px',
                       right: '70px',
-                      top: priceToY(smcPD.equilibrium) + 'px',
-                      height: (priceToY(smcPD.low) - priceToY(smcPD.equilibrium)) + 'px',
+                      top: priceToY(smcPD!.equilibrium) + 'px',
+                      height: (priceToY(smcPD!.low) - priceToY(smcPD!.equilibrium)) + 'px',
                       backgroundColor: 'rgba(34, 197, 94, 0.1)', // Green tint for discount
                       borderBottom: '1px dashed rgba(34, 197, 94, 0.5)',
                     }}
@@ -1304,7 +1263,7 @@ export function AdvancedTradingChart({
               )}
 
               {/* Support/Resistance Levels */}
-              {indicators.showSupportResistance && smcSR.map((level, idx) => (
+              {false && smcSR.map((level, idx) => (
                 <div
                   key={`sr-${idx}`}
                   className="absolute pointer-events-none z-20"
@@ -1327,7 +1286,7 @@ export function AdvancedTradingChart({
               ))}
 
               {/* Order Blocks */}
-              {indicators.showOrderBlocks && smcOrderBlocks.map((ob, idx) => {
+              {false && smcOrderBlocks.map((ob, idx) => {
                 const obTop = priceToY(ob.high);
                 const obBottom = priceToY(ob.low);
                 const obHeight = obBottom - obTop;
@@ -1355,7 +1314,7 @@ export function AdvancedTradingChart({
               })}
 
               {/* Fair Value Gaps */}
-              {indicators.showFVG && smcFVG.map((fvg, idx) => {
+              {false && smcFVG.map((fvg, idx) => {
                 const fvgTop = priceToY(fvg.top);
                 const fvgBottom = priceToY(fvg.bottom);
                 const fvgHeight = fvgBottom - fvgTop;
@@ -1501,24 +1460,24 @@ export function AdvancedTradingChart({
           </div>
         )}
 
-        {/* SMC Info Badge */}
-        {(indicators.showFVG || indicators.showOrderBlocks || indicators.showSupportResistance || indicators.showPremiumDiscount) && (
+        {/* SMC Info Badge - DISABLED */}
+        {false && (
           <div
             className="absolute bottom-2 left-2 px-3 py-2 bg-gradient-to-r from-orange-500 to-purple-600 text-white rounded-lg shadow-lg z-50 pointer-events-none"
             style={{ fontSize: isMobile ? '10px' : '12px' }}
           >
             <div className="font-bold mb-1">🎓 SMC Active</div>
-            {indicators.showFVG && smcFVG.length > 0 && (
+            {smcFVG.length > 0 && (
               <div className="text-xs">FVG: {smcFVG.length} gaps</div>
             )}
-            {indicators.showOrderBlocks && smcOrderBlocks.length > 0 && (
+            {smcOrderBlocks.length > 0 && (
               <div className="text-xs">OB: {smcOrderBlocks.length} blocks</div>
             )}
-            {indicators.showSupportResistance && smcSR.length > 0 && (
+            {smcSR.length > 0 && (
               <div className="text-xs">S/R: {smcSR.length} levels</div>
             )}
-            {indicators.showPremiumDiscount && smcPD && (
-              <div className="text-xs">P/D: {smcPD.equilibrium.toFixed(2)}</div>
+            {smcPD && (
+              <div className="text-xs">P/D: {smcPD!.equilibrium.toFixed(2)}</div>
             )}
           </div>
         )}

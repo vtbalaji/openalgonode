@@ -22,11 +22,19 @@ export default function Home() {
   const fetchActiveBroker = async () => {
     try {
       const idToken = await user?.getIdToken();
+
+      // Add timeout to prevent hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
       const response = await fetch('/api/broker/active', {
         headers: {
           'Authorization': `Bearer ${idToken}`,
         },
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (response.ok) {
         const data = await response.json();
@@ -38,18 +46,30 @@ export default function Home() {
         }
       }
     } catch (err) {
-      console.error('Error fetching active broker:', err);
+      if (err instanceof Error && err.name === 'AbortError') {
+        console.warn('Broker fetch timed out');
+      } else {
+        console.error('Error fetching active broker:', err);
+      }
     }
   };
 
   const fetchBrokerConfig = async (broker: string) => {
     try {
       const idToken = await user?.getIdToken();
+
+      // Add timeout to prevent hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
       const response = await fetch(`/api/broker/config?broker=${broker}`, {
         headers: {
           'Authorization': `Bearer ${idToken}`,
         },
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (response.ok) {
         const data = await response.json();
@@ -67,7 +87,11 @@ export default function Home() {
         }
       }
     } catch (err) {
-      console.error('Error fetching broker config:', err);
+      if (err instanceof Error && err.name === 'AbortError') {
+        console.warn('Broker config fetch timed out');
+      } else {
+        console.error('Error fetching broker config:', err);
+      }
     }
   };
 

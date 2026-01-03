@@ -521,7 +521,7 @@ export default function FibonacciTradingChart({
           lineWidth: 2,
           lineStyle: level.ratio === 0.618 || level.ratio === 0.5 || level.ratio === 0.382 ? 0 : 2, // Solid for key levels
           lineVisible: true,
-          axisLabelVisible: true,
+          axisLabelVisible: false,
           title: level.label,
         });
         if (line) {
@@ -1178,20 +1178,48 @@ export default function FibonacciTradingChart({
         ))}
 
         {/* Harmonic Pattern Info Badge */}
-        {indicators.showHarmonicPattern && harmonicSetups.length > 0 && (
-          <div className="absolute bottom-2 right-2 px-3 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-lg shadow-lg z-50 pointer-events-none">
-            <div className="font-bold text-xs flex items-center gap-2">
-              <span>{harmonicSetups[0].type === 'bullish' ? '📈' : '📉'}</span>
-              {harmonicSetups[0].type === 'bullish' ? 'Bullish' : 'Bearish'} Harmonic
-              <span className="text-xs font-normal opacity-75">({harmonicSetups[0].status})</span>
-            </div>
+        {indicators.showHarmonicPattern && harmonicSetups.length > 0 && (() => {
+          const setup = harmonicSetups[0];
+          const getStatusColor = (status: string) => {
+            switch (status) {
+              case 'valid':
+                return 'from-green-500 to-emerald-600';
+              case 'invalidated':
+                return 'from-red-500 to-rose-600';
+              case 'broken':
+                return 'from-orange-500 to-amber-600';
+              default: // 'forming'
+                return 'from-blue-500 to-indigo-600';
+            }
+          };
+
+          const getStatusLabel = (status: string) => {
+            switch (status) {
+              case 'valid':
+                return '✓ Valid';
+              case 'invalidated':
+                return '✗ Invalidated';
+              case 'broken':
+                return '⚠ Broken';
+              default:
+                return '◐ Forming';
+            }
+          };
+
+          return (
+            <div className={`absolute bottom-2 right-2 px-3 py-2 bg-gradient-to-r ${getStatusColor(setup.status)} text-white rounded-lg shadow-lg z-50 pointer-events-none`}>
+              <div className="font-bold text-xs flex items-center gap-2">
+                <span>{setup.type === 'bullish' ? '📈' : '📉'}</span>
+                {setup.type === 'bullish' ? 'Bullish' : 'Bearish'} Harmonic
+                <span className="text-xs font-normal opacity-75">({getStatusLabel(setup.status)})</span>
+              </div>
             <div className="text-xs mt-1">
-              AB: {(harmonicSetups[0].fibLevels.AB_retracement * 100).toFixed(1)}%
-              {harmonicSetups[0].fibLevels.AB_retracement >= 0.786 && ' (Deep!)'}
+              AB: {(setup.fibLevels.AB_retracement * 100).toFixed(1)}%
+              {setup.fibLevels.AB_retracement >= 0.786 && ' (Deep!)'}
             </div>
-            {harmonicSetups[0].fibLevels.BC_pullback ? (
+            {setup.fibLevels.BC_pullback ? (
               <div className="text-xs">
-                BC: {(harmonicSetups[0].fibLevels.BC_pullback * 100).toFixed(1)}%
+                BC: {(setup.fibLevels.BC_pullback * 100).toFixed(1)}%
               </div>
             ) : (
               <div className="text-xs opacity-75">
@@ -1199,15 +1227,16 @@ export default function FibonacciTradingChart({
               </div>
             )}
             <div className="text-xs mt-1 opacity-90">
-              Confidence: {harmonicSetups[0].confidence}%
+              Confidence: {setup.confidence}%
             </div>
-            {harmonicSetups[0].entryPrice && (
+            {setup.entryPrice && (
               <div className="text-xs font-bold mt-1 bg-white bg-opacity-20 px-2 py-1 rounded">
-                Entry: {harmonicSetups[0].entryPrice.toFixed(2)}
+                Entry: {setup.entryPrice.toFixed(2)}
               </div>
             )}
-          </div>
-        )}
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

@@ -27,7 +27,7 @@ export interface HarmonicSetup {
     AB_retracement: number; // % of XA (38.2, 50, 61.8)
     BC_pullback: number | null; // % of AB (38.2-88.6)
   };
-  status: 'forming' | 'valid' | 'broken';
+  status: 'forming' | 'valid' | 'broken' | 'invalidated';
   confidence: number; // 0-100
   entryPrice: number | null;
   stopLoss: number | null;
@@ -216,11 +216,22 @@ export function detectHarmonicPatterns(
     if (C && C.index === data.length - 1) confidence += 10; // Current candle is at C (reduced from 20)
 
     // Determine status
-    let status: 'forming' | 'valid' | 'broken' = 'forming';
-    if (C && BC_pullback && BC_pullback >= config.minBCPullback && BC_pullback <= config.maxBCPullback) {
-      status = 'valid';
+    let status: 'forming' | 'valid' | 'broken' | 'invalidated' = 'forming';
+
+    // For bullish pattern: invalidated if price closes below C (violates bullish expectation)
+    if (C && data.length > 0) {
+      const latestCandle = data[data.length - 1];
+      if (latestCandle.close < C.price) {
+        status = 'invalidated'; // Price closed below C, breaks bullish expectation
+      } else if (C.price < A.price) {
+        status = 'broken'; // Broke below A
+      } else if (BC_pullback && BC_pullback >= config.minBCPullback && BC_pullback <= config.maxBCPullback) {
+        status = 'valid';
+      }
     } else if (C && C.price < A.price) {
       status = 'broken'; // Broke below A
+    } else if (C && BC_pullback && BC_pullback >= config.minBCPullback && BC_pullback <= config.maxBCPullback) {
+      status = 'valid';
     }
 
     // Calculate entry and targets
@@ -325,11 +336,22 @@ export function detectHarmonicPatterns(
     if (C && C.index === data.length - 1) confidence += 10; // Current candle is at C (reduced from 20)
 
     // Determine status
-    let status: 'forming' | 'valid' | 'broken' = 'forming';
-    if (C && BC_pullback && BC_pullback >= config.minBCPullback && BC_pullback <= config.maxBCPullback) {
-      status = 'valid';
+    let status: 'forming' | 'valid' | 'broken' | 'invalidated' = 'forming';
+
+    // For bearish pattern: invalidated if price closes above C (violates bearish expectation)
+    if (C && data.length > 0) {
+      const latestCandle = data[data.length - 1];
+      if (latestCandle.close > C.price) {
+        status = 'invalidated'; // Price closed above C, breaks bearish expectation
+      } else if (C.price > A.price) {
+        status = 'broken'; // Broke above A
+      } else if (BC_pullback && BC_pullback >= config.minBCPullback && BC_pullback <= config.maxBCPullback) {
+        status = 'valid';
+      }
     } else if (C && C.price > A.price) {
-      status = 'broken';
+      status = 'broken'; // Broke above A
+    } else if (C && BC_pullback && BC_pullback >= config.minBCPullback && BC_pullback <= config.maxBCPullback) {
+      status = 'valid';
     }
 
     // Calculate entry and targets

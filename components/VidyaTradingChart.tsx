@@ -30,10 +30,23 @@ export default function VidyaTradingChart({
 }: VidyaTradingChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<any>(null);
+  const candleSeriesRef = useRef<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [chartData, setChartData] = useState<VIDYAPoint[]>([]);
   const [rawOHLCData, setRawOHLCData] = useState<VIDYAChartData[]>([]);
+  const [tooltipData, setTooltipData] = useState<{
+    time: number;
+    price: number;
+    volumeDelta: number;
+    buyVolume: number;
+    sellVolume: number;
+    trend: string;
+    cmo: number;
+    visible: boolean;
+    x: number;
+    y: number;
+  } | null>(null);
 
   // Fetch and calculate data
   useEffect(() => {
@@ -110,6 +123,9 @@ export default function VidyaTradingChart({
         wickDownColor: '#ef4444',
       });
 
+      // Store in ref for crosshair callback
+      candleSeriesRef.current = candleSeries;
+
       // Set candlestick data from raw OHLC
       const ohlcData = rawOHLCData.map(d => ({
         time: d.time,
@@ -185,6 +201,69 @@ export default function VidyaTradingChart({
         areaSeries.setData(segment.data as any);
       }
 
+      // Calculate average ATR to determine narrow vs wide bands
+      const atrValues = chartData.map(d => d.upperBand - d.lowerBand);
+      const avgATR = atrValues.reduce((a, b) => a + b, 0) / atrValues.length;
+      const narrowThreshold = avgATR * 0.6; // Bands narrower than 60% of average = choppy
+
+      // Add ATR bands (upper and lower) with color coding
+      // Narrow bands (low volatility) = Orange warning
+      // Wide bands (trending) = Blue-gray subtle
+      const bandSegments: Array<{
+        isNarrow: boolean;
+        upperData: Array<{ time: number; value: number }>;
+        lowerData: Array<{ time: number; value: number }>;
+      }> = [];
+
+      let currentBandSegment: typeof bandSegments[0] | null = null;
+
+      for (const point of chartData) {
+        const bandWidth = point.upperBand - point.lowerBand;
+        const isNarrow = bandWidth < narrowThreshold;
+
+        if (!currentBandSegment || currentBandSegment.isNarrow !== isNarrow) {
+          if (currentBandSegment) {
+            // Close current segment with current point for smooth transition
+            currentBandSegment.upperData.push({ time: point.time, value: point.upperBand });
+            currentBandSegment.lowerData.push({ time: point.time, value: point.lowerBand });
+            bandSegments.push(currentBandSegment);
+          }
+          // Start new segment
+          currentBandSegment = {
+            isNarrow,
+            upperData: [{ time: point.time, value: point.upperBand }],
+            lowerData: [{ time: point.time, value: point.lowerBand }],
+          };
+        } else {
+          currentBandSegment.upperData.push({ time: point.time, value: point.upperBand });
+          currentBandSegment.lowerData.push({ time: point.time, value: point.lowerBand });
+        }
+      }
+      if (currentBandSegment) {
+        bandSegments.push(currentBandSegment);
+      }
+
+      // Render band segments with appropriate colors
+      for (const segment of bandSegments) {
+        const bandColor = segment.isNarrow
+          ? '#f97316' // Orange-500 for narrow (warning: choppy)
+          : '#94a3b8'; // Slate-400 for wide (normal trending)
+
+        const upperBandSeries = chart.addLineSeries({
+          color: bandColor,
+          lineWidth: 1,
+          lineStyle: LineStyle.Dotted,
+        });
+        upperBandSeries.setData(segment.upperData as any);
+
+        const lowerBandSeries = chart.addLineSeries({
+          color: bandColor,
+          lineWidth: 1,
+          lineStyle: LineStyle.Dotted,
+        });
+        lowerBandSeries.setData(segment.lowerData as any);
+      }
+
       // Render each trend segment line with appropriate color (will also use for markers)
       let mainLineSeries: any = null;
       for (const segment of trendSegments) {
@@ -207,40 +286,97 @@ export default function VidyaTradingChart({
         }
       }
 
-      // Add trend change markers (arrows)
-      // Find all points where trend changed
-      const trendChangeMarkers: SeriesMarker<any>[] = [];
+      // Add all markers (early signals + trend change signals)
+      const allMarkers: SeriesMarker<any>[] = [];
+
       for (let i = 1; i < chartData.length; i++) {
         const current = chartData[i];
         const previous = chartData[i - 1];
 
-        // Trend changed from non-bullish to bullish: triangle up
+        // EARLY SIGNALS: Band touch with volume confirmation (yellow arrows)
+        if (current.earlySignal === 'early_buy') {
+          // Find nearest support zone for stop loss
+          const supportZones = current.liquidityZones
+            .filter(z => z.type === 'support' && z.price < current.close && !z.crossedAt)
+            .sort((a, b) => b.price - a.price);
+
+          const stopLoss = supportZones.length > 0
+            ? supportZones[0].price
+            : current.lowerBand;
+
+          allMarkers.push({
+            time: current.time,
+            position: 'belowBar',
+            color: '#fbbf24', // Yellow/Amber
+            shape: 'arrowUp',
+            text: `EARLY BUY\n${current.close.toFixed(2)}\nSL: ${stopLoss.toFixed(2)}`,
+            size: 1.5,
+          });
+        } else if (current.earlySignal === 'early_sell') {
+          // Find nearest resistance zone for stop loss
+          const resistanceZones = current.liquidityZones
+            .filter(z => z.type === 'resistance' && z.price > current.close && !z.crossedAt)
+            .sort((a, b) => a.price - b.price);
+
+          const stopLoss = resistanceZones.length > 0
+            ? resistanceZones[0].price
+            : current.upperBand;
+
+          allMarkers.push({
+            time: current.time,
+            position: 'aboveBar',
+            color: '#fbbf24', // Yellow/Amber
+            shape: 'arrowDown',
+            text: `EARLY SELL\n${current.close.toFixed(2)}\nSL: ${stopLoss.toFixed(2)}`,
+            size: 1.5,
+          });
+        }
+
+        // FULL SIGNALS: Trend changed with full crossover (cyan/pink arrows)
         if (current.trend === 'bullish' && previous.trend !== 'bullish') {
-          trendChangeMarkers.push({
+          // Find nearest support zone (liquidity zone below entry price)
+          const supportZones = current.liquidityZones
+            .filter(z => z.type === 'support' && z.price < current.close && !z.crossedAt)
+            .sort((a, b) => b.price - a.price); // Closest to current price first
+
+          const stopLoss = supportZones.length > 0
+            ? supportZones[0].price  // Use nearest support pivot
+            : current.lowerBand;      // Fallback to ATR band
+
+          allMarkers.push({
             time: current.time,
             position: 'belowBar',
             color: '#06B6D4', // Cyan
             shape: 'arrowUp',
-            text: '▲',
-            size: 1,
+            text: `BUY\n${current.close.toFixed(2)}\nSL: ${stopLoss.toFixed(2)}`,
+            size: 2,
           });
         }
         // Trend changed from non-bearish to bearish: triangle down
         else if (current.trend === 'bearish' && previous.trend !== 'bearish') {
-          trendChangeMarkers.push({
+          // Find nearest resistance zone (liquidity zone above entry price)
+          const resistanceZones = current.liquidityZones
+            .filter(z => z.type === 'resistance' && z.price > current.close && !z.crossedAt)
+            .sort((a, b) => a.price - b.price); // Closest to current price first
+
+          const stopLoss = resistanceZones.length > 0
+            ? resistanceZones[0].price  // Use nearest resistance pivot
+            : current.upperBand;         // Fallback to ATR band
+
+          allMarkers.push({
             time: current.time,
             position: 'aboveBar',
             color: '#ec4899', // Pink
             shape: 'arrowDown',
-            text: '▼',
-            size: 1,
+            text: `SELL\n${current.close.toFixed(2)}\nSL: ${stopLoss.toFixed(2)}`,
+            size: 2,
           });
         }
       }
 
-      // Apply markers to the candlestick series (shows on price chart)
-      if (trendChangeMarkers.length > 0) {
-        candleSeries.setMarkers(trendChangeMarkers);
+      // Apply all markers to the candlestick series
+      if (allMarkers.length > 0) {
+        candleSeries.setMarkers(allMarkers);
       }
 
       // Render liquidity zones - finite horizontal lines (if enabled)
@@ -276,6 +412,46 @@ export default function VidyaTradingChart({
       }
 
       chart.timeScale().fitContent();
+
+      // Add crosshair move event listener for tooltip
+      chart.subscribeCrosshairMove((param: any) => {
+        // Hide tooltip if no time or point
+        if (!param.time || !param.point) {
+          setTooltipData(null);
+          return;
+        }
+
+        // Find the data point at the crosshair time
+        const dataPoint = chartData.find(d => d.time === param.time);
+        if (!dataPoint) {
+          setTooltipData(null);
+          return;
+        }
+
+        // Try to get price from candlestick series if available
+        let displayPrice = dataPoint.close;
+        if (param.seriesData && candleSeriesRef.current) {
+          const price = param.seriesData.get(candleSeriesRef.current);
+          if (price) {
+            displayPrice = price.close || dataPoint.close;
+          }
+        }
+
+        // Always show tooltip with dataPoint information
+        setTooltipData({
+          time: dataPoint.time,
+          price: displayPrice,
+          volumeDelta: dataPoint.volumeDelta,
+          buyVolume: dataPoint.buyVolume,
+          sellVolume: dataPoint.sellVolume,
+          trend: dataPoint.trend,
+          cmo: dataPoint.cmo,
+          visible: true,
+          x: param.point.x,
+          y: param.point.y,
+        });
+      });
+
       chartRef.current = chart;
     } catch (err) {
       console.error('Chart error:', err);
@@ -287,6 +463,8 @@ export default function VidyaTradingChart({
         chartRef.current.remove();
         chartRef.current = null;
       }
+      candleSeriesRef.current = null;
+      setTooltipData(null);
     };
   }, [chartData, rawOHLCData, height, indicators.showLiquidityZones]);
 
@@ -311,30 +489,217 @@ export default function VidyaTradingChart({
       <div ref={containerRef} style={{ height: `${height}px` }} className="w-full border border-gray-200 rounded" />
 
       {/* Volume info overlay - positioned on chart */}
-      {chartData.length > 0 && (
-        <div className="absolute top-4 left-4 p-3 bg-white/90 backdrop-blur-sm rounded-lg border border-gray-300 shadow-lg z-10">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-yellow-500 text-lg">✪</span>
-            <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">Volume Profile</span>
+      {chartData.length > 0 && (() => {
+        const latestPoint = chartData[chartData.length - 1];
+        const bandWidth = latestPoint.upperBand - latestPoint.lowerBand;
+        const atrValues = chartData.map(d => d.upperBand - d.lowerBand);
+        const avgATR = atrValues.reduce((a, b) => a + b, 0) / atrValues.length;
+        const isNarrow = bandWidth < avgATR * 0.6;
+
+        return (
+          <div className="absolute top-4 left-4 p-3 bg-white/90 backdrop-blur-sm rounded-lg border border-gray-300 shadow-lg z-10">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-yellow-500 text-lg">✪</span>
+              <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">Volume Profile</span>
+            </div>
+            <div className="space-y-1 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="text-green-600 font-medium">Buy:</span>
+                <span className="font-semibold text-gray-900">
+                  {(latestPoint.buyVolume / 1000000).toFixed(2)}M
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-red-600 font-medium">Sell:</span>
+                <span className="font-semibold text-gray-900">
+                  {(latestPoint.sellVolume / 1000000).toFixed(2)}M
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-purple-600 font-medium">Delta:</span>
+                <span className="font-semibold text-gray-900">
+                  {latestPoint.volumeDeltaPercent.toFixed(2)}%
+                </span>
+              </div>
+              <div className="flex items-center gap-2 pt-1 mt-1 border-t border-gray-200">
+                <span className={isNarrow ? "text-orange-600 font-medium" : "text-blue-600 font-medium"}>
+                  {isNarrow ? "⚠️ Narrow" : "✓ Wide"}:
+                </span>
+                <span className="font-semibold text-gray-900">
+                  {bandWidth.toFixed(1)} pts
+                </span>
+              </div>
+            </div>
           </div>
-          <div className="space-y-1 text-xs">
-            <div className="flex items-center gap-2">
-              <span className="text-green-600 font-medium">Buy:</span>
-              <span className="font-semibold text-gray-900">
-                {(chartData[chartData.length - 1].buyVolume / 1000000).toFixed(2)}M
+        );
+      })()}
+
+      {/* Volume Delta Dynamics - positioned top-right */}
+      {chartData.length > 1 && (() => {
+        const latestPoint = chartData[chartData.length - 1];
+        const previousPoint = chartData[chartData.length - 2];
+
+        // Calculate average volume
+        const recentVolumes = chartData.slice(-14).map(d => rawOHLCData.find(r => r.time === d.time)?.volume || 0);
+        const avgVolume = recentVolumes.reduce((a, b) => a + b, 0) / recentVolumes.length;
+        const currentVolume = rawOHLCData.find(r => r.time === latestPoint.time)?.volume || 0;
+
+        // Volume spike detection
+        const volumeRatio = avgVolume > 0 ? currentVolume / avgVolume : 0;
+        const isVolumeSpike = volumeRatio >= 1.5;
+
+        // Delta flip detection
+        const currentDelta = latestPoint.volumeDelta;
+        const previousDelta = previousPoint.volumeDelta;
+        const bullishFlip = previousDelta <= 0 && currentDelta > 0;
+        const bearishFlip = previousDelta >= 0 && currentDelta < 0;
+        const deltaFlipped = bullishFlip || bearishFlip;
+
+        // Distance to bands
+        const lowerBandDistance = ((latestPoint.close - latestPoint.lowerBand) / latestPoint.lowerBand * 100).toFixed(2);
+        const upperBandDistance = ((latestPoint.upperBand - latestPoint.close) / latestPoint.close * 100).toFixed(2);
+        const nearLowerBand = Math.abs(parseFloat(lowerBandDistance)) <= 0.2;
+        const nearUpperBand = Math.abs(parseFloat(upperBandDistance)) <= 0.2;
+
+        return (
+          <div className="absolute top-4 right-4 p-3 bg-white/90 backdrop-blur-sm rounded-lg border border-gray-300 shadow-lg z-10">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-amber-500 text-lg">⚡</span>
+              <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">Entry Dynamics</span>
+            </div>
+            <div className="space-y-1 text-xs">
+              {/* Volume Delta */}
+              <div className="flex items-center gap-2">
+                <span className="text-gray-600 font-medium">Curr Δ:</span>
+                <span className={`font-semibold ${currentDelta > 0 ? 'text-green-600' : currentDelta < 0 ? 'text-red-600' : 'text-gray-900'}`}>
+                  {currentDelta > 0 ? '+' : ''}{(currentDelta / 1000000).toFixed(2)}M
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-600 font-medium">Prev Δ:</span>
+                <span className={`font-semibold ${previousDelta > 0 ? 'text-green-600' : previousDelta < 0 ? 'text-red-600' : 'text-gray-900'}`}>
+                  {previousDelta > 0 ? '+' : ''}{(previousDelta / 1000000).toFixed(2)}M
+                </span>
+              </div>
+
+              {/* Delta Flip Status */}
+              <div className="flex items-center gap-2 pt-1 mt-1 border-t border-gray-200">
+                <span className="text-gray-600 font-medium">Flip:</span>
+                <span className={`font-semibold ${deltaFlipped ? (bullishFlip ? 'text-green-600' : 'text-red-600') : 'text-gray-400'}`}>
+                  {deltaFlipped ? (bullishFlip ? '↗ Bullish' : '↘ Bearish') : '─ None'}
+                </span>
+              </div>
+
+              {/* Volume Spike */}
+              <div className="flex items-center gap-2">
+                <span className="text-gray-600 font-medium">Vol:</span>
+                <span className={`font-semibold ${isVolumeSpike ? 'text-amber-600' : 'text-gray-900'}`}>
+                  {volumeRatio.toFixed(2)}x {isVolumeSpike ? '🔥' : ''}
+                </span>
+              </div>
+
+              {/* Band Distance */}
+              <div className="flex items-center gap-2 pt-1 mt-1 border-t border-gray-200">
+                <span className="text-gray-600 font-medium">Lower:</span>
+                <span className={`font-semibold ${nearLowerBand ? 'text-cyan-600' : 'text-gray-900'}`}>
+                  {lowerBandDistance > 0 ? '+' : ''}{lowerBandDistance}% {nearLowerBand ? '👆' : ''}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-600 font-medium">Upper:</span>
+                <span className={`font-semibold ${nearUpperBand ? 'text-pink-600' : 'text-gray-900'}`}>
+                  {upperBandDistance > 0 ? '+' : ''}{upperBandDistance}% {nearUpperBand ? '👇' : ''}
+                </span>
+              </div>
+
+              {/* Early Signal Indicator */}
+              {latestPoint.earlySignal && (
+                <div className="flex items-center gap-2 pt-1 mt-1 border-t border-gray-200">
+                  <span className={`text-xs font-bold ${latestPoint.earlySignal === 'early_buy' ? 'text-cyan-600' : 'text-pink-600'}`}>
+                    🎯 EARLY {latestPoint.earlySignal === 'early_buy' ? 'BUY' : 'SELL'} ACTIVE
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Band Legend - positioned bottom-left */}
+      <div className="absolute bottom-4 left-4 p-2 bg-white/90 backdrop-blur-sm rounded-lg border border-gray-300 shadow-lg z-10">
+        <div className="text-xs font-bold text-gray-700 mb-1">ATR Bands:</div>
+        <div className="flex items-center gap-2 text-xs">
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-0.5 bg-orange-500"></div>
+            <span className="text-gray-600">Narrow (Choppy)</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-0.5 bg-slate-400"></div>
+            <span className="text-gray-600">Wide (Trending)</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Crosshair Tooltip - follows mouse */}
+      {tooltipData && tooltipData.visible && (
+        <div
+          className="absolute p-3 bg-white/95 backdrop-blur-sm rounded-lg border-2 border-gray-400 shadow-xl z-50 pointer-events-none"
+          style={{
+            left: `${tooltipData.x + 15}px`,
+            top: `${tooltipData.y + 15}px`,
+          }}
+        >
+          <div className="space-y-1 text-xs min-w-[200px]">
+            {/* Time and Price */}
+            <div className="flex items-center justify-between gap-4 pb-1 mb-1 border-b-2 border-gray-300">
+              <span className="text-gray-600 font-medium">Price:</span>
+              <span className="font-bold text-gray-900">{tooltipData.price.toFixed(2)}</span>
+            </div>
+
+            {/* Trend */}
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-gray-600 font-medium">Trend:</span>
+              <span className={`font-bold uppercase ${tooltipData.trend === 'bullish' ? 'text-cyan-600' : 'text-pink-600'}`}>
+                {tooltipData.trend === 'bullish' ? '↗ BULLISH' : '↘ BEARISH'}
               </span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-red-600 font-medium">Sell:</span>
-              <span className="font-semibold text-gray-900">
-                {(chartData[chartData.length - 1].sellVolume / 1000000).toFixed(2)}M
+
+            {/* Volume Delta - HIGHLIGHTED */}
+            <div className="flex items-center justify-between gap-4 p-2 mt-1 rounded bg-gradient-to-r from-gray-100 to-gray-50">
+              <span className="text-gray-700 font-bold">Vol Δ:</span>
+              <span className={`font-bold text-base ${tooltipData.volumeDelta > 0 ? 'text-green-600' : tooltipData.volumeDelta < 0 ? 'text-red-600' : 'text-gray-900'}`}>
+                {tooltipData.volumeDelta > 0 ? '+' : ''}{(tooltipData.volumeDelta / 1000000).toFixed(2)}M
               </span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-purple-600 font-medium">Delta:</span>
+
+            {/* Buy Volume */}
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-green-600 font-medium">Buy Vol:</span>
               <span className="font-semibold text-gray-900">
-                {chartData[chartData.length - 1].volumeDeltaPercent.toFixed(2)}%
+                {(tooltipData.buyVolume / 1000000).toFixed(2)}M
               </span>
+            </div>
+
+            {/* Sell Volume */}
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-red-600 font-medium">Sell Vol:</span>
+              <span className="font-semibold text-gray-900">
+                {(tooltipData.sellVolume / 1000000).toFixed(2)}M
+              </span>
+            </div>
+
+            {/* CMO */}
+            <div className="flex items-center justify-between gap-4 pt-1 mt-1 border-t border-gray-200">
+              <span className="text-gray-600 font-medium">CMO:</span>
+              <span className={`font-semibold ${tooltipData.cmo > 20 ? 'text-green-600' : tooltipData.cmo < -20 ? 'text-red-600' : 'text-gray-900'}`}>
+                {tooltipData.cmo.toFixed(1)}
+              </span>
+            </div>
+
+            {/* Time */}
+            <div className="flex items-center justify-between gap-4 text-[10px] text-gray-500 pt-1 mt-1 border-t border-gray-200">
+              <span>Time:</span>
+              <span>{new Date(tooltipData.time * 1000).toLocaleString()}</span>
             </div>
           </div>
         </div>

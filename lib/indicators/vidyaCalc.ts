@@ -45,6 +45,7 @@ export interface VIDYAPoint {
   volumeDeltaPercent: number; // Delta as percentage (0-100)
   trend: 'bullish' | 'bearish' | 'neutral';
   signal: 'buy' | 'sell' | null;
+  earlySignal: 'early_buy' | 'early_sell' | null; // Early warning when band touched with volume confirmation
   liquidityZones: LiquidityZone[]; // Active liquidity zones at this point
 }
 
@@ -296,6 +297,54 @@ function generateSignal(
 }
 
 /**
+ * Detect early reversal signals when price touches band with volume confirmation
+ * Catches character changes before full crossover
+ */
+function detectEarlySignal(
+  close: number,
+  previousClose: number,
+  upperBand: number,
+  lowerBand: number,
+  volume: number,
+  avgVolume: number,
+  currentVolumeDelta: number,
+  previousVolumeDelta: number,
+  trend: 'bullish' | 'bearish' | 'neutral'
+): 'early_buy' | 'early_sell' | null {
+  const bandThreshold = 0.002; // 0.2% threshold for "touching" band
+  const volumeMultiplier = 1.5; // Volume must be 1.5x average
+
+  // Calculate how close price is to bands
+  const lowerBandDistance = Math.abs(close - lowerBand) / lowerBand;
+  const upperBandDistance = Math.abs(close - upperBand) / upperBand;
+
+  // Check if volume is elevated
+  const isVolumeSpike = volume > avgVolume * volumeMultiplier;
+
+  // Early BUY signal: Price touches lower band + volume confirms
+  if (lowerBandDistance <= bandThreshold && trend !== 'bullish') {
+    // Volume delta flips from negative to positive (buyers taking control)
+    const volumeDeltaFlip = previousVolumeDelta <= 0 && currentVolumeDelta > 0;
+
+    if (isVolumeSpike && volumeDeltaFlip) {
+      return 'early_buy';
+    }
+  }
+
+  // Early SELL signal: Price touches upper band + volume confirms
+  if (upperBandDistance <= bandThreshold && trend !== 'bearish') {
+    // Volume delta flips from positive to negative (sellers taking control)
+    const volumeDeltaFlip = previousVolumeDelta >= 0 && currentVolumeDelta < 0;
+
+    if (isVolumeSpike && volumeDeltaFlip) {
+      return 'early_sell';
+    }
+  }
+
+  return null;
+}
+
+/**
  * Calculate VIDYA indicator for all data points
  * Volumes accumulate during trends and reset when trend changes
  * Trend changes when price crosses upper/lower bands
@@ -467,6 +516,29 @@ export function calculateVIDYA_Series(
       smoothedValue = null;
     }
 
+    // Detect early signals (band touch with volume confirmation)
+    // Calculate average volume over recent period
+    const volumeLookback = Math.min(volumePeriod, i);
+    const recentVolumes = data.slice(i - volumeLookback + 1, i + 1).map(d => d.volume);
+    const avgVolume = recentVolumes.reduce((a, b) => a + b, 0) / recentVolumes.length;
+
+    // Get previous volume delta
+    const previousVolumeDelta = i > 0 && result.length > 0
+      ? result[result.length - 1].volumeDelta
+      : 0;
+
+    const earlySignal = detectEarlySignal(
+      close,
+      closePrevious,
+      upperBand,
+      lowerBand,
+      volume,
+      avgVolume,
+      netDelta,
+      previousVolumeDelta,
+      trend
+    );
+
     result.push({
       time: data[i].time,
       close,
@@ -483,6 +555,7 @@ export function calculateVIDYA_Series(
       volumeDeltaPercent,
       trend,
       signal,
+      earlySignal,
       liquidityZones: [...completedLiquidityZones, ...activeLiquidityZones], // All zones (completed + active)
     });
 

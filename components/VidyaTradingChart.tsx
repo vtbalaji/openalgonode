@@ -243,26 +243,9 @@ export default function VidyaTradingChart({
         bandSegments.push(currentBandSegment);
       }
 
-      // Render band segments with appropriate colors
-      for (const segment of bandSegments) {
-        const bandColor = segment.isNarrow
-          ? '#f97316' // Orange-500 for narrow (warning: choppy)
-          : '#94a3b8'; // Slate-400 for wide (normal trending)
-
-        const upperBandSeries = chart.addLineSeries({
-          color: bandColor,
-          lineWidth: 1,
-          lineStyle: LineStyle.Dotted,
-        });
-        upperBandSeries.setData(segment.upperData as any);
-
-        const lowerBandSeries = chart.addLineSeries({
-          color: bandColor,
-          lineWidth: 1,
-          lineStyle: LineStyle.Dotted,
-        });
-        lowerBandSeries.setData(segment.lowerData as any);
-      }
+      // ATR bands calculated but not displayed as lines (reduces clutter)
+      // The bands are still used for signal calculation and stop loss logic
+      // Users can see band info in the tooltip and overlays
 
       // Render each trend segment line with appropriate color (will also use for markers)
       let mainLineSeries: any = null;

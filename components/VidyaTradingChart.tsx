@@ -556,10 +556,10 @@ export default function VidyaTradingChart({
         const deltaFlipped = bullishFlip || bearishFlip;
 
         // Distance to bands
-        const lowerBandDistance = ((latestPoint.close - latestPoint.lowerBand) / latestPoint.lowerBand * 100).toFixed(2);
-        const upperBandDistance = ((latestPoint.upperBand - latestPoint.close) / latestPoint.close * 100).toFixed(2);
-        const nearLowerBand = Math.abs(parseFloat(lowerBandDistance)) <= 0.2;
-        const nearUpperBand = Math.abs(parseFloat(upperBandDistance)) <= 0.2;
+        const lowerBandDistance = ((latestPoint.close - latestPoint.lowerBand) / latestPoint.lowerBand * 100);
+        const upperBandDistance = ((latestPoint.upperBand - latestPoint.close) / latestPoint.close * 100);
+        const nearLowerBand = Math.abs(lowerBandDistance) <= 0.2;
+        const nearUpperBand = Math.abs(upperBandDistance) <= 0.2;
 
         return (
           <div className="absolute top-4 right-4 p-3 bg-white/90 backdrop-blur-sm rounded-lg border border-gray-300 shadow-lg z-10">
@@ -602,13 +602,13 @@ export default function VidyaTradingChart({
               <div className="flex items-center gap-2 pt-1 mt-1 border-t border-gray-200">
                 <span className="text-gray-600 font-medium">Lower:</span>
                 <span className={`font-semibold ${nearLowerBand ? 'text-cyan-600' : 'text-gray-900'}`}>
-                  {lowerBandDistance > 0 ? '+' : ''}{lowerBandDistance}% {nearLowerBand ? '👆' : ''}
+                  {lowerBandDistance > 0 ? '+' : ''}{lowerBandDistance.toFixed(2)}% {nearLowerBand ? '👆' : ''}
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-gray-600 font-medium">Upper:</span>
                 <span className={`font-semibold ${nearUpperBand ? 'text-pink-600' : 'text-gray-900'}`}>
-                  {upperBandDistance > 0 ? '+' : ''}{upperBandDistance}% {nearUpperBand ? '👇' : ''}
+                  {upperBandDistance > 0 ? '+' : ''}{upperBandDistance.toFixed(2)}% {nearUpperBand ? '👇' : ''}
                 </span>
               </div>
 

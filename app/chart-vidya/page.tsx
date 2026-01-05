@@ -14,7 +14,7 @@ export default function VidyaChartPage() {
   const [indicators, setIndicators] = useState({
     showVIDYA: true,
     showATRBands: true,
-    showLiquidityZones: true,
+    showLiquidityZones: false,
     showVolumeProfile: true,
     showSignals: true,
     showTrendArrows: true,
@@ -112,6 +112,7 @@ export default function VidyaChartPage() {
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 text-gray-900"
               >
                 <option value="minute">1 Minute</option>
+                <option value="3minute">3 Minute</option>
                 <option value="5minute">5 Minute</option>
                 <option value="15minute">15 Minute</option>
                 <option value="60minute">1 Hour</option>

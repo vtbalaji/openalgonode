@@ -1,3 +1,19 @@
+# Development Workflow Rules
+
+## Git Push Policy
+
+**IMPORTANT**: NEVER run `git push` without explicit user approval.
+
+When changes are ready to commit:
+1. Stage files with `git add`
+2. Create commit with descriptive message
+3. **STOP and ask user**: "Ready to push to GitHub?"
+4. Only run `git push` after user confirms
+
+This prevents automatic deployments to Vercel without user's knowledge and control.
+
+---
+
 # API Architecture - 3-Layer Structure
 
 ## Overview

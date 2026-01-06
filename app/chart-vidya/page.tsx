@@ -29,6 +29,18 @@ export default function VidyaChartPage() {
     broker: 'zerodha',
   });
 
+  // Debug: Log when prices change
+  useEffect(() => {
+    if (prices[symbol]) {
+      console.log('[VIDYA Page] Price update received:', {
+        symbol,
+        last_price: prices[symbol]?.last_price,
+        ohlc_close: prices[symbol]?.ohlc?.close,
+        timestamp: new Date().toLocaleTimeString(),
+      });
+    }
+  }, [prices, symbol]);
+
   // Set responsive chart height
   useEffect(() => {
     const updateChartHeight = () => {
@@ -305,7 +317,7 @@ export default function VidyaChartPage() {
             height={chartHeight}
             lookbackDays={lookbackDays}
             indicators={indicators}
-            realtimePrice={prices[symbol]?.ohlc?.close}
+            realtimePrice={prices[symbol]?.last_price}
             refreshTrigger={refreshTrigger}
           />
         </div>

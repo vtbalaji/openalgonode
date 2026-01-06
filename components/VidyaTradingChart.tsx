@@ -49,6 +49,7 @@ export default function VidyaTradingChart({
     x: number;
     y: number;
   } | null>(null);
+  const lastPriceRef = useRef<number | null>(null);
 
   // Fetch and calculate data
   useEffect(() => {
@@ -101,23 +102,43 @@ export default function VidyaTradingChart({
 
   // Update chart with real-time price data
   useEffect(() => {
-    if (!realtimePrice || !candleSeriesRef.current || rawOHLCData.length === 0) return;
+    if (!realtimePrice || rawOHLCData.length === 0) {
+      console.log('[VIDYA] Skipping update:', { realtimePrice, dataLength: rawOHLCData.length });
+      return;
+    }
 
-    const lastCandle = rawOHLCData[rawOHLCData.length - 1];
-    if (!lastCandle) return;
+    // Check if price actually changed
+    if (lastPriceRef.current !== null && lastPriceRef.current === realtimePrice) {
+      // Price hasn't changed, skip update
+      return;
+    }
 
-    // Create updated candle
-    const updatedCandle = {
-      time: lastCandle.time,
-      open: lastCandle.open,
-      high: Math.max(lastCandle.high, realtimePrice),
-      low: Math.min(lastCandle.low, realtimePrice),
-      close: realtimePrice,
-    };
+    console.log('[VIDYA] Realtime price update:', {
+      realtimePrice,
+      lastPrice: lastPriceRef.current,
+      dataLength: rawOHLCData.length,
+      lastCandleClose: rawOHLCData[rawOHLCData.length - 1]?.close,
+    });
 
-    // Update the candlestick series directly (no re-render)
-    candleSeriesRef.current.update(updatedCandle);
-  }, [realtimePrice, rawOHLCData]);
+    lastPriceRef.current = realtimePrice;
+
+    // Update the last candle in rawOHLCData state
+    setRawOHLCData((prevData) => {
+      const newData = [...prevData];
+      const lastCandle = newData[newData.length - 1];
+
+      if (lastCandle) {
+        const before = lastCandle.close;
+        lastCandle.close = realtimePrice;
+        lastCandle.high = Math.max(lastCandle.high, realtimePrice);
+        lastCandle.low = Math.min(lastCandle.low, realtimePrice);
+        console.log('[VIDYA] Updated last candle:', { before, after: realtimePrice });
+        // Don't update volume - realtime feed has cumulative daily volume, not per-candle volume
+      }
+
+      return newData;
+    });
+  }, [realtimePrice, rawOHLCData.length]);
 
   // Render chart
   useEffect(() => {
@@ -140,6 +161,9 @@ export default function VidyaTradingChart({
         timeScale: {
           timeVisible: true,
           secondsVisible: false,
+          barSpacing: 12, // Initial spacing between bars (pixels)
+          minBarSpacing: 8, // Minimum 2mm width (prevents over-compression)
+          rightOffset: 10, // Space on right side
           tickMarkFormatter: (time: any) => {
             // Format horizontal axis labels in IST
             const date = new Date(time * 1000);
@@ -195,6 +219,15 @@ export default function VidyaTradingChart({
       }));
 
       candleSeries.setData(ohlcData as any);
+
+      // Set initial visible range to show last 100-150 candles for better spacing
+      if (ohlcData.length > 100) {
+        const visibleBars = Math.min(150, ohlcData.length);
+        chart.timeScale().setVisibleRange({
+          from: ohlcData[ohlcData.length - visibleBars].time,
+          to: ohlcData[ohlcData.length - 1].time,
+        });
+      }
 
       // Create line series segments - one for each trend to color-code
       // Plot smoothedValue (lower_band in uptrend, upper_band in downtrend)
@@ -490,7 +523,23 @@ export default function VidyaTradingChart({
       candleSeriesRef.current = null;
       setTooltipData(null);
     };
-  }, [chartData, rawOHLCData, height, indicators.showLiquidityZones]);
+  }, [chartData, height, indicators.showLiquidityZones]);
+
+  // Update candlestick data when rawOHLCData changes (for realtime updates)
+  useEffect(() => {
+    if (!candleSeriesRef.current || rawOHLCData.length === 0) return;
+
+    const ohlcData = rawOHLCData.map(d => ({
+      time: d.time,
+      open: d.open,
+      high: d.high,
+      low: d.low,
+      close: d.close,
+    }));
+
+    candleSeriesRef.current.setData(ohlcData as any);
+    console.log('[VIDYA] Updated candlestick data with realtime changes');
+  }, [rawOHLCData]);
 
   if (loading) {
     return (

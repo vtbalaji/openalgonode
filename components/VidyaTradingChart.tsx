@@ -101,31 +101,23 @@ export default function VidyaTradingChart({
 
   // Update chart with real-time price data
   useEffect(() => {
-    if (!realtimePrice || rawOHLCData.length === 0) return;
+    if (!realtimePrice || !candleSeriesRef.current || rawOHLCData.length === 0) return;
 
-    // Update the last candle with realtime price
-    const updatedData = [...rawOHLCData];
-    const lastCandle = updatedData[updatedData.length - 1];
+    const lastCandle = rawOHLCData[rawOHLCData.length - 1];
+    if (!lastCandle) return;
 
-    if (lastCandle) {
-      lastCandle.close = realtimePrice;
-      lastCandle.high = Math.max(lastCandle.high, realtimePrice);
-      lastCandle.low = Math.min(lastCandle.low, realtimePrice);
+    // Create updated candle
+    const updatedCandle = {
+      time: lastCandle.time,
+      open: lastCandle.open,
+      high: Math.max(lastCandle.high, realtimePrice),
+      low: Math.min(lastCandle.low, realtimePrice),
+      close: realtimePrice,
+    };
 
-      // Update raw data
-      setRawOHLCData(updatedData);
-
-      // Recalculate VIDYA series with updated data
-      const series = calculateVIDYA_Series(
-        updatedData,
-        indicators.cmoPeriod,
-        indicators.atrPeriod,
-        indicators.cmoPeriod,
-        indicators.bandMultiplier || 1.0
-      );
-      setChartData(series);
-    }
-  }, [realtimePrice]);
+    // Update the candlestick series directly (no re-render)
+    candleSeriesRef.current.update(updatedCandle);
+  }, [realtimePrice, rawOHLCData]);
 
   // Render chart
   useEffect(() => {

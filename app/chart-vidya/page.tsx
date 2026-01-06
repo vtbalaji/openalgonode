@@ -53,11 +53,11 @@ export default function VidyaChartPage() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   useEffect(() => {
-    const interval = setInterval(() => {
+    const interval = window.setInterval(() => {
       setRefreshTrigger((prev) => prev + 1);
     }, 3 * 60 * 1000); // 3 minutes in milliseconds
 
-    return () => clearInterval(interval as any);
+    return () => window.clearInterval(interval);
   }, []);
 
   const toggleIndicator = (indicator: keyof typeof indicators) => {

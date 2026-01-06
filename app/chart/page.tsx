@@ -151,7 +151,7 @@ export default function ChartPage() {
         lastCandle.close = latestPrice.last_price;
         lastCandle.high = Math.max(lastCandle.high, latestPrice.last_price);
         lastCandle.low = Math.min(lastCandle.low, latestPrice.last_price);
-        lastCandle.volume = latestPrice.volume;
+        // Note: Don't update volume - realtime feed has cumulative daily volume, not per-candle volume
       }
 
       return newData;

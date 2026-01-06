@@ -99,6 +99,34 @@ export default function VidyaTradingChart({
     fetchData();
   }, [symbol, interval, userId, lookbackDays, indicators.cmoPeriod, indicators.atrPeriod, indicators.bandMultiplier, refreshTrigger]);
 
+  // Update chart with real-time price data
+  useEffect(() => {
+    if (!realtimePrice || rawOHLCData.length === 0) return;
+
+    // Update the last candle with realtime price
+    const updatedData = [...rawOHLCData];
+    const lastCandle = updatedData[updatedData.length - 1];
+
+    if (lastCandle) {
+      lastCandle.close = realtimePrice;
+      lastCandle.high = Math.max(lastCandle.high, realtimePrice);
+      lastCandle.low = Math.min(lastCandle.low, realtimePrice);
+
+      // Update raw data
+      setRawOHLCData(updatedData);
+
+      // Recalculate VIDYA series with updated data
+      const series = calculateVIDYA_Series(
+        updatedData,
+        indicators.cmoPeriod,
+        indicators.atrPeriod,
+        indicators.cmoPeriod,
+        indicators.bandMultiplier || 1.0
+      );
+      setChartData(series);
+    }
+  }, [realtimePrice]);
+
   // Render chart
   useEffect(() => {
     if (!containerRef.current || chartData.length === 0 || rawOHLCData.length === 0) return;

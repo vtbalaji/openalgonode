@@ -49,6 +49,17 @@ export default function VidyaChartPage() {
     return () => window.removeEventListener('resize', updateChartHeight);
   }, []);
 
+  // Auto-refresh trigger - increments every 3 minutes
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setRefreshTrigger(prev => prev + 1);
+    }, 3 * 60 * 1000); // 3 minutes in milliseconds
+
+    return () => clearInterval(interval);
+  }, []);
+
   const toggleIndicator = (indicator: keyof typeof indicators) => {
     if (typeof indicators[indicator] === 'boolean') {
       setIndicators((prev) => ({
@@ -134,11 +145,14 @@ export default function VidyaChartPage() {
             </div>
 
             {/* Connection Status */}
-            <div className="flex items-end">
+            <div className="flex flex-col items-end gap-2">
               <div
                 className={`px-4 py-2 rounded-lg ${isConnected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'} font-medium`}
               >
                 {isConnected ? '🟢 Live Data' : '🔴 Disconnected'}
+              </div>
+              <div className="px-3 py-1 rounded bg-blue-50 text-blue-700 text-xs font-medium">
+                🔄 Auto-refresh: 3 min
               </div>
             </div>
           </div>
@@ -292,6 +306,7 @@ export default function VidyaChartPage() {
             lookbackDays={lookbackDays}
             indicators={indicators}
             realtimePrice={prices[symbol]?.ohlc?.close}
+            refreshTrigger={refreshTrigger}
           />
         </div>
       </div>

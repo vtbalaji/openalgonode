@@ -17,6 +17,7 @@ interface VidyaTradingChartProps {
   lookbackDays: number;
   indicators: any;
   realtimePrice?: number;
+  refreshTrigger?: number;
 }
 
 export default function VidyaTradingChart({
@@ -27,6 +28,7 @@ export default function VidyaTradingChart({
   lookbackDays,
   indicators,
   realtimePrice,
+  refreshTrigger = 0,
 }: VidyaTradingChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<any>(null);
@@ -68,9 +70,15 @@ export default function VidyaTradingChart({
         });
 
         const response = await fetch(`/api/chart/historical?${params.toString()}`);
-        if (!response.ok) throw new Error('Failed to fetch');
+        if (!response.ok) throw new Error('Failed to fetch data from server');
 
         const { data } = await response.json();
+
+        // Check if data is empty
+        if (!data || data.length === 0) {
+          throw new Error('No historical data available. Please check: (1) Zerodha authentication, (2) Symbol is correct, (3) Market hours/trading days.');
+        }
+
         setRawOHLCData(data); // Store real OHLC data
 
         const series = calculateVIDYA_Series(
@@ -89,7 +97,7 @@ export default function VidyaTradingChart({
     };
 
     fetchData();
-  }, [symbol, interval, userId, lookbackDays, indicators.cmoPeriod, indicators.atrPeriod, indicators.bandMultiplier]);
+  }, [symbol, interval, userId, lookbackDays, indicators.cmoPeriod, indicators.atrPeriod, indicators.bandMultiplier, refreshTrigger]);
 
   // Render chart
   useEffect(() => {
@@ -109,8 +117,39 @@ export default function VidyaTradingChart({
         },
         width: containerRef.current.clientWidth,
         height: height,
-        timeScale: { timeVisible: true, secondsVisible: false },
+        timeScale: {
+          timeVisible: true,
+          secondsVisible: false,
+          tickMarkFormatter: (time: any) => {
+            // Format horizontal axis labels in IST
+            const date = new Date(time * 1000);
+            const timeStr = date.toLocaleTimeString('en-IN', {
+              timeZone: 'Asia/Kolkata',
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: false
+            });
+            const dateStr = date.toLocaleDateString('en-IN', {
+              timeZone: 'Asia/Kolkata',
+              day: '2-digit',
+              month: 'short'
+            });
+            return `${timeStr}\n${dateStr}`;
+          },
+        },
         rightPriceScale: { autoScale: true },
+        localization: {
+          timeFormatter: (time: any) => {
+            // Convert Unix timestamp to IST for crosshair tooltip
+            const date = new Date(time * 1000);
+            return date.toLocaleTimeString('en-IN', {
+              timeZone: 'Asia/Kolkata',
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: false
+            });
+          },
+        },
       });
 
       // Candlesticks - use REAL OHLC data
@@ -278,39 +317,21 @@ export default function VidyaTradingChart({
 
         // EARLY SIGNALS: Band touch with volume confirmation (yellow arrows)
         if (current.earlySignal === 'early_buy') {
-          // Find nearest support zone for stop loss
-          const supportZones = current.liquidityZones
-            .filter(z => z.type === 'support' && z.price < current.close && !z.crossedAt)
-            .sort((a, b) => b.price - a.price);
-
-          const stopLoss = supportZones.length > 0
-            ? supportZones[0].price
-            : current.lowerBand;
-
           allMarkers.push({
             time: current.time,
             position: 'belowBar',
             color: '#fbbf24', // Yellow/Amber
             shape: 'arrowUp',
-            text: `EARLY BUY\n${current.close.toFixed(2)}\nSL: ${stopLoss.toFixed(2)}`,
+            text: 'EARLY BUY',
             size: 1.5,
           });
         } else if (current.earlySignal === 'early_sell') {
-          // Find nearest resistance zone for stop loss
-          const resistanceZones = current.liquidityZones
-            .filter(z => z.type === 'resistance' && z.price > current.close && !z.crossedAt)
-            .sort((a, b) => a.price - b.price);
-
-          const stopLoss = resistanceZones.length > 0
-            ? resistanceZones[0].price
-            : current.upperBand;
-
           allMarkers.push({
             time: current.time,
             position: 'aboveBar',
             color: '#fbbf24', // Yellow/Amber
             shape: 'arrowDown',
-            text: `EARLY SELL\n${current.close.toFixed(2)}\nSL: ${stopLoss.toFixed(2)}`,
+            text: 'EARLY SELL',
             size: 1.5,
           });
         }

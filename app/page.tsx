@@ -267,6 +267,20 @@ export default function Home() {
             <p className="text-gray-600">Harmonic pattern detection & Fibonacci analysis</p>
           </Link>
 
+          {/* VIDYA Trading Chart */}
+          <Link
+            href="/chart-vidya"
+            className="block rounded-lg bg-white p-6 shadow transition hover:shadow-lg border-2 border-cyan-200"
+          >
+            <div className="mb-4 inline-block rounded-lg bg-cyan-100 p-3">
+              <svg className="h-6 w-6 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+              </svg>
+            </div>
+            <h3 className="mb-2 text-lg font-semibold text-gray-900">VIDYA Trading Chart</h3>
+            <p className="text-gray-600">Adaptive trend analysis with volume delta & early signals</p>
+          </Link>
+
           {/* API Documentation */}
           <Link
             href="/api-docs"

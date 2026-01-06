@@ -340,7 +340,8 @@ export default function ApiKeysPage() {
                         <span className="font-medium">Broker:</span> {key.broker}
                       </div>
                       <div className="mt-1 text-sm text-gray-600">
-                        <span className="font-medium">Key:</span> {key.key.substring(0, 20)}...
+                        <span className="font-medium">Key:</span> <code className="text-xs">ak_live_••••••••••••••••</code>
+                        <span className="ml-2 text-xs text-gray-500">(Hidden for security)</span>
                       </div>
                       <div className="mt-1 text-sm text-gray-500">
                         Created: {new Date(key.createdAt._seconds * 1000).toLocaleDateString()} •

@@ -298,7 +298,10 @@ function generateSignal(
 
 /**
  * Detect early reversal signals when price touches band with volume confirmation
- * Catches character changes before full crossover
+ * Catches momentum changes before full crossover
+ *
+ * IMPORTANT: Uses SHORT-TERM volume delta (5 candles) NOT cumulative trend delta
+ * This allows detection of momentum shifts even in long trends
  */
 function detectEarlySignal(
   close: number,
@@ -307,36 +310,62 @@ function detectEarlySignal(
   lowerBand: number,
   volume: number,
   avgVolume: number,
-  currentVolumeDelta: number,
-  previousVolumeDelta: number,
+  currentVolumeDelta: number,        // Short-term delta (last 5 candles)
+  previousVolumeDelta: number,       // Previous short-term delta (5 candles ago)
   trend: 'bullish' | 'bearish' | 'neutral'
 ): 'early_buy' | 'early_sell' | null {
-  const bandThreshold = 0.002; // 0.2% threshold for "touching" band
-  const volumeMultiplier = 1.5; // Volume must be 1.5x average
+  const bandThreshold = 0.005; // 0.5% threshold for "touching" band (relaxed from 0.2%)
+  const volumeMultiplier = 1.2; // Volume must be 1.2x average (relaxed from 1.5x)
 
-  // Calculate how close price is to bands
-  const lowerBandDistance = Math.abs(close - lowerBand) / lowerBand;
-  const upperBandDistance = Math.abs(close - upperBand) / upperBand;
+  // Calculate how close price is to bands (absolute distance)
+  const distanceToLower = Math.abs(close - lowerBand);
+  const distanceToUpper = Math.abs(close - upperBand);
+
+  // Calculate percentage distance
+  const lowerBandDistance = distanceToLower / lowerBand;
+  const upperBandDistance = distanceToUpper / upperBand;
 
   // Check if volume is elevated
   const isVolumeSpike = volume > avgVolume * volumeMultiplier;
 
-  // Early BUY signal: Price touches lower band + volume confirms
-  if (lowerBandDistance <= bandThreshold && trend !== 'bullish') {
-    // Volume delta flips from negative to positive (buyers taking control)
-    const volumeDeltaFlip = previousVolumeDelta <= 0 && currentVolumeDelta > 0;
+  // Determine which band is closer
+  const closerToLower = distanceToLower < distanceToUpper;
+  const closerToUpper = distanceToUpper < distanceToLower;
 
-    if (isVolumeSpike && volumeDeltaFlip) {
+  // Early BUY signal: Price near lower band (and closer to lower than upper) + bullish volume
+  if (lowerBandDistance <= bandThreshold && closerToLower && trend !== 'bullish' && close <= lowerBand * 1.005) {
+    // Check for volume confirmation - either:
+    // 1. Volume delta is positive (buyers dominant)
+    // 2. Volume delta flipped from negative to positive (momentum shift)
+    const volumeDeltaPositive = currentVolumeDelta > 0;
+    const volumeDeltaFlip = previousVolumeDelta < 0 && currentVolumeDelta > 0;
+
+    // Signal if we have volume spike AND positive volume delta (no flip required)
+    if (isVolumeSpike && volumeDeltaPositive) {
+      return 'early_buy';
+    }
+
+    // OR signal if volume delta flipped (even without volume spike)
+    if (volumeDeltaFlip && volume > avgVolume * 0.8) {
       return 'early_buy';
     }
   }
 
-  // Early SELL signal: Price touches upper band + volume confirms
-  if (upperBandDistance <= bandThreshold && trend !== 'bearish') {
-    // Volume delta flips from positive to negative (sellers taking control)
-    const volumeDeltaFlip = previousVolumeDelta >= 0 && currentVolumeDelta < 0;
+  // Early SELL signal: Price near upper band (and closer to upper than lower) + bearish volume
+  if (upperBandDistance <= bandThreshold && closerToUpper && trend !== 'bearish' && close >= upperBand * 0.995) {
+    // Check for volume confirmation - either:
+    // 1. Volume delta is negative (sellers dominant)
+    // 2. Volume delta flipped from positive to negative (momentum shift)
+    const volumeDeltaNegative = currentVolumeDelta < 0;
+    const volumeDeltaFlip = previousVolumeDelta > 0 && currentVolumeDelta < 0;
 
-    if (isVolumeSpike && volumeDeltaFlip) {
+    // Signal if we have volume spike AND negative volume delta (no flip required)
+    if (isVolumeSpike && volumeDeltaNegative) {
+      return 'early_sell';
+    }
+
+    // OR signal if volume delta flipped (even without volume spike)
+    if (volumeDeltaFlip && volume > avgVolume * 0.8) {
       return 'early_sell';
     }
   }
@@ -522,10 +551,45 @@ export function calculateVIDYA_Series(
     const recentVolumes = data.slice(i - volumeLookback + 1, i + 1).map(d => d.volume);
     const avgVolume = recentVolumes.reduce((a, b) => a + b, 0) / recentVolumes.length;
 
-    // Get previous volume delta
-    const previousVolumeDelta = i > 0 && result.length > 0
-      ? result[result.length - 1].volumeDelta
-      : 0;
+    // Calculate SHORT-TERM volume delta for early signal detection (last 5 candles)
+    // This prevents the issue where long trends accumulate huge delta making flips impossible
+    const shortTermWindow = 5;
+    const shortTermLookback = Math.min(shortTermWindow, i);
+    const shortTermCandles = data.slice(i - shortTermLookback + 1, i + 1);
+
+    let shortTermBuyVol = 0;
+    let shortTermSellVol = 0;
+    for (const candle of shortTermCandles) {
+      if (candle.close > candle.open) {
+        shortTermBuyVol += candle.volume;
+      } else if (candle.close < candle.open) {
+        shortTermSellVol += candle.volume;
+      } else {
+        shortTermBuyVol += candle.volume / 2;
+        shortTermSellVol += candle.volume / 2;
+      }
+    }
+    const currentShortTermDelta = shortTermBuyVol - shortTermSellVol;
+
+    // Get previous short-term delta (from 1 candle ago)
+    const prevShortTermLookback = Math.min(shortTermWindow, i - 1);
+    const prevShortTermCandles = i > 0
+      ? data.slice(i - prevShortTermLookback, i)
+      : [];
+
+    let prevShortTermBuyVol = 0;
+    let prevShortTermSellVol = 0;
+    for (const candle of prevShortTermCandles) {
+      if (candle.close > candle.open) {
+        prevShortTermBuyVol += candle.volume;
+      } else if (candle.close < candle.open) {
+        prevShortTermSellVol += candle.volume;
+      } else {
+        prevShortTermBuyVol += candle.volume / 2;
+        prevShortTermSellVol += candle.volume / 2;
+      }
+    }
+    const previousShortTermDelta = prevShortTermBuyVol - prevShortTermSellVol;
 
     const earlySignal = detectEarlySignal(
       close,
@@ -534,8 +598,8 @@ export function calculateVIDYA_Series(
       lowerBand,
       volume,
       avgVolume,
-      netDelta,
-      previousVolumeDelta,
+      currentShortTermDelta,
+      previousShortTermDelta,
       trend
     );
 

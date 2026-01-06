@@ -1,74 +1,84 @@
 /**
  * Internal Routing Helper
  * Used by external API (v1) routers to call internal broker-specific endpoints
+ *
+ * IMPORTANT: Uses direct server-side imports instead of HTTP calls to avoid
+ * Vercel authentication issues and improve performance
  */
 
-/**
- * Get the internal API base URL
- * Works in both dev and production environments
- */
-export function getInternalApiUrl(): string {
-  // On Vercel: Use VERCEL_URL which contains the deployment domain
-  // On localhost: Use http://localhost:3000
-  // On other environments: Use NEXT_PUBLIC_API_URL if set, otherwise localhost
+import { NextRequest, NextResponse } from 'next/server';
 
-  if (process.env.VERCEL_URL) {
-    // Vercel deployment - use HTTPS
-    return `https://${process.env.VERCEL_URL}`;
-  }
-
-  // Fall back to environment variable or localhost
-  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-}
+// Import broker route handlers directly
+import * as zerodhaPlaceOrder from '@/app/api/broker/zerodha/place-order/route';
+import * as zerodhaCancelOrder from '@/app/api/broker/zerodha/cancel-order/route';
+import * as zerodhaModifyOrder from '@/app/api/broker/zerodha/modify-order/route';
+import * as zerodhaOrderbook from '@/app/api/broker/zerodha/orderbook/route';
+import * as zerodhaTradebook from '@/app/api/broker/zerodha/tradebook/route';
+import * as zerodhaPositions from '@/app/api/broker/zerodha/positions/route';
+import * as zerodhaHoldings from '@/app/api/broker/zerodha/holdings/route';
+import * as zerodhaFunds from '@/app/api/broker/zerodha/funds/route';
+import * as zerodhaClosePosition from '@/app/api/broker/zerodha/close-position/route';
+import * as zerodhaCancelAllOrders from '@/app/api/broker/zerodha/cancel-all-orders/route';
 
 /**
- * Call broker-specific endpoint
- * @param broker - Broker name (e.g., 'zerodha', 'angel')
- * @param action - Action name (e.g., 'place-order', 'cancel-order')
- * @param body - Request body
+ * Call broker-specific endpoint directly (server-side)
+ * No HTTP calls - direct function invocation
  */
 export async function callInternalBrokerEndpoint(
   broker: string,
   action: string,
   body: any
 ): Promise<any> {
-  const baseUrl = getInternalApiUrl();
-  const url = `${baseUrl}/api/broker/${broker}/${action}`;
+  // Create a fake NextRequest with the body
+  const request = new NextRequest('http://localhost/internal', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
 
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
+  let response: NextResponse;
 
-    const contentType = response.headers.get('content-type');
-    const text = await response.text();
-
-    // Check if response looks like HTML (starts with < or <!doctype)
-    if (text.trim().startsWith('<')) {
-      console.error(`HTML response from ${url}:`, {
-        status: response.status,
-        contentType,
-        text: text.substring(0, 500),
-      });
-      throw new Error(`HTML response from broker endpoint (status ${response.status}): ${text.substring(0, 100)}`);
+  // Route to the correct handler based on broker and action
+  if (broker === 'zerodha') {
+    switch (action) {
+      case 'place-order':
+        response = await zerodhaPlaceOrder.POST(request);
+        break;
+      case 'cancel-order':
+        response = await zerodhaCancelOrder.POST(request);
+        break;
+      case 'modify-order':
+        response = await zerodhaModifyOrder.POST(request);
+        break;
+      case 'orderbook':
+        response = await zerodhaOrderbook.POST(request);
+        break;
+      case 'tradebook':
+        response = await zerodhaTradebook.POST(request);
+        break;
+      case 'positions':
+        response = await zerodhaPositions.POST(request);
+        break;
+      case 'holdings':
+        response = await zerodhaHoldings.POST(request);
+        break;
+      case 'funds':
+        response = await zerodhaFunds.POST(request);
+        break;
+      case 'close-position':
+        response = await zerodhaClosePosition.POST(request);
+        break;
+      case 'cancel-all-orders':
+        response = await zerodhaCancelAllOrders.POST(request);
+        break;
+      default:
+        throw new Error(`Unknown action: ${action} for broker: ${broker}`);
     }
-
-    // Try to parse as JSON
-    try {
-      const data = JSON.parse(text);
-      return { data, status: response.status };
-    } catch (parseError) {
-      console.error(`Failed to parse JSON from ${url}:`, {
-        status: response.status,
-        contentType,
-        text: text.substring(0, 500),
-      });
-      throw new Error(`Invalid JSON from broker endpoint: ${text.substring(0, 100)}`);
-    }
-  } catch (error: any) {
-    console.error(`Error calling broker endpoint ${url}:`, error.message);
-    throw error;
+  } else {
+    throw new Error(`Unsupported broker: ${broker}`);
   }
+
+  // Extract data from response
+  const data = await response.json();
+  return { data, status: response.status };
 }

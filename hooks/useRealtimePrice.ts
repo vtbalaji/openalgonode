@@ -34,6 +34,11 @@ export function useRealtimePrice({ symbols, broker = 'zerodha' }: UseRealtimePri
   const eventSourceRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
+    // Only run in browser environment
+    if (typeof window === 'undefined') {
+      return;
+    }
+
     if (!user || symbols.length === 0) {
       return;
     }
@@ -86,13 +91,15 @@ export function useRealtimePrice({ symbols, broker = 'zerodha' }: UseRealtimePri
 
       setError(errorMsg);
 
-      // Auto-reconnect after 5 seconds
-      setTimeout(() => {
-        if (eventSourceRef.current?.readyState === EventSource.CLOSED) {
-          console.log('Reconnecting...');
-          eventSourceRef.current = new EventSource(url);
-        }
-      }, 5000);
+      // Auto-reconnect after 5 seconds (only in browser)
+      if (typeof window !== 'undefined') {
+        setTimeout(() => {
+          if (eventSourceRef.current?.readyState === EventSource.CLOSED) {
+            console.log('Reconnecting...');
+            eventSourceRef.current = new EventSource(url);
+          }
+        }, 5000);
+      }
     };
 
     // Cleanup on unmount

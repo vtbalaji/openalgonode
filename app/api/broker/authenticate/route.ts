@@ -299,7 +299,13 @@ export async function POST(request: NextRequest) {
       let accessToken: string;
       let refreshToken: string;
       try {
-        const authResult = await authenticateFyers(authCode, apiKey, apiSecret);
+        // Build redirect URI from request origin
+        const origin = request.headers.get('x-forwarded-proto') === 'https'
+          ? `https://${request.headers.get('x-forwarded-host') || request.headers.get('host')}`
+          : `http://${request.headers.get('host')}`;
+        const redirectUri = `${origin}/callback`;
+
+        const authResult = await authenticateFyers(authCode, apiKey, apiSecret, redirectUri);
         accessToken = authResult.accessToken;
         refreshToken = authResult.refreshToken;
       } catch (error: any) {

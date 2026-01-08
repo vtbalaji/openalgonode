@@ -17,14 +17,16 @@ interface FyersAuthResponse {
 export async function authenticateFyers(
   authCode: string,
   clientId: string,
-  clientSecret: string
+  clientSecret: string,
+  redirectUri: string = 'https://algo.tradeidea.co.in/callback'
 ): Promise<FyersAuthResponse> {
   try {
     console.log('[FYERS] Authenticating with auth code...');
     console.log('[FYERS] Client ID:', clientId.substring(0, 5) + '...');
+    console.log('[FYERS] Redirect URI:', redirectUri);
 
     // Step 1: Exchange auth code for access token
-    // Fyers APIv3 token endpoint
+    // Fyers APIv3 token endpoint requires: grant_type, code, appIdHash, redirect_uri
     const tokenResponse = await fetch(`${FYERS_API_URL}/token`, {
       method: 'POST',
       headers: {
@@ -34,7 +36,7 @@ export async function authenticateFyers(
         grant_type: 'authorization_code',
         appIdHash: clientSecret,
         code: authCode,
-        state: 'sample',
+        redirect_uri: redirectUri,
       }),
     });
 

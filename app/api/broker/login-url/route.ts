@@ -73,11 +73,9 @@ export async function GET(request: NextRequest) {
       ? `https://${request.headers.get('x-forwarded-host') || request.headers.get('host')}`
       : `http://${request.headers.get('host')}`;
 
-    // Include broker parameter in callback URL so callback knows which broker this is for
-    const baseCallbackUrl = redirectUrl || `${origin}/callback`;
-    const callbackUrlWithBroker = new URL(baseCallbackUrl);
-    callbackUrlWithBroker.searchParams.set('broker', broker);
-    const fullCallbackUrl = callbackUrlWithBroker.toString();
+    // Use clean callback URL without query parameters
+    // Broker is tracked in sessionStorage on the frontend
+    const fullCallbackUrl = redirectUrl || `${origin}/callback`;
 
     // Build login URL
     const loginUrl = buildBrokerLoginUrl(broker, apiKey, fullCallbackUrl);
@@ -90,7 +88,7 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { loginUrl, redirectUrl: fullCallbackUrl },
+      { loginUrl },
       { status: 200 }
     );
   } catch (error: any) {

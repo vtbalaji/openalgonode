@@ -28,6 +28,9 @@ function CallbackPageContent() {
       const feedToken = searchParams.get('feed_token');
       const refreshToken = searchParams.get('refresh_token');
 
+      // Get Fyers-specific parameters (Fyers returns authCode after OAuth)
+      const authCode = searchParams.get('code');
+
       // Validate we have a broker
       if (!broker) {
         setStatus('error');
@@ -49,6 +52,14 @@ function CallbackPageContent() {
       if (broker === 'angel' && !authToken) {
         setStatus('error');
         setMessage('Invalid Angel callback. Missing authentication token from Angel Broker.');
+        sessionStorage.removeItem('authenticatingBroker');
+        setTimeout(() => router.push('/broker/config'), 3000);
+        return;
+      }
+
+      if (broker === 'fyers' && !authCode) {
+        setStatus('error');
+        setMessage('Invalid Fyers callback. Missing authorization code.');
         sessionStorage.removeItem('authenticatingBroker');
         setTimeout(() => router.push('/broker/config'), 3000);
         return;
@@ -83,6 +94,9 @@ function CallbackPageContent() {
           body.accessToken = authToken;
           body.feedToken = feedToken;
           body.refreshToken = refreshToken;
+        } else if (broker === 'fyers') {
+          // Fyers returns authCode after OAuth - exchange it for access token
+          body.authCode = authCode;
         }
 
         const response = await fetch('/api/broker/authenticate', {

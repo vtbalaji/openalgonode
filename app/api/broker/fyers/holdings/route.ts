@@ -33,20 +33,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Decrypt access token
+    // Decrypt access token and API key
     let accessToken: string;
+    let apiKey: string;
     try {
       accessToken = decryptData(configData.accessToken);
+      apiKey = decryptData(configData.apiKey);
+
+      console.log('[HOLDINGS-ROUTE] Decryption successful');
+      console.log('[HOLDINGS-ROUTE] Access token preview:', accessToken.substring(0, 30) + '...');
+      console.log('[HOLDINGS-ROUTE] API key (app_id):', apiKey);
     } catch (error) {
-      console.error('Failed to decrypt access token:', error);
+      console.error('Failed to decrypt:', error);
       return NextResponse.json(
         { error: 'Failed to decrypt broker credentials' },
         { status: 400 }
       );
     }
 
+    console.log('[HOLDINGS-ROUTE] Calling getFyersHoldings with userId:', userId);
     // Get holdings
-    const result = await getFyersHoldings(accessToken);
+    const result = await getFyersHoldings(accessToken, apiKey);
 
     return NextResponse.json(result, { status: 200 });
   } catch (error: any) {

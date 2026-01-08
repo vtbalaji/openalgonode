@@ -33,20 +33,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Decrypt access token
+    // Decrypt access token and API key
     let accessToken: string;
+    let apiKey: string;
     try {
       accessToken = decryptData(configData.accessToken);
+      apiKey = decryptData(configData.apiKey);
+
+      console.log('[FUNDS-ROUTE] Decryption successful');
+      console.log('[FUNDS-ROUTE] Access token preview:', accessToken.substring(0, 30) + '...');
+      console.log('[FUNDS-ROUTE] API key (app_id):', apiKey);
     } catch (error) {
-      console.error('Failed to decrypt access token:', error);
+      console.error('Failed to decrypt:', error);
       return NextResponse.json(
         { error: 'Failed to decrypt broker credentials' },
         { status: 400 }
       );
     }
 
+    console.log('[FUNDS-ROUTE] Calling getFyersFunds with userId:', userId);
     // Get funds
-    const result = await getFyersFunds(accessToken);
+    const result = await getFyersFunds(accessToken, apiKey);
 
     return NextResponse.json(result, { status: 200 });
   } catch (error: any) {

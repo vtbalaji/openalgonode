@@ -33,20 +33,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Decrypt access token
+    // Decrypt access token and API key
     let accessToken: string;
+    let apiKey: string;
     try {
       accessToken = decryptData(configData.accessToken);
+      apiKey = decryptData(configData.apiKey);
+
+      console.log('[POSITIONS-ROUTE] Decryption successful');
+      console.log('[POSITIONS-ROUTE] Access token preview:', accessToken.substring(0, 30) + '...');
+      console.log('[POSITIONS-ROUTE] API key (app_id):', apiKey);
     } catch (error) {
-      console.error('Failed to decrypt access token:', error);
+      console.error('Failed to decrypt:', error);
       return NextResponse.json(
         { error: 'Failed to decrypt broker credentials' },
         { status: 400 }
       );
     }
 
+    console.log('[POSITIONS-ROUTE] Calling getFyersPositions with userId:', userId);
     // Get positions
-    const result = await getFyersPositions(accessToken);
+    const result = await getFyersPositions(accessToken, apiKey);
 
     return NextResponse.json(result, { status: 200 });
   } catch (error: any) {

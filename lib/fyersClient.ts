@@ -93,12 +93,18 @@ export async function authenticateFyers(
 /**
  * Get user profile info (to verify authentication)
  */
-export async function getFyersUserProfile(accessToken: string): Promise<any> {
+export async function getFyersUserProfile(accessToken: string, appId?: string): Promise<any> {
   try {
+    console.log('[FYERS-PROFILE] Getting user profile...');
+
+    // CRITICAL: Fyers API requires Authorization header in format: appId:accessToken
+    const authHeader = appId ? `${appId}:${accessToken}` : accessToken;
+    console.log('[FYERS-PROFILE] Authorization header format: {appId}:{token}');
+
     const response = await fetch(`${FYERS_API_URL}/user/profile`, {
       method: 'GET',
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: authHeader,
         'Content-Type': 'application/json; charset=UTF-8',
       },
     });
@@ -110,7 +116,7 @@ export async function getFyersUserProfile(accessToken: string): Promise<any> {
 
     return await response.json();
   } catch (error: any) {
-    console.error('[FYERS] Get profile error:', error.message);
+    console.error('[FYERS-PROFILE] Get profile error:', error.message);
     throw error;
   }
 }
@@ -128,16 +134,21 @@ export async function placeFyersOrder(
     productType: 'INTRADAY' | 'CNC' | 'MARGIN';
     price?: number;
     stopPrice?: number;
-  }
+  },
+  appId?: string
 ): Promise<any> {
   try {
-    console.log('[FYERS] Placing order:', orderData);
+    console.log('[FYERS-PLACEORDER] Placing order:', orderData);
+
+    // CRITICAL: Fyers API requires Authorization header in format: appId:accessToken
+    const authHeader = appId ? `${appId}:${accessToken}` : accessToken;
+    console.log('[FYERS-PLACEORDER] Authorization header format: {appId}:{token}');
 
     const response = await fetch(`${FYERS_API_URL}/orders/sync`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json; charset=UTF-8',
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: authHeader,
       },
       body: JSON.stringify({
         symbol: orderData.symbol,
@@ -157,10 +168,10 @@ export async function placeFyersOrder(
       throw new Error(`Failed to place order: ${result.message || response.statusText}`);
     }
 
-    console.log('[FYERS] Order placed successfully:', result);
+    console.log('[FYERS-PLACEORDER] Order placed successfully:', result);
     return result;
   } catch (error: any) {
-    console.error('[FYERS] Place order error:', error.message);
+    console.error('[FYERS-PLACEORDER] Place order error:', error.message);
     throw error;
   }
 }
@@ -170,16 +181,21 @@ export async function placeFyersOrder(
  */
 export async function cancelFyersOrder(
   accessToken: string,
-  orderId: string
+  orderId: string,
+  appId?: string
 ): Promise<any> {
   try {
-    console.log('[FYERS] Canceling order:', orderId);
+    console.log('[FYERS-CANCELORDER] Canceling order:', orderId);
+
+    // CRITICAL: Fyers API requires Authorization header in format: appId:accessToken
+    const authHeader = appId ? `${appId}:${accessToken}` : accessToken;
+    console.log('[FYERS-CANCELORDER] Authorization header format: {appId}:{token}');
 
     const response = await fetch(`${FYERS_API_URL}/orders/sync`, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json; charset=UTF-8',
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: authHeader,
       },
       body: JSON.stringify({
         id: orderId,
@@ -192,10 +208,10 @@ export async function cancelFyersOrder(
       throw new Error(`Failed to cancel order: ${result.message || response.statusText}`);
     }
 
-    console.log('[FYERS] Order canceled successfully:', result);
+    console.log('[FYERS-CANCELORDER] Order canceled successfully:', result);
     return result;
   } catch (error: any) {
-    console.error('[FYERS] Cancel order error:', error.message);
+    console.error('[FYERS-CANCELORDER] Cancel order error:', error.message);
     throw error;
   }
 }
@@ -203,24 +219,47 @@ export async function cancelFyersOrder(
 /**
  * Get orderbook
  */
-export async function getFyersOrderbook(accessToken: string): Promise<any> {
+export async function getFyersOrderbook(accessToken: string, appId?: string): Promise<any> {
   try {
-    const response = await fetch(`${FYERS_API_URL}/orders`, {
+    console.log('[FYERS-ORDERBOOK] Getting orderbook...');
+    console.log('[FYERS-ORDERBOOK] Input appId:', appId);
+    console.log('[FYERS-ORDERBOOK] Input accessToken preview:', accessToken.substring(0, 30) + '...');
+
+    const url = `${FYERS_API_URL}/orders`;
+    console.log('[FYERS-ORDERBOOK] Full URL:', url);
+
+    // CRITICAL: Fyers API requires Authorization header in format: appId:accessToken (NOT Bearer token)
+    const authHeader = appId ? `${appId}:${accessToken}` : accessToken;
+    console.log('[FYERS-ORDERBOOK] Authorization header format: {appId}:{token}');
+    console.log('[FYERS-ORDERBOOK] Authorization header preview:', authHeader.substring(0, 50) + '...');
+
+    const response = await fetch(url, {
       method: 'GET',
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: authHeader,
         'Content-Type': 'application/json; charset=UTF-8',
       },
     });
 
+    console.log('[FYERS-ORDERBOOK] Response status:', response.status);
+
+    const responseData = await response.json();
+
+    console.log('[FYERS-ORDERBOOK] Response data:', {
+      s: responseData.s,
+      message: responseData.message,
+      code: responseData.code,
+    });
+
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Failed to get orderbook: ${error}`);
+      console.error('[FYERS-ORDERBOOK] Error response (full):', responseData);
+      throw new Error(`Failed to get orderbook: ${responseData.message || response.statusText}`);
     }
 
-    return await response.json();
+    console.log('[FYERS-ORDERBOOK] Orderbook retrieved successfully');
+    return responseData;
   } catch (error: any) {
-    console.error('[FYERS] Get orderbook error:', error.message);
+    console.error('[FYERS-ORDERBOOK] Get orderbook error:', error.message);
     throw error;
   }
 }
@@ -228,24 +267,44 @@ export async function getFyersOrderbook(accessToken: string): Promise<any> {
 /**
  * Get positions
  */
-export async function getFyersPositions(accessToken: string): Promise<any> {
+export async function getFyersPositions(accessToken: string, appId?: string): Promise<any> {
   try {
-    const response = await fetch(`${FYERS_API_URL}/positions`, {
+    console.log('[FYERS-POSITIONS] Getting positions...');
+
+    const url = `${FYERS_API_URL}/positions`;
+    console.log('[FYERS-POSITIONS] Full URL:', url);
+
+    // CRITICAL: Fyers API requires Authorization header in format: appId:accessToken
+    const authHeader = appId ? `${appId}:${accessToken}` : accessToken;
+    console.log('[FYERS-POSITIONS] Authorization header format: {appId}:{token}');
+
+    const response = await fetch(url, {
       method: 'GET',
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: authHeader,
         'Content-Type': 'application/json; charset=UTF-8',
       },
     });
 
+    console.log('[FYERS-POSITIONS] Response status:', response.status);
+
+    const responseData = await response.json();
+
+    console.log('[FYERS-POSITIONS] Response data:', {
+      s: responseData.s,
+      message: responseData.message,
+      code: responseData.code,
+    });
+
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Failed to get positions: ${error}`);
+      console.error('[FYERS-POSITIONS] Error response:', responseData);
+      throw new Error(`Failed to get positions: ${responseData.message || response.statusText}`);
     }
 
-    return await response.json();
+    console.log('[FYERS-POSITIONS] Positions retrieved successfully');
+    return responseData;
   } catch (error: any) {
-    console.error('[FYERS] Get positions error:', error.message);
+    console.error('[FYERS-POSITIONS] Get positions error:', error.message);
     throw error;
   }
 }
@@ -253,24 +312,44 @@ export async function getFyersPositions(accessToken: string): Promise<any> {
 /**
  * Get holdings
  */
-export async function getFyersHoldings(accessToken: string): Promise<any> {
+export async function getFyersHoldings(accessToken: string, appId?: string): Promise<any> {
   try {
-    const response = await fetch(`${FYERS_API_URL}/holdings`, {
+    console.log('[FYERS-HOLDINGS] Getting holdings...');
+
+    const url = `${FYERS_API_URL}/holdings`;
+    console.log('[FYERS-HOLDINGS] Full URL:', url);
+
+    // CRITICAL: Fyers API requires Authorization header in format: appId:accessToken
+    const authHeader = appId ? `${appId}:${accessToken}` : accessToken;
+    console.log('[FYERS-HOLDINGS] Authorization header format: {appId}:{token}');
+
+    const response = await fetch(url, {
       method: 'GET',
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: authHeader,
         'Content-Type': 'application/json; charset=UTF-8',
       },
     });
 
+    console.log('[FYERS-HOLDINGS] Response status:', response.status);
+
+    const responseData = await response.json();
+
+    console.log('[FYERS-HOLDINGS] Response data:', {
+      s: responseData.s,
+      message: responseData.message,
+      code: responseData.code,
+    });
+
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Failed to get holdings: ${error}`);
+      console.error('[FYERS-HOLDINGS] Error response:', responseData);
+      throw new Error(`Failed to get holdings: ${responseData.message || response.statusText}`);
     }
 
-    return await response.json();
+    console.log('[FYERS-HOLDINGS] Holdings retrieved successfully');
+    return responseData;
   } catch (error: any) {
-    console.error('[FYERS] Get holdings error:', error.message);
+    console.error('[FYERS-HOLDINGS] Get holdings error:', error.message);
     throw error;
   }
 }
@@ -278,24 +357,44 @@ export async function getFyersHoldings(accessToken: string): Promise<any> {
 /**
  * Get funds
  */
-export async function getFyersFunds(accessToken: string): Promise<any> {
+export async function getFyersFunds(accessToken: string, appId?: string): Promise<any> {
   try {
-    const response = await fetch(`${FYERS_API_URL}/funds`, {
+    console.log('[FYERS-FUNDS] Getting funds...');
+
+    const url = `${FYERS_API_URL}/funds`;
+    console.log('[FYERS-FUNDS] Full URL:', url);
+
+    // CRITICAL: Fyers API requires Authorization header in format: appId:accessToken
+    const authHeader = appId ? `${appId}:${accessToken}` : accessToken;
+    console.log('[FYERS-FUNDS] Authorization header format: {appId}:{token}');
+
+    const response = await fetch(url, {
       method: 'GET',
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: authHeader,
         'Content-Type': 'application/json; charset=UTF-8',
       },
     });
 
+    console.log('[FYERS-FUNDS] Response status:', response.status);
+
+    const responseData = await response.json();
+
+    console.log('[FYERS-FUNDS] Response data:', {
+      s: responseData.s,
+      message: responseData.message,
+      code: responseData.code,
+    });
+
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Failed to get funds: ${error}`);
+      console.error('[FYERS-FUNDS] Error response:', responseData);
+      throw new Error(`Failed to get funds: ${responseData.message || response.statusText}`);
     }
 
-    return await response.json();
+    console.log('[FYERS-FUNDS] Funds retrieved successfully');
+    return responseData;
   } catch (error: any) {
-    console.error('[FYERS] Get funds error:', error.message);
+    console.error('[FYERS-FUNDS] Get funds error:', error.message);
     throw error;
   }
 }

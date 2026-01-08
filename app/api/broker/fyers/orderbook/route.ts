@@ -33,20 +33,38 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Decrypt access token
+    // Decrypt access token and API key
     let accessToken: string;
+    let apiKey: string;
     try {
       accessToken = decryptData(configData.accessToken);
+      apiKey = decryptData(configData.apiKey);
+
+      console.log('[ORDERBOOK-ROUTE] Decryption successful');
+      console.log('[ORDERBOOK-ROUTE] Access token preview:', accessToken.substring(0, 30) + '...');
+      console.log('[ORDERBOOK-ROUTE] API key (app_id):', apiKey);
+      console.log('[ORDERBOOK-ROUTE] API key length:', apiKey.length);
+      console.log('[ORDERBOOK-ROUTE] API key type:', typeof apiKey);
     } catch (error) {
-      console.error('Failed to decrypt access token:', error);
+      console.error('Failed to decrypt:', error);
       return NextResponse.json(
         { error: 'Failed to decrypt broker credentials' },
         { status: 400 }
       );
     }
 
+    // Fyers API requires app_id (which is the Client ID/API Key)
+    if (!apiKey) {
+      console.error('Missing API key');
+      return NextResponse.json(
+        { error: 'Missing API key configuration' },
+        { status: 400 }
+      );
+    }
+
+    console.log('[ORDERBOOK-ROUTE] Calling getFyersOrderbook with userId:', userId);
     // Get orderbook
-    const result = await getFyersOrderbook(accessToken);
+    const result = await getFyersOrderbook(accessToken, apiKey);
 
     return NextResponse.json(result, { status: 200 });
   } catch (error: any) {

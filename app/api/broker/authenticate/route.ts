@@ -275,9 +275,9 @@ export async function POST(request: NextRequest) {
       const { authCode } = body;
 
       console.log(`[AUTH-FYERS] Received authCode:`, {
-        authCode: authCode ? authCode.substring(0, 20) + '...' : 'missing',
+        authCode: authCode ? authCode.substring(0, 50) + '...' : 'missing',
         authCodeLength: authCode?.length || 0,
-        isNumeric: authCode ? /^\d+$/.test(authCode) : false,
+        isJwt: authCode ? authCode.includes('.') : false,
       });
 
       if (!authCode) {
@@ -287,32 +287,44 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Decrypt credentials with error handling
-      let apiKey: string;
-      let apiSecret: string;
-      try {
-        apiKey = decryptData(configData.apiKey);
-        apiSecret = decryptData(configData.apiSecret);
-      } catch (error) {
-        console.error('Failed to decrypt credentials:', error);
-        return NextResponse.json(
-          { error: 'Failed to decrypt broker credentials. Please reconfigure your broker.' },
-          { status: 400 }
-        );
-      }
-
-      // Authenticate with Fyers
       let accessToken: string;
       let refreshToken: string;
-      try {
-        const authResult = await authenticateFyers(authCode, apiKey, apiSecret);
-        accessToken = authResult.accessToken;
-        refreshToken = authResult.refreshToken;
-      } catch (error: any) {
-        return NextResponse.json(
-          { error: error.message || 'Failed to authenticate with Fyers' },
-          { status: 400 }
-        );
+
+      // Fyers OAuth flow: authCode is a JWT returned directly from OAuth callback
+      // We use it directly as the access token
+      if (authCode.includes('.')) {
+        console.log('[AUTH-FYERS] Using JWT from OAuth callback directly as access token');
+        accessToken = authCode;
+        refreshToken = ''; // Fyers OAuth JWT doesn't include a separate refresh token
+      } else {
+        // Fallback: If authCode is not a JWT, try to exchange it with Fyers
+        console.log('[AUTH-FYERS] authCode is not a JWT, attempting token exchange');
+
+        // Decrypt credentials with error handling
+        let apiKey: string;
+        let apiSecret: string;
+        try {
+          apiKey = decryptData(configData.apiKey);
+          apiSecret = decryptData(configData.apiSecret);
+        } catch (error) {
+          console.error('Failed to decrypt credentials:', error);
+          return NextResponse.json(
+            { error: 'Failed to decrypt broker credentials. Please reconfigure your broker.' },
+            { status: 400 }
+          );
+        }
+
+        // Authenticate with Fyers
+        try {
+          const authResult = await authenticateFyers(authCode, apiKey, apiSecret);
+          accessToken = authResult.accessToken;
+          refreshToken = authResult.refreshToken;
+        } catch (error: any) {
+          return NextResponse.json(
+            { error: error.message || 'Failed to authenticate with Fyers' },
+            { status: 400 }
+          );
+        }
       }
 
       // Update Firestore with access token

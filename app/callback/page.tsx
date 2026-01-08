@@ -29,7 +29,9 @@ function CallbackPageContent() {
       const refreshToken = searchParams.get('refresh_token');
 
       // Get Fyers-specific parameters (Fyers returns authCode after OAuth)
-      const authCode = searchParams.get('code');
+      // Fyers returns: code=200 (HTTP status), auth_code=<JWT>, and s=ok (status)
+      // We use the auth_code JWT directly as the access token
+      const authCode = searchParams.get('auth_code') || searchParams.get('code');
 
       // Log all query parameters for debugging
       const allParams: Record<string, string> = {};
@@ -84,24 +86,31 @@ function CallbackPageContent() {
           return;
         }
 
-        if (!authCode) {
+        // Fyers returns auth_code (JWT) directly or code parameter
+        const fyersAuthCode = searchParams.get('auth_code');
+        const fyersCode = searchParams.get('code');
+        const fyersStatus = searchParams.get('s');
+
+        console.log('[CALLBACK-FYERS] Received parameters:', {
+          auth_code: fyersAuthCode ? fyersAuthCode.substring(0, 50) + '...' : 'missing',
+          code: fyersCode,
+          s: fyersStatus,
+          auth_code_length: fyersAuthCode?.length || 0,
+        });
+
+        if (!fyersAuthCode) {
           setStatus('error');
-          setMessage('Invalid Fyers callback. Missing authorization code.');
+          setMessage('Invalid Fyers callback. Missing auth_code parameter.');
           sessionStorage.removeItem('authenticatingBroker');
           setTimeout(() => router.push('/broker/config'), 3000);
           return;
         }
 
-        // Check if authCode looks malformed (e.g., HTTP status code)
-        if (authCode.length < 5 || /^\d+$/.test(authCode)) {
-          console.error('[CALLBACK] Fyers authCode appears malformed:', {
-            code: authCode,
-            length: authCode.length,
-            isNumeric: /^\d+$/.test(authCode),
-            url: window.location.href,
-          });
+        // auth_code should be a JWT (contains dots)
+        if (!fyersAuthCode.includes('.')) {
+          console.error('[CALLBACK-FYERS] auth_code is not a JWT:', fyersAuthCode);
           setStatus('error');
-          setMessage(`Invalid authorization code format: "${authCode}". This may indicate a redirect_uri mismatch in Fyers dashboard.`);
+          setMessage('Invalid Fyers auth_code format. Expected JWT token.');
           sessionStorage.removeItem('authenticatingBroker');
           setTimeout(() => router.push('/broker/config'), 3000);
           return;

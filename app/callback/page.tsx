@@ -99,10 +99,20 @@ function CallbackPageContent() {
         });
 
         if (!fyersAuthCode) {
+          console.error('[CALLBACK-FYERS] No auth_code received. Possible causes:');
+          console.error('1. You are already logged into Fyers in another browser/tab');
+          console.error('2. Fyers session is still active');
+          console.error('3. Redirect URI mismatch in Fyers dashboard');
           setStatus('error');
-          setMessage('Invalid Fyers callback. Missing auth_code parameter.');
+          setMessage(
+            'Fyers did not provide an auth_code. This usually means:\n\n' +
+            '1. You\'re already logged into Fyers (in another browser/tab)\n' +
+            '2. Your Fyers session is still active\n' +
+            '3. Redirect URI mismatch in Fyers dashboard\n\n' +
+            'Solution: Log out completely from Fyers and try again.'
+          );
           sessionStorage.removeItem('authenticatingBroker');
-          setTimeout(() => router.push('/broker/config'), 3000);
+          setTimeout(() => router.push('/broker/config'), 5000);
           return;
         }
 
@@ -220,14 +230,21 @@ function CallbackPageContent() {
               </svg>
             </div>
             <h2 className="mb-2 text-xl font-semibold text-red-900">Authentication Failed</h2>
-            <p className="mb-4 text-gray-600">{message}</p>
-            <p className="text-sm text-gray-500">Redirecting to broker config in 3 seconds...</p>
-            <button
-              onClick={() => router.push('/broker/config')}
-              className="mt-4 rounded-lg bg-blue-600 px-6 py-2 font-medium text-white hover:bg-blue-700"
-            >
-              Go to Broker Config Now
-            </button>
+            <p className="mb-4 text-gray-600 whitespace-pre-wrap font-mono text-xs">{message}</p>
+            <div className="space-y-2">
+              <button
+                onClick={() => router.push('/broker/config')}
+                className="block w-full rounded-lg bg-blue-600 px-6 py-2 font-medium text-white hover:bg-blue-700"
+              >
+                Go to Broker Config
+              </button>
+              <button
+                onClick={() => window.location.reload()}
+                className="block w-full rounded-lg bg-gray-400 px-6 py-2 font-medium text-white hover:bg-gray-500"
+              >
+                Try Again
+              </button>
+            </div>
           </div>
         )}
       </div>

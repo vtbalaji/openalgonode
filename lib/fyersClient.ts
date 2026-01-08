@@ -398,3 +398,198 @@ export async function getFyersFunds(accessToken: string, appId?: string): Promis
     throw error;
   }
 }
+
+/**
+ * Get tradebook (executed trades)
+ */
+export async function getTradebook(accessToken: string, appId?: string): Promise<any> {
+  try {
+    console.log('[FYERS-TRADEBOOK] Getting tradebook...');
+
+    const url = `${FYERS_API_URL}/tradebook`;
+    console.log('[FYERS-TRADEBOOK] Full URL:', url);
+
+    // CRITICAL: Fyers API requires Authorization header in format: appId:accessToken
+    const authHeader = appId ? `${appId}:${accessToken}` : accessToken;
+    console.log('[FYERS-TRADEBOOK] Authorization header format: {appId}:{token}');
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Authorization: authHeader,
+        'Content-Type': 'application/json; charset=UTF-8',
+      },
+    });
+
+    console.log('[FYERS-TRADEBOOK] Response status:', response.status);
+
+    const responseData = await response.json();
+
+    console.log('[FYERS-TRADEBOOK] Response data:', {
+      s: responseData.s,
+      message: responseData.message,
+      code: responseData.code,
+    });
+
+    if (!response.ok) {
+      console.error('[FYERS-TRADEBOOK] Error response:', responseData);
+      throw new Error(`Failed to get tradebook: ${responseData.message || response.statusText}`);
+    }
+
+    console.log('[FYERS-TRADEBOOK] Tradebook retrieved successfully');
+    return responseData;
+  } catch (error: any) {
+    console.error('[FYERS-TRADEBOOK] Get tradebook error:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Modify an order on Fyers
+ */
+export async function modifyFyersOrder(
+  accessToken: string,
+  orderId: string,
+  orderData: {
+    symbol?: string;
+    qty?: number;
+    type?: 'MARKET' | 'LIMIT';
+    side?: 'BUY' | 'SELL';
+    productType?: 'INTRADAY' | 'CNC' | 'MARGIN';
+    price?: number;
+    stopPrice?: number;
+  },
+  appId?: string
+): Promise<any> {
+  try {
+    console.log('[FYERS-MODIFYORDER] Modifying order:', orderId, orderData);
+
+    // CRITICAL: Fyers API requires Authorization header in format: appId:accessToken
+    const authHeader = appId ? `${appId}:${accessToken}` : accessToken;
+    console.log('[FYERS-MODIFYORDER] Authorization header format: {appId}:{token}');
+
+    const response = await fetch(`${FYERS_API_URL}/orders/sync`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json; charset=UTF-8',
+        Authorization: authHeader,
+      },
+      body: JSON.stringify({
+        id: orderId,
+        symbol: orderData.symbol,
+        qty: orderData.qty,
+        type: orderData.type,
+        side: orderData.side,
+        productType: orderData.productType,
+        price: orderData.price || 0,
+        stopPrice: orderData.stopPrice || 0,
+      }),
+    });
+
+    const result = await response.json();
+
+    console.log('[FYERS-MODIFYORDER] Response status:', response.status);
+    console.log('[FYERS-MODIFYORDER] Response data:', {
+      s: result.s,
+      message: result.message,
+      code: result.code,
+    });
+
+    if (!response.ok) {
+      console.error('[FYERS-MODIFYORDER] Error response:', result);
+      throw new Error(`Failed to modify order: ${result.message || response.statusText}`);
+    }
+
+    console.log('[FYERS-MODIFYORDER] Order modified successfully:', result);
+    return result;
+  } catch (error: any) {
+    console.error('[FYERS-MODIFYORDER] Modify order error:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Cancel all pending orders on Fyers
+ */
+export async function cancelAllFyersOrders(accessToken: string, appId?: string): Promise<any> {
+  try {
+    console.log('[FYERS-CANCELALLORDERS] Canceling all orders...');
+
+    // First, get all orders
+    const orderBook = await getFyersOrderbook(accessToken, appId);
+
+    // Check if we got valid order data
+    if (!orderBook.s || orderBook.s !== 'ok' || !orderBook.orderBook) {
+      console.warn('[FYERS-CANCELALLORDERS] Could not retrieve orderbook:', orderBook.message);
+      return {
+        s: 'ok',
+        cancelled: [],
+        failed: [],
+        message: 'No orders found or error retrieving orderbook',
+      };
+    }
+
+    const allOrders = orderBook.orderBook || [];
+    console.log('[FYERS-CANCELALLORDERS] Total orders found:', allOrders.length);
+
+    // Filter for pending orders only
+    const pendingOrders = allOrders.filter(
+      (order: any) => order.orderStatus === 'PENDING' || order.status === 'PENDING'
+    );
+    console.log('[FYERS-CANCELALLORDERS] Pending orders to cancel:', pendingOrders.length);
+
+    if (pendingOrders.length === 0) {
+      console.log('[FYERS-CANCELALLORDERS] No pending orders to cancel');
+      return {
+        s: 'ok',
+        cancelled: [],
+        failed: [],
+        message: 'No pending orders found',
+      };
+    }
+
+    // Cancel all pending orders in parallel
+    const cancellationPromises = pendingOrders.map((order: any) =>
+      cancelFyersOrder(accessToken, order.id, appId)
+        .then((result) => ({
+          orderId: order.id,
+          success: true,
+          result,
+        }))
+        .catch((error) => ({
+          orderId: order.id,
+          success: false,
+          error: error.message,
+        }))
+    );
+
+    const results = await Promise.allSettled(cancellationPromises);
+
+    // Process results
+    const cancelled = results
+      .filter((r) => r.status === 'fulfilled' && r.value.success)
+      .map((r) => (r.status === 'fulfilled' ? r.value.orderId : null))
+      .filter((id) => id !== null);
+
+    const failed = results
+      .filter((r) => r.status === 'fulfilled' && !r.value.success)
+      .map((r) => (r.status === 'fulfilled' ? r.value.orderId : null))
+      .filter((id) => id !== null);
+
+    console.log('[FYERS-CANCELALLORDERS] Cancellation summary:', {
+      total: pendingOrders.length,
+      cancelled: cancelled.length,
+      failed: failed.length,
+    });
+
+    return {
+      s: 'ok',
+      cancelled,
+      failed,
+      message: `Cancelled ${cancelled.length} orders, ${failed.length} failed`,
+    };
+  } catch (error: any) {
+    console.error('[FYERS-CANCELALLORDERS] Cancel all orders error:', error.message);
+    throw error;
+  }
+}

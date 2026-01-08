@@ -301,6 +301,36 @@ export async function POST(request: NextRequest) {
 
       console.log('[AUTH-FYERS] Received JWT auth_code from OAuth callback, exchanging for access_token');
 
+      // Extract app_id from auth_code JWT before exchanging
+      let appId: string | null = null;
+      try {
+        const parts = authCode.split('.');
+        console.log('[AUTH-FYERS] Auth code has', parts.length, 'parts');
+
+        if (parts.length === 3) {
+          try {
+            const decodedPayload = Buffer.from(parts[1], 'base64').toString();
+            console.log('[AUTH-FYERS] Decoded payload (first 200 chars):', decodedPayload.substring(0, 200));
+
+            const payload = JSON.parse(decodedPayload);
+            appId = payload.app_id;
+
+            console.log('[AUTH-FYERS] JWT Payload keys:', Object.keys(payload));
+            console.log('[AUTH-FYERS] Extracted app_id:', appId);
+
+            if (!appId) {
+              console.warn('[AUTH-FYERS] WARNING: app_id is null/undefined in JWT payload');
+            }
+          } catch (parseError) {
+            console.error('[AUTH-FYERS] Failed to parse JWT payload:', parseError);
+          }
+        } else {
+          console.warn('[AUTH-FYERS] Auth code does not have exactly 3 JWT parts');
+        }
+      } catch (error) {
+        console.error('[AUTH-FYERS] Error extracting app_id from JWT:', error);
+      }
+
       // Decrypt credentials with error handling
       let apiKey: string;
       let apiSecret: string;
@@ -342,10 +372,19 @@ export async function POST(request: NextRequest) {
           lastAuthenticated: new Date().toISOString(),
         };
 
+        // Store app_id if we extracted it from the JWT
+        if (appId) {
+          updateData.appId = appId; // Store plain (not encrypted) since it's not sensitive
+          console.log('[AUTH-FYERS] Included app_id in save:', appId.substring(0, 10) + '...');
+        } else {
+          console.warn('[AUTH-FYERS] WARNING: appId is null/empty, NOT saving app_id');
+        }
+
         if (refreshToken) {
           updateData.refreshToken = encryptData(refreshToken);
         }
 
+        console.log('[AUTH-FYERS] Update data keys being saved:', Object.keys(updateData));
         await brokerConfigRef.set(updateData, { merge: true });
         console.log(`[AUTH-FYERS] Successfully saved access token`);
 

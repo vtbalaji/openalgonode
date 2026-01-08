@@ -24,14 +24,15 @@ export async function authenticateFyers(
     console.log('[FYERS] Client ID:', clientId.substring(0, 5) + '...');
 
     // Step 1: Exchange auth code for access token
-    const tokenResponse = await fetch(`${FYERS_API_URL}/auth/token`, {
+    // Fyers APIv3 token endpoint
+    const tokenResponse = await fetch(`${FYERS_API_URL}/token`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         grant_type: 'authorization_code',
-        appIdHash: clientSecret, // In Fyers, the secret is used as appIdHash
+        appIdHash: clientSecret,
         code: authCode,
         state: 'sample',
       }),

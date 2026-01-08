@@ -69,23 +69,35 @@ export async function GET(request: NextRequest) {
     const redirectUrl = request.nextUrl.searchParams.get('redirect_url');
 
     // Build full callback URL using request origin (server-side)
-    const origin = request.headers.get('x-forwarded-proto') === 'https'
-      ? `https://${request.headers.get('x-forwarded-host') || request.headers.get('host')}`
-      : `http://${request.headers.get('host')}`;
+    const proto = request.headers.get('x-forwarded-proto') || 'http';
+    const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'localhost';
+    const origin = `${proto}://${host}`;
 
     // Use clean callback URL without query parameters
     // Broker is tracked in sessionStorage on the frontend
     const fullCallbackUrl = redirectUrl || `${origin}/callback`;
 
+    console.log(`[LOGIN-URL] Building login URL for broker=${broker}:`, {
+      proto,
+      host,
+      origin,
+      fullCallbackUrl,
+      apiKeyPrefix: apiKey.substring(0, 10),
+    });
+
     // Build login URL
     const loginUrl = buildBrokerLoginUrl(broker, apiKey, fullCallbackUrl);
 
     if (!loginUrl) {
+      console.error(`[LOGIN-URL] Failed to build login URL for broker=${broker}`);
       return NextResponse.json(
         { error: 'Unable to generate login URL for this broker' },
         { status: 400 }
       );
     }
+
+    console.log(`[LOGIN-URL] Successfully built login URL for broker=${broker}`);
+    console.log(`[LOGIN-URL] Login URL (masked):`, loginUrl.replace(/client_id=[^&]+/, 'client_id=***').replace(/redirect_uri=[^&]+/, 'redirect_uri=***'));
 
     return NextResponse.json(
       { loginUrl },

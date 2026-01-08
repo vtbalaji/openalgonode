@@ -56,12 +56,22 @@ export async function authenticateFyers(
     });
 
     const tokenData = await tokenResponse.json();
-    console.log('[FYERS] Token response status:', tokenData.s);
+    console.log('[FYERS] Token response:', {
+      status: tokenData.s,
+      httpStatus: tokenResponse.status,
+      message: tokenData.message,
+      code: tokenData.code,
+    });
 
     // Check for success response (Fyers uses 's' field instead of standard HTTP status)
     if (tokenData.s !== 'ok') {
       const error = tokenData.message || 'Authentication failed';
-      console.error('[FYERS] Token response error:', error);
+      console.error('[FYERS] Token exchange failed:', {
+        error,
+        status: tokenData.s,
+        code: tokenData.code,
+        httpStatus: tokenResponse.status,
+      });
       throw new Error(`Failed to get access token: ${error}`);
     }
 

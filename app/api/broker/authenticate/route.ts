@@ -274,7 +274,11 @@ export async function POST(request: NextRequest) {
     else if (broker === 'fyers') {
       const { authCode } = body;
 
-      console.log(`[AUTH-FYERS] Received authCode: ${authCode ? authCode.substring(0, 20) + '...' : 'missing'}`);
+      console.log(`[AUTH-FYERS] Received authCode:`, {
+        authCode: authCode ? authCode.substring(0, 20) + '...' : 'missing',
+        authCodeLength: authCode?.length || 0,
+        isNumeric: authCode ? /^\d+$/.test(authCode) : false,
+      });
 
       if (!authCode) {
         return NextResponse.json(

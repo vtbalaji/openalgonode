@@ -34,17 +34,25 @@ export async function authenticateFyers(
 
     console.log('[FYERS] Generated appIdHash from clientId:clientSecret');
 
+    const payload = {
+      grant_type: 'authorization_code',
+      appIdHash: appIdHash,
+      code: authCode,
+    };
+
+    console.log('[FYERS] Request payload:', {
+      grant_type: payload.grant_type,
+      appIdHash: payload.appIdHash.substring(0, 10) + '...',
+      code: authCode ? authCode.substring(0, 20) + '...' : 'missing',
+    });
+
     // Fyers APIv3 validate-authcode endpoint (not /token)
     const tokenResponse = await fetch(`${FYERS_API_URL}/validate-authcode`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        grant_type: 'authorization_code',
-        appIdHash: appIdHash,
-        code: authCode,
-      }),
+      body: JSON.stringify(payload),
     });
 
     const tokenData = await tokenResponse.json();

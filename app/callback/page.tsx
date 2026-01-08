@@ -31,6 +31,15 @@ function CallbackPageContent() {
       // Get Fyers-specific parameters (Fyers returns authCode after OAuth)
       const authCode = searchParams.get('code');
 
+      // Log all query parameters for debugging
+      console.log('[CALLBACK] Search params:', {
+        code: authCode,
+        request_token: searchParams.get('request_token'),
+        auth_token: searchParams.get('auth_token'),
+        state: searchParams.get('state'),
+        error: searchParams.get('error'),
+      });
+
       // Validate we have a broker
       if (!broker) {
         setStatus('error');

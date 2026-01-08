@@ -274,6 +274,8 @@ export async function POST(request: NextRequest) {
     else if (broker === 'fyers') {
       const { authCode } = body;
 
+      console.log(`[AUTH-FYERS] Received authCode: ${authCode ? authCode.substring(0, 20) + '...' : 'missing'}`);
+
       if (!authCode) {
         return NextResponse.json(
           { error: 'Missing required field for Fyers: authCode' },

@@ -32,13 +32,21 @@ function CallbackPageContent() {
       const authCode = searchParams.get('code');
 
       // Log all query parameters for debugging
-      console.log('[CALLBACK] Search params:', {
+      const allParams: Record<string, string> = {};
+      searchParams.forEach((value, key) => {
+        allParams[key] = value;
+      });
+      console.log('[CALLBACK] All search params:', allParams);
+      console.log('[CALLBACK] Extracted params:', {
         code: authCode,
+        code_length: authCode?.length,
         request_token: searchParams.get('request_token'),
         auth_token: searchParams.get('auth_token'),
         state: searchParams.get('state'),
         error: searchParams.get('error'),
       });
+      console.log('[CALLBACK] Current URL:', typeof window !== 'undefined' ? window.location.href : 'N/A');
+      console.log('[CALLBACK] All URL params (full):', typeof window !== 'undefined' ? window.location.search : 'N/A');
 
       // Validate we have a broker
       if (!broker) {
@@ -66,12 +74,38 @@ function CallbackPageContent() {
         return;
       }
 
-      if (broker === 'fyers' && !authCode) {
-        setStatus('error');
-        setMessage('Invalid Fyers callback. Missing authorization code.');
-        sessionStorage.removeItem('authenticatingBroker');
-        setTimeout(() => router.push('/broker/config'), 3000);
-        return;
+      if (broker === 'fyers') {
+        const fyersError = searchParams.get('error');
+        if (fyersError) {
+          setStatus('error');
+          setMessage(`Fyers authorization failed: ${fyersError}`);
+          sessionStorage.removeItem('authenticatingBroker');
+          setTimeout(() => router.push('/broker/config'), 3000);
+          return;
+        }
+
+        if (!authCode) {
+          setStatus('error');
+          setMessage('Invalid Fyers callback. Missing authorization code.');
+          sessionStorage.removeItem('authenticatingBroker');
+          setTimeout(() => router.push('/broker/config'), 3000);
+          return;
+        }
+
+        // Check if authCode looks malformed (e.g., HTTP status code)
+        if (authCode.length < 5 || /^\d+$/.test(authCode)) {
+          console.error('[CALLBACK] Fyers authCode appears malformed:', {
+            code: authCode,
+            length: authCode.length,
+            isNumeric: /^\d+$/.test(authCode),
+            url: window.location.href,
+          });
+          setStatus('error');
+          setMessage(`Invalid authorization code format: "${authCode}". This may indicate a redirect_uri mismatch in Fyers dashboard.`);
+          sessionStorage.removeItem('authenticatingBroker');
+          setTimeout(() => router.push('/broker/config'), 3000);
+          return;
+        }
       }
 
       // Wait for user to be authenticated

@@ -93,14 +93,13 @@ export async function authenticateFyers(
 /**
  * Get user profile info (to verify authentication)
  */
-export async function getFyersUserProfile(accessToken: string, apiKey?: string): Promise<any> {
+export async function getFyersUserProfile(accessToken: string): Promise<any> {
   try {
-    const authValue = apiKey ? `${apiKey}:${accessToken}` : accessToken;
-
     const response = await fetch(`${FYERS_API_URL}/user/profile`, {
       method: 'GET',
       headers: {
-        Authorization: authValue,
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json; charset=UTF-8',
       },
     });
 
@@ -129,19 +128,16 @@ export async function placeFyersOrder(
     productType: 'INTRADAY' | 'CNC' | 'MARGIN';
     price?: number;
     stopPrice?: number;
-  },
-  apiKey?: string
+  }
 ): Promise<any> {
   try {
     console.log('[FYERS] Placing order:', orderData);
 
-    const authValue = apiKey ? `${apiKey}:${accessToken}` : accessToken;
-
     const response = await fetch(`${FYERS_API_URL}/orders/sync`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        Authorization: authValue,
+        'Content-Type': 'application/json; charset=UTF-8',
+        Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({
         symbol: orderData.symbol,
@@ -174,19 +170,16 @@ export async function placeFyersOrder(
  */
 export async function cancelFyersOrder(
   accessToken: string,
-  orderId: string,
-  apiKey?: string
+  orderId: string
 ): Promise<any> {
   try {
     console.log('[FYERS] Canceling order:', orderId);
 
-    const authValue = apiKey ? `${apiKey}:${accessToken}` : accessToken;
-
     const response = await fetch(`${FYERS_API_URL}/orders/sync`, {
       method: 'DELETE',
       headers: {
-        'Content-Type': 'application/json',
-        Authorization: authValue,
+        'Content-Type': 'application/json; charset=UTF-8',
+        Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({
         id: orderId,
@@ -210,16 +203,13 @@ export async function cancelFyersOrder(
 /**
  * Get orderbook
  */
-export async function getFyersOrderbook(accessToken: string, apiKey?: string): Promise<any> {
+export async function getFyersOrderbook(accessToken: string): Promise<any> {
   try {
-    // For JWT tokens from OAuth, we may need to use apiKey in auth header
-    // Format: apiKey:accessToken (per OpenAlgo implementation)
-    const authValue = apiKey ? `${apiKey}:${accessToken}` : accessToken;
-
     const response = await fetch(`${FYERS_API_URL}/orders`, {
       method: 'GET',
       headers: {
-        Authorization: authValue,
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json; charset=UTF-8',
       },
     });
 
@@ -238,14 +228,13 @@ export async function getFyersOrderbook(accessToken: string, apiKey?: string): P
 /**
  * Get positions
  */
-export async function getFyersPositions(accessToken: string, apiKey?: string): Promise<any> {
+export async function getFyersPositions(accessToken: string): Promise<any> {
   try {
-    const authValue = apiKey ? `${apiKey}:${accessToken}` : accessToken;
-
     const response = await fetch(`${FYERS_API_URL}/positions`, {
       method: 'GET',
       headers: {
-        Authorization: authValue,
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json; charset=UTF-8',
       },
     });
 
@@ -264,14 +253,13 @@ export async function getFyersPositions(accessToken: string, apiKey?: string): P
 /**
  * Get holdings
  */
-export async function getFyersHoldings(accessToken: string, apiKey?: string): Promise<any> {
+export async function getFyersHoldings(accessToken: string): Promise<any> {
   try {
-    const authValue = apiKey ? `${apiKey}:${accessToken}` : accessToken;
-
     const response = await fetch(`${FYERS_API_URL}/holdings`, {
       method: 'GET',
       headers: {
-        Authorization: authValue,
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json; charset=UTF-8',
       },
     });
 
@@ -290,14 +278,13 @@ export async function getFyersHoldings(accessToken: string, apiKey?: string): Pr
 /**
  * Get funds
  */
-export async function getFyersFunds(accessToken: string, apiKey?: string): Promise<any> {
+export async function getFyersFunds(accessToken: string): Promise<any> {
   try {
-    const authValue = apiKey ? `${apiKey}:${accessToken}` : accessToken;
-
     const response = await fetch(`${FYERS_API_URL}/funds`, {
       method: 'GET',
       headers: {
-        Authorization: authValue,
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json; charset=UTF-8',
       },
     });
 

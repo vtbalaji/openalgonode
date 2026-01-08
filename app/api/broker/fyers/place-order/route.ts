@@ -41,16 +41,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Decrypt access token and API key
+    // Decrypt access token
     let accessToken: string;
-    let apiKey: string | undefined;
     try {
       accessToken = decryptData(configData.accessToken);
-      if (configData.apiKey) {
-        apiKey = decryptData(configData.apiKey);
-      }
     } catch (error) {
-      console.error('Failed to decrypt broker credentials:', error);
+      console.error('Failed to decrypt access token:', error);
       return NextResponse.json(
         { error: 'Failed to decrypt broker credentials' },
         { status: 400 }
@@ -66,7 +62,7 @@ export async function POST(request: NextRequest) {
       productType: productType.toUpperCase() as 'INTRADAY' | 'CNC' | 'MARGIN',
       price,
       stopPrice,
-    }, apiKey);
+    });
 
     // Store order in Firestore for tracking
     if (result.id) {

@@ -33,17 +33,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Decrypt access token and API key
+    // Decrypt access token
     let accessToken: string;
-    let apiKey: string | undefined;
     try {
       accessToken = decryptData(configData.accessToken);
-      // Try to decrypt apiKey if available (may not be needed for JWT tokens)
-      if (configData.apiKey) {
-        apiKey = decryptData(configData.apiKey);
-      }
     } catch (error) {
-      console.error('Failed to decrypt broker credentials:', error);
+      console.error('Failed to decrypt access token:', error);
       return NextResponse.json(
         { error: 'Failed to decrypt broker credentials' },
         { status: 400 }
@@ -51,7 +46,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get orderbook
-    const result = await getFyersOrderbook(accessToken, apiKey);
+    const result = await getFyersOrderbook(accessToken);
 
     return NextResponse.json(result, { status: 200 });
   } catch (error: any) {

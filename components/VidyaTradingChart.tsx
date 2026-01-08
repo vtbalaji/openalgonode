@@ -223,9 +223,10 @@ export default function VidyaTradingChart({
       // Set initial visible range to show last 100-150 candles for better spacing
       if (ohlcData.length > 100) {
         const visibleBars = Math.min(150, ohlcData.length);
-        chart.timeScale().setVisibleRange({
-          from: ohlcData[ohlcData.length - visibleBars].time,
-          to: ohlcData[ohlcData.length - 1].time,
+        // Use logical range (indices) instead of timestamps
+        chart.timeScale().setVisibleLogicalRange({
+          from: ohlcData.length - visibleBars,
+          to: ohlcData.length,
         });
       }
 

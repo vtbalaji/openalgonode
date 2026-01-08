@@ -20,6 +20,15 @@ import * as zerodhaFunds from '@/app/api/broker/zerodha/funds/route';
 import * as zerodhaClosePosition from '@/app/api/broker/zerodha/close-position/route';
 import * as zerodhaCancelAllOrders from '@/app/api/broker/zerodha/cancel-all-orders/route';
 
+// Import Fyers route handlers
+import * as fyersPlaceOrder from '@/app/api/broker/fyers/place-order/route';
+import * as fyersCancelOrder from '@/app/api/broker/fyers/cancel-order/route';
+import * as fyersOrderbook from '@/app/api/broker/fyers/orderbook/route';
+import * as fyersPositions from '@/app/api/broker/fyers/positions/route';
+import * as fyersHoldings from '@/app/api/broker/fyers/holdings/route';
+import * as fyersFunds from '@/app/api/broker/fyers/funds/route';
+import * as fyersClosePosition from '@/app/api/broker/fyers/close-position/route';
+
 /**
  * Call broker-specific endpoint directly (server-side)
  * No HTTP calls - direct function invocation
@@ -70,6 +79,32 @@ export async function callInternalBrokerEndpoint(
         break;
       case 'cancel-all-orders':
         response = await zerodhaCancelAllOrders.POST(request);
+        break;
+      default:
+        throw new Error(`Unknown action: ${action} for broker: ${broker}`);
+    }
+  } else if (broker === 'fyers') {
+    switch (action) {
+      case 'place-order':
+        response = await fyersPlaceOrder.POST(request);
+        break;
+      case 'cancel-order':
+        response = await fyersCancelOrder.POST(request);
+        break;
+      case 'orderbook':
+        response = await fyersOrderbook.POST(request);
+        break;
+      case 'positions':
+        response = await fyersPositions.POST(request);
+        break;
+      case 'holdings':
+        response = await fyersHoldings.POST(request);
+        break;
+      case 'funds':
+        response = await fyersFunds.POST(request);
+        break;
+      case 'close-position':
+        response = await fyersClosePosition.POST(request);
         break;
       default:
         throw new Error(`Unknown action: ${action} for broker: ${broker}`);

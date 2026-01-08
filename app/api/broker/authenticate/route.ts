@@ -333,12 +333,18 @@ export async function POST(request: NextRequest) {
 
       console.log(`[AUTH-FYERS] Saving access token to Firestore for user=${userId}`);
       try {
-        await brokerConfigRef.set({
+        // Build update data - only include refreshToken if not empty
+        const updateData: any = {
           accessToken: encryptData(accessToken),
-          refreshToken: encryptData(refreshToken),
           status: 'active',
           lastAuthenticated: new Date().toISOString(),
-        }, { merge: true });
+        };
+
+        if (refreshToken) {
+          updateData.refreshToken = encryptData(refreshToken);
+        }
+
+        await brokerConfigRef.set(updateData, { merge: true });
         console.log(`[AUTH-FYERS] Successfully saved access token`);
 
         // Validate the write by reading it back immediately

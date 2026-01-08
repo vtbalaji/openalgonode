@@ -3,6 +3,8 @@
  * Handles authentication and token generation for Fyers broker
  */
 
+import crypto from 'crypto';
+
 const FYERS_API_URL = 'https://api-t1.fyers.in/api/v3';
 
 interface FyersAuthResponse {
@@ -17,42 +19,49 @@ interface FyersAuthResponse {
 export async function authenticateFyers(
   authCode: string,
   clientId: string,
-  clientSecret: string,
-  redirectUri: string = 'https://algo.tradeidea.co.in/callback'
+  clientSecret: string
 ): Promise<FyersAuthResponse> {
   try {
     console.log('[FYERS] Authenticating with auth code...');
     console.log('[FYERS] Client ID:', clientId.substring(0, 5) + '...');
-    console.log('[FYERS] Redirect URI:', redirectUri);
 
-    // Step 1: Exchange auth code for access token
-    // Fyers APIv3 token endpoint requires: grant_type, code, appIdHash, redirect_uri
-    const tokenResponse = await fetch(`${FYERS_API_URL}/token`, {
+    // Generate appIdHash: sha256(clientId:clientSecret)
+    const checksumInput = `${clientId}:${clientSecret}`;
+    const appIdHash = crypto
+      .createHash('sha256')
+      .update(checksumInput)
+      .digest('hex');
+
+    console.log('[FYERS] Generated appIdHash from clientId:clientSecret');
+
+    // Fyers APIv3 validate-authcode endpoint (not /token)
+    const tokenResponse = await fetch(`${FYERS_API_URL}/validate-authcode`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         grant_type: 'authorization_code',
-        appIdHash: clientSecret,
+        appIdHash: appIdHash,
         code: authCode,
-        redirect_uri: redirectUri,
       }),
     });
 
-    if (!tokenResponse.ok) {
-      const error = await tokenResponse.text();
-      console.error('[FYERS] Token response error:', tokenResponse.status, error);
+    const tokenData = await tokenResponse.json();
+    console.log('[FYERS] Token response status:', tokenData.s);
+
+    // Check for success response (Fyers uses 's' field instead of standard HTTP status)
+    if (tokenData.s !== 'ok') {
+      const error = tokenData.message || 'Authentication failed';
+      console.error('[FYERS] Token response error:', error);
       throw new Error(`Failed to get access token: ${error}`);
     }
-
-    const tokenData = await tokenResponse.json();
-    console.log('[FYERS] Token response:', { accessToken: tokenData.access_token ? '***' : 'missing' });
 
     if (!tokenData.access_token) {
       throw new Error('No access token in response');
     }
 
+    console.log('[FYERS] Authentication successful');
     return {
       accessToken: tokenData.access_token,
       refreshToken: tokenData.refresh_token || '',

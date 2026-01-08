@@ -93,12 +93,14 @@ export async function authenticateFyers(
 /**
  * Get user profile info (to verify authentication)
  */
-export async function getFyersUserProfile(accessToken: string): Promise<any> {
+export async function getFyersUserProfile(accessToken: string, apiKey?: string): Promise<any> {
   try {
+    const authValue = apiKey ? `${apiKey}:${accessToken}` : accessToken;
+
     const response = await fetch(`${FYERS_API_URL}/user/profile`, {
       method: 'GET',
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: authValue,
       },
     });
 
@@ -127,16 +129,19 @@ export async function placeFyersOrder(
     productType: 'INTRADAY' | 'CNC' | 'MARGIN';
     price?: number;
     stopPrice?: number;
-  }
+  },
+  apiKey?: string
 ): Promise<any> {
   try {
     console.log('[FYERS] Placing order:', orderData);
 
-    const response = await fetch(`${FYERS_API_URL}/orders/place`, {
+    const authValue = apiKey ? `${apiKey}:${accessToken}` : accessToken;
+
+    const response = await fetch(`${FYERS_API_URL}/orders/sync`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: authValue,
       },
       body: JSON.stringify({
         symbol: orderData.symbol,
@@ -169,16 +174,19 @@ export async function placeFyersOrder(
  */
 export async function cancelFyersOrder(
   accessToken: string,
-  orderId: string
+  orderId: string,
+  apiKey?: string
 ): Promise<any> {
   try {
     console.log('[FYERS] Canceling order:', orderId);
 
-    const response = await fetch(`${FYERS_API_URL}/orders/cancel`, {
+    const authValue = apiKey ? `${apiKey}:${accessToken}` : accessToken;
+
+    const response = await fetch(`${FYERS_API_URL}/orders/sync`, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: authValue,
       },
       body: JSON.stringify({
         id: orderId,
@@ -202,12 +210,16 @@ export async function cancelFyersOrder(
 /**
  * Get orderbook
  */
-export async function getFyersOrderbook(accessToken: string): Promise<any> {
+export async function getFyersOrderbook(accessToken: string, apiKey?: string): Promise<any> {
   try {
-    const response = await fetch(`${FYERS_API_URL}/orders/list`, {
+    // For JWT tokens from OAuth, we may need to use apiKey in auth header
+    // Format: apiKey:accessToken (per OpenAlgo implementation)
+    const authValue = apiKey ? `${apiKey}:${accessToken}` : accessToken;
+
+    const response = await fetch(`${FYERS_API_URL}/orders`, {
       method: 'GET',
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: authValue,
       },
     });
 
@@ -226,12 +238,14 @@ export async function getFyersOrderbook(accessToken: string): Promise<any> {
 /**
  * Get positions
  */
-export async function getFyersPositions(accessToken: string): Promise<any> {
+export async function getFyersPositions(accessToken: string, apiKey?: string): Promise<any> {
   try {
+    const authValue = apiKey ? `${apiKey}:${accessToken}` : accessToken;
+
     const response = await fetch(`${FYERS_API_URL}/positions`, {
       method: 'GET',
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: authValue,
       },
     });
 
@@ -250,12 +264,14 @@ export async function getFyersPositions(accessToken: string): Promise<any> {
 /**
  * Get holdings
  */
-export async function getFyersHoldings(accessToken: string): Promise<any> {
+export async function getFyersHoldings(accessToken: string, apiKey?: string): Promise<any> {
   try {
+    const authValue = apiKey ? `${apiKey}:${accessToken}` : accessToken;
+
     const response = await fetch(`${FYERS_API_URL}/holdings`, {
       method: 'GET',
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: authValue,
       },
     });
 
@@ -274,12 +290,14 @@ export async function getFyersHoldings(accessToken: string): Promise<any> {
 /**
  * Get funds
  */
-export async function getFyersFunds(accessToken: string): Promise<any> {
+export async function getFyersFunds(accessToken: string, apiKey?: string): Promise<any> {
   try {
+    const authValue = apiKey ? `${apiKey}:${accessToken}` : accessToken;
+
     const response = await fetch(`${FYERS_API_URL}/funds`, {
       method: 'GET',
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: authValue,
       },
     });
 

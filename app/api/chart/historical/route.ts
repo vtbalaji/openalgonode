@@ -34,24 +34,43 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    console.log('[CHART-HISTORICAL] Requested symbol:', symbol);
+    console.log('[CHART-HISTORICAL] Requested symbol:', symbol, 'for userId:', userId);
 
-    // Auto-detect which broker the user is authenticated with
-    let broker: 'zerodha' | 'fyers' = 'zerodha';
-    let configData = await getCachedBrokerConfig(userId, 'zerodha');
+    // Detect which broker the user has configured (check both)
+    const zerodhaConfig = await getCachedBrokerConfig(userId, 'zerodha');
+    const fyersConfig = await getCachedBrokerConfig(userId, 'fyers');
 
-    if (!configData || configData.status !== 'active') {
-      // Try Fyers if Zerodha is not authenticated
-      console.log('[CHART-HISTORICAL] Zerodha not authenticated, trying Fyers...');
-      configData = await getCachedBrokerConfig(userId, 'fyers');
+    const zerodhaActive = zerodhaConfig && zerodhaConfig.status === 'active';
+    const fyersActive = fyersConfig && fyersConfig.status === 'active';
+
+    console.log('[CHART-HISTORICAL] Zerodha active:', zerodhaActive, 'Fyers active:', fyersActive);
+
+    // Determine which broker to use
+    let broker: 'zerodha' | 'fyers';
+    let configData;
+
+    if (zerodhaActive && !fyersActive) {
+      // User has only Zerodha configured
+      broker = 'zerodha';
+      configData = zerodhaConfig;
+      console.log('[CHART-HISTORICAL] User has Zerodha configured');
+    } else if (fyersActive && !zerodhaActive) {
+      // User has only Fyers configured
       broker = 'fyers';
-
-      if (!configData || configData.status !== 'active') {
-        return NextResponse.json(
-          { error: 'No broker authenticated. Please authenticate with Zerodha or Fyers.' },
-          { status: 401 }
-        );
-      }
+      configData = fyersConfig;
+      console.log('[CHART-HISTORICAL] User has Fyers configured');
+    } else if (zerodhaActive && fyersActive) {
+      // User has both - use Zerodha as primary
+      broker = 'zerodha';
+      configData = zerodhaConfig;
+      console.log('[CHART-HISTORICAL] User has both brokers configured, using Zerodha as primary');
+    } else {
+      // User has neither broker configured
+      console.log('[CHART-HISTORICAL] User has no broker authenticated');
+      return NextResponse.json(
+        { error: 'No broker authenticated. Please authenticate with Zerodha or Fyers.' },
+        { status: 401 }
+      );
     }
 
     console.log('[CHART-HISTORICAL] Using broker:', broker);

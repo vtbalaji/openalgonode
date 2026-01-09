@@ -204,7 +204,7 @@ export async function GET(request: NextRequest) {
       success: true,
       symbol,
       interval,
-      instrumentToken,
+      broker,
       data: chartData,
       count: chartData.length,
     });

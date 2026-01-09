@@ -52,28 +52,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Import Angel client and symbol mapping service
+    // Import Angel client
     const { modifyOrder } = await import('@/lib/angelClient');
-    const { getSymbolMapping } = await import('@/lib/symbolMapping');
 
-    // Use provided symboltoken or lookup from symbol mapping table
+    // Use provided symboltoken
     let resolvedSymboltoken = symboltoken;
     let resolvedSymbol = symbol;
 
-    if (!resolvedSymboltoken && symbol && exchange) {
-      console.log(`[ANGEL-MODIFY-ORDER] No symboltoken provided for ${symbol}, attempting lookup...`);
-      const mapping = await getSymbolMapping(symbol, exchange, 'angel');
-      if (mapping) {
-        resolvedSymboltoken = mapping.token;
-        resolvedSymbol = mapping.brsymbol;
-        console.log(
-          `[ANGEL-MODIFY-ORDER] Found symboltoken: ${resolvedSymboltoken} for ${resolvedSymbol}`
-        );
-      } else {
-        console.warn(
-          `[ANGEL-MODIFY-ORDER] No symboltoken found for ${symbol}, will attempt order anyway`
-        );
-      }
+    if (!resolvedSymboltoken) {
+      console.log(`[ANGEL-MODIFY-ORDER] No symboltoken provided, symbol lookup may be required`);
     }
 
     const orderPayload = {

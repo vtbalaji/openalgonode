@@ -63,7 +63,6 @@ export default function ChartPage() {
   // Real-time price updates
   const { prices, isConnected } = useRealtimePrice({
     symbols: [symbol],
-    broker: 'zerodha',
   });
 
   // Set responsive chart height

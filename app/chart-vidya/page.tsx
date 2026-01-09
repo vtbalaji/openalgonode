@@ -26,7 +26,6 @@ export default function VidyaChartPage() {
   // Real-time price updates
   const { prices, isConnected } = useRealtimePrice({
     symbols: [symbol],
-    broker: 'zerodha',
   });
 
   // Debug: Log when prices change

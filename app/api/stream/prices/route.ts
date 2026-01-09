@@ -8,6 +8,7 @@ import { getTickerService } from '@/lib/websocket/tickerService';
 import { getInstrumentToken } from '@/lib/websocket/instrumentMapping';
 import { getAuth } from 'firebase/auth';
 import { getCachedBrokerConfig } from '@/lib/brokerConfigUtils';
+import { detectUserBroker } from '@/lib/brokerDetection';
 import CryptoJS from 'crypto-js';
 
 const ENCRYPTION_KEY = process.env.NEXT_PUBLIC_ENCRYPTION_KEY || 'default-insecure-key';
@@ -21,7 +22,6 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const symbols = searchParams.get('symbols')?.split(',') || [];
   const userId = searchParams.get('userId');
-  const broker = searchParams.get('broker') || 'zerodha';
 
   if (!userId) {
     return new Response('Missing userId parameter', { status: 400 });
@@ -30,6 +30,16 @@ export async function GET(request: NextRequest) {
   if (symbols.length === 0) {
     return new Response('Missing symbols parameter', { status: 400 });
   }
+
+  // Auto-detect which broker the user has configured
+  const brokerDetection = await detectUserBroker(userId);
+
+  if (!brokerDetection.isConfigured) {
+    return new Response(brokerDetection.error || 'No broker configured', { status: 401 });
+  }
+
+  const broker = brokerDetection.broker;
+  console.log('[STREAM-PRICES] Detected broker for user:', broker);
 
   // Get broker configuration from cache
   const configData = await getCachedBrokerConfig(userId, broker);

@@ -23,10 +23,9 @@ export interface PriceData {
 
 export interface UseRealtimePriceOptions {
   symbols: string[];
-  broker?: string;
 }
 
-export function useRealtimePrice({ symbols, broker = 'zerodha' }: UseRealtimePriceOptions) {
+export function useRealtimePrice({ symbols }: UseRealtimePriceOptions) {
   const { user } = useAuth();
   const [prices, setPrices] = useState<Record<string, PriceData>>({});
   const [isConnected, setIsConnected] = useState(false);
@@ -49,7 +48,7 @@ export function useRealtimePrice({ symbols, broker = 'zerodha' }: UseRealtimePri
     }
 
     const symbolsParam = symbols.join(',');
-    const url = `/api/stream/prices?symbols=${encodeURIComponent(symbolsParam)}&userId=${encodeURIComponent(user.uid)}&broker=${broker}`;
+    const url = `/api/stream/prices?symbols=${encodeURIComponent(symbolsParam)}&userId=${encodeURIComponent(user.uid)}`;
 
     const eventSource = new EventSource(url);
     eventSourceRef.current = eventSource;
@@ -109,7 +108,7 @@ export function useRealtimePrice({ symbols, broker = 'zerodha' }: UseRealtimePri
         eventSourceRef.current = null;
       }
     };
-  }, [user, symbols.join(','), broker]);
+  }, [user, symbols.join(',')]);
 
   return {
     prices,

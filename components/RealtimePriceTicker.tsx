@@ -10,13 +10,11 @@ import { useEffect, useState } from 'react';
 
 interface RealtimePriceTickerProps {
   symbol: string;
-  broker?: string;
 }
 
-export function RealtimePriceTicker({ symbol, broker = 'zerodha' }: RealtimePriceTickerProps) {
+export function RealtimePriceTicker({ symbol }: RealtimePriceTickerProps) {
   const { prices, isConnected, error } = useRealtimePrice({
     symbols: [symbol],
-    broker,
   });
 
   const priceData = prices[symbol];

@@ -27,7 +27,6 @@ export default function FibonacciChartPage() {
   // Real-time price updates
   const { prices, isConnected } = useRealtimePrice({
     symbols: [symbol],
-    broker: 'zerodha',
   });
 
   // Set responsive chart height

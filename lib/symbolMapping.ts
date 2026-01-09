@@ -36,7 +36,17 @@ const SYMBOL_MAPPINGS: SymbolMap = {
     fyers: 'NSE:NIFTY50-IX',
     type: 'index',
   },
+  'NIFTY 50': {
+    zerodha: 'NIFTY 50',
+    fyers: 'NSE:NIFTY50-IX',
+    type: 'index',
+  },
   BANKNIFTY: {
+    zerodha: 'BANKNIFTY',
+    fyers: 'NSE:BANKNIFTY-IX',
+    type: 'index',
+  },
+  'NIFTY BANK': {
     zerodha: 'BANKNIFTY',
     fyers: 'NSE:BANKNIFTY-IX',
     type: 'index',

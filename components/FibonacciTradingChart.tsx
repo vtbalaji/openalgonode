@@ -183,6 +183,12 @@ export default function FibonacciTradingChart({
           `/api/chart/historical?symbol=${encodeURIComponent(symbol)}&interval=${interval}&userId=${userId}&from=${fromStr}&to=${toStr}`
         );
 
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({}));
+          console.error('Failed to fetch data:', { status: response.status, error });
+          return;
+        }
+
         const result = await response.json();
 
         if (!result.success || !result.data) {

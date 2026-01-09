@@ -5,7 +5,7 @@ import FibonacciTradingChart from '@/components/FibonacciTradingChart';
 import { useRealtimePrice } from '@/hooks/useRealtimePrice';
 
 export default function FibonacciChartPage() {
-  const [symbol, setSymbol] = useState('NIFTY 50');
+  const [symbol, setSymbol] = useState('NIFTY26JANFUT');
   const [interval, setInterval] = useState('60minute');
   const [chartHeight, setChartHeight] = useState(600);
   const [lookbackDays, setLookbackDays] = useState(50);
@@ -83,11 +83,15 @@ export default function FibonacciChartPage() {
                 onChange={(e) => setSymbol(e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900"
               >
-                <option value="NIFTY 50">NIFTY 50</option>
-                <option value="NIFTY BANK">NIFTY BANK</option>
-                <option value="RELIANCE">RELIANCE</option>
-                <option value="TCS">TCS</option>
-                <option value="INFY">INFY</option>
+                <optgroup label="Futures Contracts">
+                  <option value="NIFTY26JANFUT">NIFTY 26 Jan Futures</option>
+                  <option value="NIFTY29JANFUT">NIFTY 29 Jan Futures</option>
+                </optgroup>
+                <optgroup label="Stocks">
+                  <option value="RELIANCE">RELIANCE</option>
+                  <option value="TCS">TCS</option>
+                  <option value="INFY">INFY</option>
+                </optgroup>
               </select>
             </div>
 

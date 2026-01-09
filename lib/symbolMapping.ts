@@ -30,25 +30,26 @@ const SYMBOL_MAPPINGS: SymbolMap = {
     type: 'stock',
   },
 
-  // Indices
+  // Indices - Note: Fyers API may not support indices via history endpoint
+  // If these return 422 errors, use futures contracts instead (NIFTY26JANFUT, etc)
   NIFTY50: {
     zerodha: 'NIFTY 50',
-    fyers: 'NSE:NIFTY50-IX',
+    fyers: 'NSE:NIFTY50',
     type: 'index',
   },
   'NIFTY 50': {
     zerodha: 'NIFTY 50',
-    fyers: 'NSE:NIFTY50-IX',
+    fyers: 'NSE:NIFTY50',
     type: 'index',
   },
   BANKNIFTY: {
     zerodha: 'BANKNIFTY',
-    fyers: 'NSE:BANKNIFTY-IX',
+    fyers: 'NSE:BANKNIFTY',
     type: 'index',
   },
   'NIFTY BANK': {
     zerodha: 'BANKNIFTY',
-    fyers: 'NSE:BANKNIFTY-IX',
+    fyers: 'NSE:BANKNIFTY',
     type: 'index',
   },
 

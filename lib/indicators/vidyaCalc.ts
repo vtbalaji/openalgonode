@@ -45,7 +45,6 @@ export interface VIDYAPoint {
   volumeDeltaPercent: number; // Delta as percentage (0-100)
   trend: 'bullish' | 'bearish' | 'neutral';
   signal: 'buy' | 'sell' | null;
-  earlySignal: 'early_buy' | 'early_sell' | null; // Early warning when band touched with volume confirmation
   liquidityZones: LiquidityZone[]; // Active liquidity zones at this point
 }
 
@@ -296,82 +295,6 @@ function generateSignal(
   return null;
 }
 
-/**
- * Detect early reversal signals when price touches band with volume confirmation
- * Catches momentum changes before full crossover
- *
- * IMPORTANT: Uses SHORT-TERM volume delta (5 candles) NOT cumulative trend delta
- * This allows detection of momentum shifts even in long trends
- */
-function detectEarlySignal(
-  close: number,
-  previousClose: number,
-  upperBand: number,
-  lowerBand: number,
-  volume: number,
-  avgVolume: number,
-  currentVolumeDelta: number,        // Short-term delta (last 5 candles)
-  previousVolumeDelta: number,       // Previous short-term delta (5 candles ago)
-  trend: 'bullish' | 'bearish' | 'neutral'
-): 'early_buy' | 'early_sell' | null {
-  const bandThreshold = 0.005; // 0.5% threshold for "touching" band (relaxed from 0.2%)
-  const volumeMultiplier = 1.2; // Volume must be 1.2x average (relaxed from 1.5x)
-
-  // Calculate how close price is to bands (absolute distance)
-  const distanceToLower = Math.abs(close - lowerBand);
-  const distanceToUpper = Math.abs(close - upperBand);
-
-  // Calculate percentage distance
-  const lowerBandDistance = distanceToLower / lowerBand;
-  const upperBandDistance = distanceToUpper / upperBand;
-
-  // Check if volume is elevated
-  const isVolumeSpike = volume > avgVolume * volumeMultiplier;
-
-  // Determine which band is closer
-  const closerToLower = distanceToLower < distanceToUpper;
-  const closerToUpper = distanceToUpper < distanceToLower;
-
-  // Early BUY signal: Price near lower band (and closer to lower than upper) + bullish volume
-  if (lowerBandDistance <= bandThreshold && closerToLower && trend !== 'bullish' && close <= lowerBand * 1.005) {
-    // Check for volume confirmation - either:
-    // 1. Volume delta is positive (buyers dominant)
-    // 2. Volume delta flipped from negative to positive (momentum shift)
-    const volumeDeltaPositive = currentVolumeDelta > 0;
-    const volumeDeltaFlip = previousVolumeDelta < 0 && currentVolumeDelta > 0;
-
-    // Signal if we have volume spike AND positive volume delta (no flip required)
-    if (isVolumeSpike && volumeDeltaPositive) {
-      return 'early_buy';
-    }
-
-    // OR signal if volume delta flipped (even without volume spike)
-    if (volumeDeltaFlip && volume > avgVolume * 0.8) {
-      return 'early_buy';
-    }
-  }
-
-  // Early SELL signal: Price near upper band (and closer to upper than lower) + bearish volume
-  if (upperBandDistance <= bandThreshold && closerToUpper && trend !== 'bearish' && close >= upperBand * 0.995) {
-    // Check for volume confirmation - either:
-    // 1. Volume delta is negative (sellers dominant)
-    // 2. Volume delta flipped from positive to negative (momentum shift)
-    const volumeDeltaNegative = currentVolumeDelta < 0;
-    const volumeDeltaFlip = previousVolumeDelta > 0 && currentVolumeDelta < 0;
-
-    // Signal if we have volume spike AND negative volume delta (no flip required)
-    if (isVolumeSpike && volumeDeltaNegative) {
-      return 'early_sell';
-    }
-
-    // OR signal if volume delta flipped (even without volume spike)
-    if (volumeDeltaFlip && volume > avgVolume * 0.8) {
-      return 'early_sell';
-    }
-  }
-
-  return null;
-}
 
 /**
  * Calculate VIDYA indicator for all data points
@@ -591,18 +514,6 @@ export function calculateVIDYA_Series(
     }
     const previousShortTermDelta = prevShortTermBuyVol - prevShortTermSellVol;
 
-    const earlySignal = detectEarlySignal(
-      close,
-      closePrevious,
-      upperBand,
-      lowerBand,
-      volume,
-      avgVolume,
-      currentShortTermDelta,
-      previousShortTermDelta,
-      trend
-    );
-
     result.push({
       time: data[i].time,
       close,
@@ -619,7 +530,6 @@ export function calculateVIDYA_Series(
       volumeDeltaPercent,
       trend,
       signal,
-      earlySignal,
       liquidityZones: [...completedLiquidityZones, ...activeLiquidityZones], // All zones (completed + active)
     });
 

@@ -18,6 +18,20 @@ import { decryptData } from '@/lib/encryptionUtils';
 import { getSymbolCache } from '@/lib/symbolCache';
 import { convertToBrokerSymbol } from '@/lib/symbolMapping';
 
+/**
+ * Convert interval format from UI to Fyers API format
+ * UI format: minute, 3minute, 5minute, etc.
+ * Fyers format: 1, 3, 5, 60, D
+ */
+function convertIntervalToFyersFormat(interval: string): string {
+  if (interval === 'day' || interval === '1D') return 'D';
+  if (interval === 'minute') return '1';
+
+  // Remove 'minute' suffix to get just the number
+  const numberPart = interval.replace('minute', '');
+  return numberPart || '1';
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -165,13 +179,42 @@ export async function GET(request: NextRequest) {
       // ===== FYERS FLOW =====
       const accessToken = encryptedAccessToken;
 
-      // Fyers uses symbol directly (we already converted it above)
-      const baseUrl = 'https://api-t1.fyers.in/api/v3';
-      let url = `${baseUrl}/history?symbol=${encodeURIComponent(brokerSymbol)}&resolution=${interval}`;
+      // Fyers API expects specific parameter format
+      const fyersResolution = convertIntervalToFyersFormat(interval);
+      console.log('[CHART-HISTORICAL] Interval conversion:', interval, '→', fyersResolution);
 
-      if (from) url += `&date_format=1&from=${from}`;
-      if (to) url += `&to=${to}`;
+      // Detect if this is a futures contract
+      const isFuture = symbol.toUpperCase().includes('FUT');
+      console.log('[CHART-HISTORICAL] Is futures contract:', isFuture);
 
+      // Build Fyers API URL with correct parameters
+      // IMPORTANT: Endpoint is /data/history (not /api/v3/history)
+      const baseUrl = 'https://api-t1.fyers.in/data';
+      const params = new URLSearchParams();
+      params.append('symbol', brokerSymbol);
+      params.append('resolution', fyersResolution);
+      params.append('date_format', '1'); // 1 = yyyy-mm-dd format
+
+      // Set date range
+      if (from) {
+        params.append('range_from', from);
+      }
+
+      // For range_to: subtract 1 day to avoid partial candles (per Fyers docs)
+      if (to) {
+        const toDate = new Date(to);
+        toDate.setDate(toDate.getDate() - 1);
+        const adjustedTo = toDate.toISOString().split('T')[0];
+        params.append('range_to', adjustedTo);
+        console.log('[CHART-HISTORICAL] Adjusted range_to:', to, '→', adjustedTo, '(to avoid partial candles)');
+      }
+
+      // Add cont_flag=1 for futures/continuous data
+      if (isFuture) {
+        params.append('cont_flag', '1');
+      }
+
+      const url = `${baseUrl}/history?${params.toString()}`;
       console.log('[CHART-HISTORICAL] Fyers URL:', url);
 
       // Fetch from Fyers - uses appId:accessToken format
@@ -185,9 +228,9 @@ export async function GET(request: NextRequest) {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('[CHART-HISTORICAL] Fyers API error:', errorText);
+        console.error('[CHART-HISTORICAL] Fyers API error (status', response.status + '):', errorText);
         return NextResponse.json(
-          { error: 'Fyers API error: ' + response.status },
+          { error: 'Fyers API error: ' + response.status + ' - ' + errorText },
           { status: response.status }
         );
       }
@@ -205,7 +248,9 @@ export async function GET(request: NextRequest) {
           close: candle[4],
           volume: candle[5] || 0,
         }));
+        console.log('[CHART-HISTORICAL] Fyers returned', chartData.length, 'candles');
       } else {
+        console.error('[CHART-HISTORICAL] Fyers API response:', JSON.stringify(data));
         return NextResponse.json(
           { error: 'Fyers API error: ' + (data.message || 'Invalid response') },
           { status: 400 }

@@ -52,109 +52,161 @@ export async function GET(request: NextRequest) {
     return new Response('Broker not authenticated', { status: 401 });
   }
 
-  const encryptedAccessToken = decryptData(configData.accessToken);
-  const apiKey = decryptData(configData.apiKey);
+  // ZERODHA: Uses WebSocket KiteTicker
+  if (broker === 'zerodha') {
+    const encryptedAccessToken = decryptData(configData.accessToken);
+    const apiKey = decryptData(configData.apiKey);
 
-  // Extract access token from combined format (apiKey:accessToken)
-  const accessToken = encryptedAccessToken.includes(':')
-    ? encryptedAccessToken.split(':')[1]
-    : encryptedAccessToken;
+    // Extract access token from combined format (apiKey:accessToken)
+    const accessToken = encryptedAccessToken.includes(':')
+      ? encryptedAccessToken.split(':')[1]
+      : encryptedAccessToken;
 
-  // Convert symbols to instrument tokens (from in-memory cache)
-  const tokens: number[] = [];
-  const symbolToToken: Record<string, number> = {};
+    // Convert symbols to instrument tokens (from in-memory cache)
+    const tokens: number[] = [];
+    const symbolToToken: Record<string, number> = {};
 
-  for (const symbol of symbols) {
-    const token = getInstrumentToken(symbol);
-    if (token) {
-      tokens.push(token);
-      symbolToToken[symbol] = token;
-    }
-  }
-
-  if (tokens.length === 0) {
-    return new Response(`No valid symbols found. Make sure symbol cache is initialized via /api/admin/init-symbol-cache.`, { status: 400 });
-  }
-
-  // Setup Server-Sent Events
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream({
-    start(controller) {
-      console.log(`Client connected for symbols: ${symbols.join(', ')}`);
-      console.log(`Instrument tokens: ${tokens.join(', ')}`);
-
-      const tickerService = getTickerService();
-
-      // Initialize ticker if not already initialized
-      if (!tickerService.getConnectionStatus()) {
-        console.log('Initializing WebSocket connection to Zerodha...');
-        console.log(`API Key (first 10 chars): ${apiKey.substring(0, 10)}...`);
-        console.log(`Access Token (first 10 chars): ${accessToken.substring(0, 10)}...`);
-
-        tickerService.initialize(apiKey, accessToken);
-        tickerService.connect();
-      } else {
-        console.log('WebSocket already connected, reusing connection');
+    for (const symbol of symbols) {
+      const token = getInstrumentToken(symbol);
+      if (token) {
+        tokens.push(token);
+        symbolToToken[symbol] = token;
       }
+    }
 
-      // Subscribe to tokens
-      console.log(`Subscribing to tokens: ${tokens.join(', ')}`);
-      tickerService.subscribe(tokens);
+    if (tokens.length === 0) {
+      return new Response(`No valid symbols found. Make sure symbol cache is initialized via /api/admin/init-symbol-cache.`, { status: 400 });
+    }
 
-      // Send initial connection message
-      const connectMessage = `data: ${JSON.stringify({ type: 'connected', symbols, tokens })}\n\n`;
-      controller.enqueue(encoder.encode(connectMessage));
+    // Setup Server-Sent Events for Zerodha
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        console.log(`[STREAM-PRICES] Zerodha client connected for symbols: ${symbols.join(', ')}`);
+        console.log(`[STREAM-PRICES] Instrument tokens: ${tokens.join(', ')}`);
 
-      // Handle tick updates
-      const tickHandler = (ticks: any[]) => {
-        ticks.forEach((tick) => {
-          const symbol = Object.keys(symbolToToken).find(
-            (s) => symbolToToken[s] === tick.instrument_token
-          );
+        const tickerService = getTickerService();
 
-          if (symbol) {
-            const message = `data: ${JSON.stringify({
-              type: 'tick',
-              symbol,
-              data: {
-                instrument_token: tick.instrument_token,
-                last_price: tick.last_price,
-                change: tick.change,
-                volume: tick.volume_traded,
-                ohlc: tick.ohlc,
-                timestamp: new Date().toISOString(),
-              },
-            })}\n\n`;
+        // Initialize ticker if not already initialized
+        if (!tickerService.getConnectionStatus()) {
+          console.log('[STREAM-PRICES] Initializing WebSocket connection to Zerodha...');
+          console.log(`[STREAM-PRICES] API Key (first 10 chars): ${apiKey.substring(0, 10)}...`);
+          console.log(`[STREAM-PRICES] Access Token (first 10 chars): ${accessToken.substring(0, 10)}...`);
 
-            controller.enqueue(encoder.encode(message));
-          }
+          tickerService.initialize(apiKey, accessToken);
+          tickerService.connect();
+        } else {
+          console.log('[STREAM-PRICES] WebSocket already connected, reusing connection');
+        }
+
+        // Subscribe to tokens
+        console.log(`[STREAM-PRICES] Subscribing to tokens: ${tokens.join(', ')}`);
+        tickerService.subscribe(tokens);
+
+        // Send initial connection message
+        const connectMessage = `data: ${JSON.stringify({ type: 'connected', symbols, tokens })}\n\n`;
+        controller.enqueue(encoder.encode(connectMessage));
+
+        // Handle tick updates
+        const tickHandler = (ticks: any[]) => {
+          ticks.forEach((tick) => {
+            const symbol = Object.keys(symbolToToken).find(
+              (s) => symbolToToken[s] === tick.instrument_token
+            );
+
+            if (symbol) {
+              const message = `data: ${JSON.stringify({
+                type: 'tick',
+                symbol,
+                data: {
+                  instrument_token: tick.instrument_token,
+                  last_price: tick.last_price,
+                  change: tick.change,
+                  volume: tick.volume_traded,
+                  ohlc: tick.ohlc,
+                  timestamp: new Date().toISOString(),
+                },
+              })}\n\n`;
+
+              controller.enqueue(encoder.encode(message));
+            }
+          });
+        };
+
+        tickerService.on('ticks', tickHandler);
+
+        // Send heartbeat every 30 seconds
+        const heartbeatInterval = setInterval(() => {
+          const heartbeat = `data: ${JSON.stringify({ type: 'heartbeat', timestamp: new Date().toISOString() })}\n\n`;
+          controller.enqueue(encoder.encode(heartbeat));
+        }, 30000);
+
+        // Cleanup on disconnect
+        request.signal.addEventListener('abort', () => {
+          console.log('[STREAM-PRICES] Client disconnected, cleaning up...');
+          tickerService.off('ticks', tickHandler);
+          tickerService.unsubscribe(tokens);
+          clearInterval(heartbeatInterval);
+          controller.close();
         });
-      };
+      },
+    });
 
-      tickerService.on('ticks', tickHandler);
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
+    });
+  }
 
-      // Send heartbeat every 30 seconds
-      const heartbeatInterval = setInterval(() => {
-        const heartbeat = `data: ${JSON.stringify({ type: 'heartbeat', timestamp: new Date().toISOString() })}\n\n`;
-        controller.enqueue(encoder.encode(heartbeat));
-      }, 30000);
+  // FYERS: Return informational response
+  // Fyers doesn't have a public WebSocket API for real-time market data
+  if (broker === 'fyers') {
+    console.log('[STREAM-PRICES] Fyers user detected - real-time streaming via WebSocket not available');
 
-      // Cleanup on disconnect
-      request.signal.addEventListener('abort', () => {
-        console.log('Client disconnected, cleaning up...');
-        tickerService.off('ticks', tickHandler);
-        tickerService.unsubscribe(tokens);
-        clearInterval(heartbeatInterval);
-        controller.close();
-      });
-    },
-  });
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        console.log(`[STREAM-PRICES] Fyers SSE client connected for symbols: ${symbols.join(', ')}`);
 
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-    },
-  });
+        // Send connection message indicating Fyers uses polling instead
+        const connectMessage = `data: ${JSON.stringify({
+          type: 'connected',
+          symbols,
+          broker: 'fyers',
+          note: 'Fyers does not support WebSocket streaming. Use chart polling (updates every 1 min) or use Zerodha for real-time prices.',
+        })}\n\n`;
+        controller.enqueue(encoder.encode(connectMessage));
+
+        // Send heartbeat only (no ticks available)
+        const heartbeatInterval = setInterval(() => {
+          const heartbeat = `data: ${JSON.stringify({
+            type: 'heartbeat',
+            timestamp: new Date().toISOString(),
+            note: 'Fyers real-time streaming not available',
+          })}\n\n`;
+          controller.enqueue(encoder.encode(heartbeat));
+        }, 30000);
+
+        // Cleanup on disconnect
+        request.signal.addEventListener('abort', () => {
+          console.log('[STREAM-PRICES] Fyers client disconnected');
+          clearInterval(heartbeatInterval);
+          controller.close();
+        });
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
+    });
+  }
+
+  return new Response('Unsupported broker', { status: 400 });
 }

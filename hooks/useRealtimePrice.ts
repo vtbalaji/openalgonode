@@ -65,13 +65,17 @@ export function useRealtimePrice({ symbols }: UseRealtimePriceOptions) {
 
         if (message.type === 'connected') {
           console.log('Connected to symbols:', message.symbols);
+          if (message.broker === 'fyers') {
+            console.log('[VIDYA] Fyers user: Real-time streaming not available. Chart updates via polling.');
+          }
         } else if (message.type === 'tick') {
+          // Only Zerodha sends tick data
           setPrices((prev) => ({
             ...prev,
             [message.symbol]: message.data,
           }));
         } else if (message.type === 'heartbeat') {
-          // Keep-alive heartbeat
+          // Keep-alive heartbeat - no action needed
         }
       } catch (err) {
         console.error('Error parsing message:', err);
@@ -79,7 +83,10 @@ export function useRealtimePrice({ symbols }: UseRealtimePriceOptions) {
     };
 
     eventSource.onerror = (err) => {
-      console.error('EventSource error:', err);
+      // Only log detailed error if not just a normal connection state change
+      if (eventSource.readyState !== EventSource.OPEN) {
+        console.warn('EventSource error - attempting reconnect');
+      }
       setIsConnected(false);
 
       // Try to get more detailed error info
@@ -94,7 +101,7 @@ export function useRealtimePrice({ symbols }: UseRealtimePriceOptions) {
       if (typeof window !== 'undefined') {
         setTimeout(() => {
           if (eventSourceRef.current?.readyState === EventSource.CLOSED) {
-            console.log('Reconnecting...');
+            console.log('Reconnecting to real-time prices...');
             eventSourceRef.current = new EventSource(url);
           }
         }, 5000);

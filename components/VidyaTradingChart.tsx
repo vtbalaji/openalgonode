@@ -369,27 +369,6 @@ export default function VidyaTradingChart({
         const current = chartData[i];
         const previous = chartData[i - 1];
 
-        // EARLY SIGNALS: Band touch with volume confirmation (yellow arrows)
-        if (current.earlySignal === 'early_buy') {
-          allMarkers.push({
-            time: current.time,
-            position: 'belowBar',
-            color: '#fbbf24', // Yellow/Amber
-            shape: 'arrowUp',
-            text: 'EARLY BUY',
-            size: 1.5,
-          });
-        } else if (current.earlySignal === 'early_sell') {
-          allMarkers.push({
-            time: current.time,
-            position: 'aboveBar',
-            color: '#fbbf24', // Yellow/Amber
-            shape: 'arrowDown',
-            text: 'EARLY SELL',
-            size: 1.5,
-          });
-        }
-
         // FULL SIGNALS: Trend changed with full crossover (cyan/pink arrows)
         if (current.trend === 'bullish' && previous.trend !== 'bullish') {
           // Find nearest support zone (liquidity zone below entry price)
@@ -685,15 +664,6 @@ export default function VidyaTradingChart({
                   {upperBandDistance > 0 ? '+' : ''}{upperBandDistance.toFixed(2)}% {nearUpperBand ? '👇' : ''}
                 </span>
               </div>
-
-              {/* Early Signal Indicator */}
-              {latestPoint.earlySignal && (
-                <div className="flex items-center gap-2 pt-1 mt-1 border-t border-gray-200">
-                  <span className={`text-xs font-bold ${latestPoint.earlySignal === 'early_buy' ? 'text-cyan-600' : 'text-pink-600'}`}>
-                    🎯 EARLY {latestPoint.earlySignal === 'early_buy' ? 'BUY' : 'SELL'} ACTIVE
-                  </span>
-                </div>
-              )}
             </div>
           </div>
         );

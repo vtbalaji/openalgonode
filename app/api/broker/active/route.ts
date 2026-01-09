@@ -37,10 +37,16 @@ export async function GET(request: NextRequest) {
     // Get configured brokers for this user (for broker selection dropdown)
     const configuredBrokers = await getConfiguredBrokers(userId);
 
+    // Get list of active brokers
+    const activeBrokers = [];
+    if (configuredBrokers.zerodha) activeBrokers.push('zerodha');
+    if (configuredBrokers.fyers) activeBrokers.push('fyers');
+
     return NextResponse.json(
       {
         configuredBrokers,
-        primaryBroker: configuredBrokers.length > 0 ? configuredBrokers[0] : null,
+        activeBrokers,
+        primaryBroker: activeBrokers.length > 0 ? activeBrokers[0] : null,
       },
       { status: 200 }
     );

@@ -38,14 +38,16 @@ export async function GET(request: NextRequest) {
     const brokerParam = request.nextUrl.searchParams.get('broker') || undefined;
 
     // Resolve broker: use provided broker or auto-detect active broker
-    const broker = await resolveBroker(userId, brokerParam);
+    const brokerDetection = await resolveBroker(userId, brokerParam as any);
 
-    if (!broker) {
+    if (!brokerDetection.isConfigured) {
       return NextResponse.json(
-        { error: 'No active broker configured. Please configure a broker first.' },
+        { error: brokerDetection.error || 'No active broker configured. Please configure a broker first.' },
         { status: 404 }
       );
     }
+
+    const broker = brokerDetection.broker;
 
     // Get broker config
     const configData = await getCachedBrokerConfig(userId, broker);

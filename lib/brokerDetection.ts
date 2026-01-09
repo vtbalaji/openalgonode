@@ -1,147 +1,105 @@
 /**
- * Broker Detection Utility
- * Auto-detect user's active broker configuration
- * CACHED to reduce Firebase quota usage
+ * Utility for detecting which broker a user has configured
+ * Supports multi-user scenarios where each user has their own broker
  */
 
-import { adminDb } from './firebaseAdmin';
+import { getCachedBrokerConfig } from './brokerConfigUtils';
 
-// In-memory cache: { userId: { brokers: string[], timestamp: number } }
-const brokerCache = new Map<string, { brokers: string[]; timestamp: number }>();
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+export type BrokerType = 'zerodha' | 'fyers';
+
+interface BrokerDetectionResult {
+  broker: BrokerType;
+  isConfigured: boolean;
+  error?: string;
+}
 
 /**
- * Get user's configured brokers (CACHED)
- * Returns list of all configured broker IDs (regardless of authentication status)
- * Used for broker selection/detection
+ * Detect which broker the user has configured
  *
- * Cache: 5 minute TTL per user to reduce Firestore reads
- */
-export async function getConfiguredBrokers(userId: string): Promise<string[]> {
-  try {
-    // Check cache first
-    const cached = brokerCache.get(userId);
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-      console.log(`[BrokerCache] HIT for ${userId} - brokers: ${cached.brokers.join(',')}`);
-      return cached.brokers;
-    }
-
-    // Cache miss - fetch from Firebase
-    console.log(`[BrokerCache] MISS for ${userId} - fetching from Firebase`);
-    const brokerSnapshot = await adminDb
-      .collection('users')
-      .doc(userId)
-      .collection('brokerConfig')
-      .get();
-
-    const brokers = brokerSnapshot.docs.map((doc) => doc.id);
-
-    // Cache the result
-    brokerCache.set(userId, { brokers, timestamp: Date.now() });
-
-    return brokers;
-  } catch (error) {
-    console.error('Error getting configured brokers:', error);
-    return [];
-  }
-}
-
-/**
- * Clear cache for a user (call this after broker config changes)
- */
-export function clearBrokerCache(userId: string): void {
-  brokerCache.delete(userId);
-  console.log(`[BrokerCache] Cleared for ${userId}`);
-}
-
-// In-memory cache for active brokers: { userId: { brokers: string[], timestamp: number } }
-const activeBrokerCache = new Map<string, { brokers: string[]; timestamp: number }>();
-
-/**
- * Get user's active brokers (CACHED)
- * Returns list of active broker IDs (fully authenticated)
+ * @param userId - The user's ID
+ * @param preferredBroker - Optional broker preference (used as tiebreaker if user has both)
+ * @returns The broker the user has configured, or error if none
  *
- * Cache: 5 minute TTL per user to reduce Firestore reads
+ * Priority logic:
+ * 1. If user has only one broker configured, use that
+ * 2. If user has both brokers, use preferred (default: zerodha)
+ * 3. If user has neither, return error
  */
-export async function getActiveBrokers(userId: string): Promise<string[]> {
+export async function detectUserBroker(
+  userId: string,
+  preferredBroker: BrokerType = 'zerodha'
+): Promise<BrokerDetectionResult> {
   try {
-    // Check cache first
-    const cached = activeBrokerCache.get(userId);
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-      console.log(`[ActiveBrokerCache] HIT for ${userId} - brokers: ${cached.brokers.join(',')}`);
-      return cached.brokers;
+    // Check both brokers for this user
+    const zerodhaConfig = await getCachedBrokerConfig(userId, 'zerodha');
+    const fyersConfig = await getCachedBrokerConfig(userId, 'fyers');
+
+    const zerodhaActive = zerodhaConfig && zerodhaConfig.status === 'active';
+    const fyersActive = fyersConfig && fyersConfig.status === 'active';
+
+    // Determine which broker to use
+    if (zerodhaActive && !fyersActive) {
+      return { broker: 'zerodha', isConfigured: true };
+    } else if (fyersActive && !zerodhaActive) {
+      return { broker: 'fyers', isConfigured: true };
+    } else if (zerodhaActive && fyersActive) {
+      // User has both - use preferred
+      return { broker: preferredBroker, isConfigured: true };
+    } else {
+      return {
+        broker: preferredBroker,
+        isConfigured: false,
+        error: 'No broker authenticated. Please authenticate with Zerodha or Fyers.',
+      };
     }
-
-    // Cache miss - fetch from Firebase
-    console.log(`[ActiveBrokerCache] MISS for ${userId} - fetching from Firebase`);
-    const brokerSnapshot = await adminDb
-      .collection('users')
-      .doc(userId)
-      .collection('brokerConfig')
-      .where('status', '==', 'active')
-      .get();
-
-    const brokers = brokerSnapshot.docs.map((doc) => doc.id);
-
-    // Cache the result
-    activeBrokerCache.set(userId, { brokers, timestamp: Date.now() });
-
-    return brokers;
-  } catch (error) {
-    console.error('Error getting active brokers:', error);
-    return [];
+  } catch (error: any) {
+    return {
+      broker: preferredBroker,
+      isConfigured: false,
+      error: error.message || 'Failed to detect broker configuration',
+    };
   }
 }
 
 /**
- * Clear active broker cache for a user (call after broker status changes)
+ * Get broker config for a user's configured broker
  */
-export function clearActiveBrokerCache(userId: string): void {
-  activeBrokerCache.delete(userId);
-  console.log(`[ActiveBrokerCache] Cleared for ${userId}`);
-}
+export async function getUserBrokerConfig(userId: string, preferredBroker: BrokerType = 'zerodha') {
+  const detection = await detectUserBroker(userId, preferredBroker);
 
-/**
- * Get primary active broker (first active broker found)
- * If multiple brokers are active, returns the first one
- */
-export async function getPrimaryActiveBroker(userId: string): Promise<string | null> {
-  const activeBrokers = await getActiveBrokers(userId);
-  return activeBrokers.length > 0 ? activeBrokers[0] : null;
-}
-
-/**
- * Resolve broker to use
- * Priority:
- * 1. User-specified broker (if provided)
- * 2. Primary active broker (if multiple, returns first)
- * 3. null if no active brokers found
- */
-export async function resolveBroker(userId: string, brokerParam?: string): Promise<string | null> {
-  // If broker explicitly specified, use it
-  if (brokerParam) {
-    return brokerParam;
+  if (!detection.isConfigured) {
+    return null;
   }
 
-  // Otherwise, auto-detect primary active broker
-  return getPrimaryActiveBroker(userId);
+  const config = await getCachedBrokerConfig(userId, detection.broker);
+  return config;
 }
 
 /**
- * Check if broker is active for user
+ * Get list of brokers configured for a user (for broker selection UI)
+ * Returns both configured and active brokers
  */
-export async function isBrokerActive(userId: string, broker: string): Promise<boolean> {
+export async function getConfiguredBrokers(userId: string): Promise<{ zerodha: boolean; fyers: boolean }> {
   try {
-    const doc = await adminDb
-      .collection('users')
-      .doc(userId)
-      .collection('brokerConfig')
-      .doc(broker)
-      .get();
+    const zerodhaConfig = await getCachedBrokerConfig(userId, 'zerodha');
+    const fyersConfig = await getCachedBrokerConfig(userId, 'fyers');
 
-    return doc.exists && doc.data()?.status === 'active';
+    return {
+      zerodha: zerodhaConfig?.status === 'active',
+      fyers: fyersConfig?.status === 'active',
+    };
   } catch (error) {
-    console.error(`Error checking broker ${broker}:`, error);
-    return false;
+    return { zerodha: false, fyers: false };
   }
+}
+
+/**
+ * Resolve which broker to use for a request
+ * Alias for detectUserBroker for backwards compatibility
+ */
+export async function resolveBroker(
+  userId: string,
+  preferredBroker: BrokerType = 'zerodha'
+): Promise<BrokerDetectionResult> {
+  return detectUserBroker(userId, preferredBroker);
 }

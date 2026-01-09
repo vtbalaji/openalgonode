@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth } from '@/lib/firebaseAdmin';
 import { callInternalBrokerEndpoint } from '@/lib/internalRouting';
+import { detectUserBroker } from '@/lib/brokerDetection';
 
 /**
  * GET /api/ui/dashboard/positions
  * Get open positions from broker
  * Requires: Authorization header with Firebase ID token
- * Query params: broker (optional, defaults to 'zerodha')
+ * Auto-detects which broker the user has configured
  */
 export async function GET(request: NextRequest) {
   try {
@@ -33,7 +34,17 @@ export async function GET(request: NextRequest) {
     }
 
     const userId = decodedToken.uid;
-    const broker = request.nextUrl.searchParams.get('broker') || 'zerodha';
+
+    // Detect which broker the user has configured
+    const brokerDetection = await detectUserBroker(userId);
+    if (!brokerDetection.isConfigured) {
+      return NextResponse.json(
+        { error: brokerDetection.error || 'No broker configured' },
+        { status: 401 }
+      );
+    }
+
+    const broker = brokerDetection.broker;
 
     // Call internal broker endpoint
     const { data, status } = await callInternalBrokerEndpoint(broker, 'positions', {

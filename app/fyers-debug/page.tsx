@@ -160,6 +160,25 @@ export default function FyersDebugPage() {
               {loading === 'AppId Debug' ? 'Testing...' : 'Test AppId Formats'}
             </button>
 
+            <hr className="my-4" />
+
+            <h3 className="font-bold text-lg mb-3">Integration Testing</h3>
+            <a
+              href="/chart"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full px-4 py-3 bg-green-600 text-white rounded hover:bg-green-700 inline-block text-center font-bold"
+            >
+              🚀 Open Chart (Test Real-time Streaming)
+            </a>
+            <p className="text-xs text-gray-600 mt-2">
+              ✓ Test endpoint: Fetches historical data for RELIANCE
+              <br />
+              ✓ Tests real-time price streaming via SSE
+              <br />
+              ✓ Validates broker auto-detection
+            </p>
+
             <button
               onClick={() => {
                 setLogs([]);
@@ -229,24 +248,39 @@ export default function FyersDebugPage() {
       {/* Instructions */}
       <div className="mt-8 bg-blue-50 border border-blue-200 rounded p-4">
         <h3 className="font-bold mb-2">How to Use:</h3>
-        <ol className="list-decimal list-inside space-y-1 text-sm">
-          <li><strong>First:</strong> Click "Validate Token" to check if your access token is valid and not expired</li>
-          <li>Check the results - it shows token expiry date and JWT payload details</li>
-          <li>Then click "Test AppId Formats" to test 4 different ways of sending app_id to Fyers</li>
-          <li>Then test individual endpoints (Orderbook, Positions, Holdings, Funds)</li>
-          <li>Check the browser console (F12) for detailed logs from fyersClient.ts</li>
-          <li>Look for logs starting with [FYERS-*], [*-ROUTE], or [VALIDATE]</li>
+        <ol className="list-decimal list-inside space-y-2 text-sm">
+          <li><strong>Step 1 - Validate Token:</strong> Click "Validate Token" to check if your access token is valid and not expired</li>
+          <li><strong>Step 2 - Check Results:</strong> It shows token expiry date and JWT payload details</li>
+          <li><strong>Step 3 - Test AppId:</strong> Click "Test AppId Formats" to test 4 different ways of sending app_id to Fyers</li>
+          <li><strong>Step 4 - Test API Endpoints:</strong> Test individual endpoints (Orderbook, Positions, Holdings, Funds)</li>
+          <li><strong>Step 5 - Test Chart:</strong> Click "🚀 Open Chart" to test:
+            <ul className="list-disc list-inside ml-4 mt-1 space-y-1">
+              <li>Historical chart data fetching</li>
+              <li>Real-time price streaming</li>
+              <li>Broker auto-detection in action</li>
+            </ul>
+          </li>
+          <li><strong>Browser Console:</strong> Check F12 for detailed logs from fyersClient.ts</li>
+          <li><strong>Server Logs:</strong> Look at dev server terminal for [FYERS-*], [*-ROUTE], or [VALIDATE] logs</li>
         </ol>
       </div>
 
       {/* Important Notes */}
       <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded p-4">
-        <h3 className="font-bold mb-2">Important:</h3>
-        <ul className="list-disc list-inside space-y-1 text-sm">
+        <h3 className="font-bold mb-2">Important Notes:</h3>
+        <ul className="list-disc list-inside space-y-2 text-sm">
           <li>Open your dev server terminal (where you ran `npm run dev`) to see server logs</li>
           <li>The most important logs are the ones showing the app_id value being sent</li>
           <li>If app_id is undefined/null, that's the root cause</li>
           <li>The "AppId Debug" endpoint tests 4 methods to send app_id, check which works</li>
+          <li><strong>When testing Chart:</strong>
+            <ul className="list-disc list-inside ml-4 mt-1 space-y-1">
+              <li>Chart page will auto-load RELIANCE symbol</li>
+              <li>Check server logs for: [CHART-HISTORICAL] Detected broker, [STREAM-PRICES] Detected broker</li>
+              <li>If you see "Failed to fetch chart data: 404", check if symbol cache is initialized</li>
+              <li>Real-time prices will stream if "Live" indicator is green</li>
+            </ul>
+          </li>
         </ul>
       </div>
     </div>

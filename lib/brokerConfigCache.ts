@@ -177,4 +177,13 @@ export function getBrokerConfigCache(): BrokerConfigCache {
   return cacheInstance;
 }
 
+/**
+ * Invalidate broker config cache entry for a specific user and broker
+ * Call this after updating broker credentials
+ */
+export function invalidateBrokerConfigCache(userId: string, broker: string): void {
+  const cache = getBrokerConfigCache();
+  cache.invalidate(userId, broker);
+}
+
 export default BrokerConfigCache;

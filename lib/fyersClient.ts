@@ -91,6 +91,84 @@ export async function authenticateFyers(
 }
 
 /**
+ * Refresh Fyers access token using refresh token
+ * Exchanges refresh token for new access token
+ */
+export async function refreshFyersToken(
+  refreshToken: string,
+  clientId: string,
+  clientSecret: string
+): Promise<FyersAuthResponse> {
+  try {
+    console.log('[FYERS-REFRESH] Refreshing access token...');
+    console.log('[FYERS-REFRESH] Client ID:', clientId.substring(0, 5) + '...');
+
+    // Generate appIdHash: sha256(clientId:clientSecret)
+    const checksumInput = `${clientId}:${clientSecret}`;
+    const appIdHash = crypto
+      .createHash('sha256')
+      .update(checksumInput)
+      .digest('hex');
+
+    console.log('[FYERS-REFRESH] Generated appIdHash from clientId:clientSecret');
+
+    const payload = {
+      grant_type: 'refresh_token',
+      appIdHash: appIdHash,
+      refresh_token: refreshToken,
+    };
+
+    console.log('[FYERS-REFRESH] Request payload:', {
+      grant_type: payload.grant_type,
+      appIdHash: payload.appIdHash.substring(0, 10) + '...',
+      refresh_token: refreshToken ? refreshToken.substring(0, 20) + '...' : 'missing',
+    });
+
+    // Fyers APIv3 token refresh endpoint
+    const tokenResponse = await fetch(`${FYERS_API_URL}/validate-authcode`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const tokenData = await tokenResponse.json();
+    console.log('[FYERS-REFRESH] Token response:', {
+      status: tokenData.s,
+      httpStatus: tokenResponse.status,
+      message: tokenData.message,
+      code: tokenData.code,
+    });
+
+    // Check for success response
+    if (tokenData.s !== 'ok') {
+      const error = tokenData.message || 'Token refresh failed';
+      console.error('[FYERS-REFRESH] Token refresh failed:', {
+        error,
+        status: tokenData.s,
+        code: tokenData.code,
+        httpStatus: tokenResponse.status,
+      });
+      throw new Error(`Failed to refresh access token: ${error}`);
+    }
+
+    if (!tokenData.access_token) {
+      throw new Error('No access token in refresh response');
+    }
+
+    console.log('[FYERS-REFRESH] Token refresh successful');
+    return {
+      accessToken: tokenData.access_token,
+      refreshToken: tokenData.refresh_token || refreshToken, // Use new refresh token if provided, otherwise keep old one
+    };
+  } catch (error: any) {
+    console.error('[FYERS-REFRESH] Token refresh error:', error.message);
+    throw error;
+  }
+}
+
+/**
  * Get user profile info (to verify authentication)
  */
 export async function getFyersUserProfile(accessToken: string, appId?: string): Promise<any> {

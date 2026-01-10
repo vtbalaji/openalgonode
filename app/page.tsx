@@ -281,6 +281,20 @@ export default function Home() {
             <p className="text-gray-600">Adaptive trend analysis with volume delta & early signals</p>
           </Link>
 
+          {/* Straddle Options Chart */}
+          <Link
+            href="/chart-straddle"
+            className="block rounded-lg bg-white p-6 shadow transition hover:shadow-lg border-2 border-orange-200"
+          >
+            <div className="mb-4 inline-block rounded-lg bg-orange-100 p-3">
+              <svg className="h-6 w-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+            </div>
+            <h3 className="mb-2 text-lg font-semibold text-gray-900">Straddle Options Chart</h3>
+            <p className="text-gray-600">ATM options premium analysis (CE + PE combined)</p>
+          </Link>
+
           {/* API Documentation */}
           <Link
             href="/api-docs"

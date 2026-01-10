@@ -222,69 +222,77 @@ export default function GeekStrangleChartPage() {
       const ceStrikeValue = ceStrike || atmStrike + 100;
       const peStrikeValue = peStrike || atmStrike - 100;
 
-      // Fetch CE data
-      const ceParams = new URLSearchParams({
+      // For strangle, we need to fetch combined data at each strike
+      // Then extract individual CE/PE prices
+      // Fetch combined data for CE strike (contains both CE and PE at this strike)
+      const ceStrikeParams = new URLSearchParams({
         symbol: baseSymbol,
         expiry,
         strike: ceStrikeValue.toString(),
-        optionType: 'CE',
         userId: user.uid,
         from: from.toISOString().split('T')[0],
         to: today.toISOString().split('T')[0],
         interval: interval.replace('minute', ''),
       });
 
-      const ceFetchUrl = '/api/options/historical?' + ceParams.toString();
-      console.log('[GEEK-STRANGLE] Fetching CE:', ceFetchUrl);
+      const ceStrikeFetchUrl = '/api/options/historical?' + ceStrikeParams.toString();
+      console.log('[GEEK-STRANGLE] Fetching CE strike data:', ceStrikeFetchUrl);
 
-      // Fetch PE data
-      const peParams = new URLSearchParams({
+      // Fetch combined data for PE strike (contains both CE and PE at this strike)
+      const peStrikeParams = new URLSearchParams({
         symbol: baseSymbol,
         expiry,
         strike: peStrikeValue.toString(),
-        optionType: 'PE',
         userId: user.uid,
         from: from.toISOString().split('T')[0],
         to: today.toISOString().split('T')[0],
         interval: interval.replace('minute', ''),
       });
 
-      const peFetchUrl = '/api/options/historical?' + peParams.toString();
-      console.log('[GEEK-STRANGLE] Fetching PE:', peFetchUrl);
+      const peStrikeFetchUrl = '/api/options/historical?' + peStrikeParams.toString();
+      console.log('[GEEK-STRANGLE] Fetching PE strike data:', peStrikeFetchUrl);
 
-      const [ceResponse, peResponse] = await Promise.all([
-        fetch(ceFetchUrl),
-        fetch(peFetchUrl),
+      const [ceStrikeResponse, peStrikeResponse] = await Promise.all([
+        fetch(ceStrikeFetchUrl),
+        fetch(peStrikeFetchUrl),
       ]);
 
-      if (!ceResponse.ok || !peResponse.ok) {
-        const ceError = ceResponse.ok ? null : await ceResponse.json();
-        const peError = peResponse.ok ? null : await peResponse.json();
-        throw new Error(`CE: ${ceError?.error || 'OK'}, PE: ${peError?.error || 'OK'}`);
+      if (!ceStrikeResponse.ok || !peStrikeResponse.ok) {
+        const ceError = ceStrikeResponse.ok ? null : await ceStrikeResponse.json();
+        const peError = peStrikeResponse.ok ? null : await peStrikeResponse.json();
+        throw new Error(`CE Strike Data: ${ceError?.error || 'OK'}, PE Strike Data: ${peError?.error || 'OK'}`);
       }
 
-      const ceResult = await ceResponse.json();
-      const peResult = await peResponse.json();
+      const ceStrikeResult = await ceStrikeResponse.json();
+      const peStrikeResult = await peStrikeResponse.json();
 
-      if (ceResult.success && peResult.success && ceResult.data && peResult.data) {
-        // Create a map for PE data by timestamp
-        const peMap = new Map();
-        peResult.data.forEach((candle: any) => {
-          peMap.set(candle.time, candle);
+      if (ceStrikeResult.success && peStrikeResult.success && ceStrikeResult.data && peStrikeResult.data) {
+        // For strangle:
+        // - Use CE prices from the higher strike (cePrice field from ceStrike data)
+        // - Use PE prices from the lower strike (pePrice field from peStrike data)
+
+        // Create a map for PE strike data by timestamp
+        const peStrikeMap = new Map();
+        peStrikeResult.data.forEach((candle: any) => {
+          peStrikeMap.set(candle.time, candle);
         });
 
-        // Combine CE and PE data
+        // Combine strangle data: CE from higher strike + PE from lower strike
         const chartDataArray: ChartData[] = [];
-        ceResult.data.forEach((ceCandle: any) => {
-          const peCandle = peMap.get(ceCandle.time);
-          if (peCandle) {
+        ceStrikeResult.data.forEach((ceStrikeCandle: any) => {
+          const peStrikeCandle = peStrikeMap.get(ceStrikeCandle.time);
+          if (peStrikeCandle) {
+            // Strangle premium = CE (from higher strike) + PE (from lower strike)
+            const cePremium = ceStrikeCandle.cePrice || (ceStrikeCandle.close / 2); // Use cePrice if available, else estimate
+            const pePremium = peStrikeCandle.pePrice || (peStrikeCandle.close / 2); // Use pePrice if available, else estimate
+
             chartDataArray.push({
-              time: ceCandle.time,
-              open: ceCandle.open + peCandle.open,
-              high: ceCandle.high + peCandle.high,
-              low: ceCandle.low + peCandle.low,
-              close: ceCandle.close + peCandle.close,
-              volume: ceCandle.volume + peCandle.volume,
+              time: ceStrikeCandle.time,
+              open: cePremium + pePremium,
+              high: cePremium + pePremium,
+              low: cePremium + pePremium,
+              close: cePremium + pePremium,
+              volume: (ceStrikeCandle.ceVolume || 0) + (peStrikeCandle.peVolume || 0),
             });
           }
         });

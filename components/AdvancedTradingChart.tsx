@@ -9,7 +9,7 @@
 
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import {
   createChart,
   IChartApi,
@@ -131,6 +131,10 @@ export function AdvancedTradingChart({
   const [visibleRange, setVisibleRange] = useState<any>(null);
   const visibleRangeRef = useRef<any>(null);
   const emaSignalsRef = useRef<any[]>([]);
+
+  // Refs to prevent infinite loop from setState in useEffect
+  const prevVolumeProfileRef = useRef<any>(null);
+  const prevVolumeProfileVisibleRef = useRef<any>(null);
 
   // SMC data states
   const [smcFVG, setSMCFVG] = useState<FairValueGap[]>([]);
@@ -945,8 +949,11 @@ export function AdvancedTradingChart({
         0.70
       );
 
-      // Store for histogram rendering
-      setVolumeProfileData(volumeProfileResult);
+      // Store for histogram rendering - only update if data has changed
+      if (prevVolumeProfileRef.current !== volumeProfileResult) {
+        setVolumeProfileData(volumeProfileResult);
+        prevVolumeProfileRef.current = volumeProfileResult;
+      }
 
       // Find max volume for verification
       const maxVol = Math.max(...volumeProfileResult.profile.map(p => p.volume));
@@ -1086,8 +1093,11 @@ export function AdvancedTradingChart({
           0.70
         );
 
-        // Store for histogram rendering
-        setVolumeProfileVisibleData(volumeProfileVisibleResult);
+        // Store for histogram rendering - only update if data has changed
+        if (prevVolumeProfileVisibleRef.current !== volumeProfileVisibleResult) {
+          setVolumeProfileVisibleData(volumeProfileVisibleResult);
+          prevVolumeProfileVisibleRef.current = volumeProfileVisibleResult;
+        }
 
         // Get top 5 bars by volume
         const top5BarsVisible = [...volumeProfileVisibleResult.profile]

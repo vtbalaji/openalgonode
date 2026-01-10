@@ -28,7 +28,7 @@ export default function ChartPage() {
   const { user } = useAuth();
   const [symbol, setSymbol] = useState('NIFTY26JANFUT');
   const [customSymbol, setCustomSymbol] = useState('');
-  const [interval, setInterval] = useState('3minute');
+  const [interval, setInterval] = useState('60minute');
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

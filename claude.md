@@ -1,16 +1,24 @@
 # Development Workflow Rules
 
-## Git Push Policy
+## Git Workflow Policy
 
+### Commits
+**IMPORTANT**: NEVER run `git commit` without explicit user approval.
+
+When changes are ready:
+1. Stage files with `git add`
+2. **STOP and ask user**: "Ready to commit these changes?"
+3. Only run `git commit` after user confirms
+4. Show what files will be committed before proceeding
+
+### Push
 **IMPORTANT**: NEVER run `git push` without explicit user approval.
 
-When changes are ready to commit:
-1. Stage files with `git add`
-2. Create commit with descriptive message
-3. **STOP and ask user**: "Ready to push to GitHub?"
-4. Only run `git push` after user confirms
+After committing:
+1. **STOP and ask user**: "Ready to push to GitHub?"
+2. Only run `git push` after user confirms
 
-This prevents automatic deployments to Vercel without user's knowledge and control.
+This prevents automatic commits and deployments to Vercel without user's knowledge and control.
 
 ---
 

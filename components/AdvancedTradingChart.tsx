@@ -78,6 +78,8 @@ export interface AdvancedTradingChartProps {
   indicators: IndicatorConfig;
   onIndicatorChange?: (indicators: IndicatorConfig) => void;
   height?: number;
+  greeksData?: Array<{ time: number; theta: number; vega: number; gamma: number; delta: number }>;
+  showGreeks?: { theta: boolean; vega: boolean; gamma: boolean; delta: boolean };
 }
 
 export function AdvancedTradingChart({
@@ -87,6 +89,8 @@ export function AdvancedTradingChart({
   indicators,
   onIndicatorChange,
   height = 600,
+  greeksData = [],
+  showGreeks = { theta: true, vega: true, gamma: true, delta: true },
 }: AdvancedTradingChartProps) {
   const mainChartRef = useRef<HTMLDivElement>(null);
   const rsiChartRef = useRef<HTMLDivElement>(null);
@@ -115,6 +119,12 @@ export function AdvancedTradingChart({
   const buySignalSeriesRef = useRef<any>(null);
   const sellSignalSeriesRef = useRef<any>(null);
   const stopLossLineRef = useRef<any>(null);
+
+  // Greeks line series refs
+  const thetaSeriesRef = useRef<any>(null);
+  const vegaSeriesRef = useRef<any>(null);
+  const gammaSeriesRef = useRef<any>(null);
+  const deltaSeriesRef = useRef<any>(null);
 
   const [volumeProfileData, setVolumeProfileData] = useState<any>(null);
   const [volumeProfileVisibleData, setVolumeProfileVisibleData] = useState<any>(null);
@@ -255,6 +265,31 @@ export function AdvancedTradingChart({
 
     mainChart.priceScale('').applyOptions({
       scaleMargins: { top: 0.8, bottom: 0 },
+    });
+
+    // Configure custom price scales for Greeks (0-100 normalized values)
+    mainChart.priceScale('theta-scale').applyOptions({
+      autoScale: true,
+      mode: 0,
+      scaleMargins: { top: 0.1, bottom: 0.2 },
+    });
+
+    mainChart.priceScale('vega-scale').applyOptions({
+      autoScale: true,
+      mode: 0,
+      scaleMargins: { top: 0.1, bottom: 0.2 },
+    });
+
+    mainChart.priceScale('gamma-scale').applyOptions({
+      autoScale: true,
+      mode: 0,
+      scaleMargins: { top: 0.1, bottom: 0.2 },
+    });
+
+    mainChart.priceScale('delta-scale').applyOptions({
+      autoScale: true,
+      mode: 0,
+      scaleMargins: { top: 0.1, bottom: 0.2 },
     });
 
     // RSI Chart
@@ -564,6 +599,154 @@ export function AdvancedTradingChart({
 
         slowEmaSeries.setData(slowEmaData);
         slowEmaSeriesRef.current = slowEmaSeries;
+      }
+
+      // Add Greeks overlay lines on main chart
+      if (greeksData && greeksData.length > 0) {
+        // Clean up all Greek series first
+        if (!showGreeks.theta && thetaSeriesRef.current) {
+          try {
+            mainChartInstanceRef.current.removeSeries(thetaSeriesRef.current);
+            thetaSeriesRef.current = null;
+          } catch (e) {
+            console.warn('Error removing theta series:', e);
+          }
+        }
+
+        if (!showGreeks.vega && vegaSeriesRef.current) {
+          try {
+            mainChartInstanceRef.current.removeSeries(vegaSeriesRef.current);
+            vegaSeriesRef.current = null;
+          } catch (e) {
+            console.warn('Error removing vega series:', e);
+          }
+        }
+
+        if (!showGreeks.gamma && gammaSeriesRef.current) {
+          try {
+            mainChartInstanceRef.current.removeSeries(gammaSeriesRef.current);
+            gammaSeriesRef.current = null;
+          } catch (e) {
+            console.warn('Error removing gamma series:', e);
+          }
+        }
+
+        if (!showGreeks.delta && deltaSeriesRef.current) {
+          try {
+            mainChartInstanceRef.current.removeSeries(deltaSeriesRef.current);
+            deltaSeriesRef.current = null;
+          } catch (e) {
+            console.warn('Error removing delta series:', e);
+          }
+        }
+
+        // Theta (green line) - time decay
+        if (showGreeks.theta) {
+          if (thetaSeriesRef.current) {
+            try {
+              mainChartInstanceRef.current.removeSeries(thetaSeriesRef.current);
+              thetaSeriesRef.current = null;
+            } catch (e) {
+              console.warn('Error removing theta series:', e);
+            }
+          }
+
+          const thetaSeries = mainChartInstanceRef.current.addLineSeries({
+            color: '#4CAF50',
+            lineWidth: 2,
+            title: 'θ Theta (Time Decay)',
+            priceScaleId: 'theta-scale',
+          });
+
+          const thetaData = greeksData.map(g => ({
+            time: g.time as any,
+            value: g.theta,
+          }));
+
+          thetaSeries.setData(thetaData);
+          thetaSeriesRef.current = thetaSeries;
+        }
+
+        // Vega (red line) - volatility sensitivity
+        if (showGreeks.vega) {
+          if (vegaSeriesRef.current) {
+            try {
+              mainChartInstanceRef.current.removeSeries(vegaSeriesRef.current);
+              vegaSeriesRef.current = null;
+            } catch (e) {
+              console.warn('Error removing vega series:', e);
+            }
+          }
+
+          const vegaSeries = mainChartInstanceRef.current.addLineSeries({
+            color: '#F44336',
+            lineWidth: 2,
+            title: 'ν Vega (Volatility)',
+            priceScaleId: 'vega-scale',
+          });
+
+          const vegaData = greeksData.map(g => ({
+            time: g.time as any,
+            value: g.vega,
+          }));
+
+          vegaSeries.setData(vegaData);
+          vegaSeriesRef.current = vegaSeries;
+        }
+
+        // Gamma (orange line) - directional risk
+        if (showGreeks.gamma) {
+          if (gammaSeriesRef.current) {
+            try {
+              mainChartInstanceRef.current.removeSeries(gammaSeriesRef.current);
+              gammaSeriesRef.current = null;
+            } catch (e) {
+              console.warn('Error removing gamma series:', e);
+            }
+          }
+
+          const gammaSeries = mainChartInstanceRef.current.addLineSeries({
+            color: '#FF9800',
+            lineWidth: 2,
+            title: 'Γ Gamma (Directional)',
+            priceScaleId: 'gamma-scale',
+          });
+
+          const gammaData = greeksData.map(g => ({
+            time: g.time as any,
+            value: g.gamma,
+          }));
+
+          gammaSeries.setData(gammaData);
+          gammaSeriesRef.current = gammaSeries;
+        }
+
+        // Delta (blue line) - position delta
+        if (showGreeks.delta) {
+          if (deltaSeriesRef.current) {
+            try {
+              mainChartInstanceRef.current.removeSeries(deltaSeriesRef.current);
+              deltaSeriesRef.current = null;
+            } catch (e) {
+              console.warn('Error removing delta series:', e);
+            }
+          }
+
+          const deltaSeries = mainChartInstanceRef.current.addLineSeries({
+            color: '#2196F3',
+            lineWidth: 2,
+            title: 'Δ Delta (Position)',
+            priceScaleId: 'delta-scale',
+          });
+
+          const deltaData = greeksData.map(g => ({
+            time: g.time as any,
+            value: g.delta,
+          }));
+
+          deltaSeries.setData(deltaData);
+          deltaSeriesRef.current = deltaSeries;
+        }
       }
 
       // Detect Buy/Sell signals based on POC breakout (BUY) and EMA crossover (SELL)
@@ -1055,94 +1238,13 @@ export function AdvancedTradingChart({
     if (mainChartInstanceRef.current) {
       mainChartInstanceRef.current.timeScale().fitContent();
     }
-  }, [data, indicators, visibleRange]);
+  }, [data, indicators, visibleRange, greeksData, showGreeks]);
 
   return (
     <div className="w-full">
       <div className="relative">
         <div ref={mainChartRef} className="border border-gray-200 rounded-t-lg" />
 
-        {/* Volume Profile Histogram - Sideways Mountain */}
-        {indicators.volumeProfile && volumeProfileData && mainChartInstanceRef.current && (
-          <div
-            className="absolute top-0 left-0 pointer-events-none z-50"
-            style={{
-              width: isMobile ? '100px' : '200px',
-              height: indicators.rsi ? height - (isMobile ? 100 : 120) - 30 : height,
-            }}
-          >
-            {(() => {
-              // Get price range from profile
-              const prices = volumeProfileData.profile.map((r: any) => r.price);
-              const minPrice = Math.min(...prices);
-              const maxPrice = Math.max(...prices);
-              const priceRange = maxPrice - minPrice;
-              const chartHeight = indicators.rsi ? height - (isMobile ? 100 : 120) - 30 : height;
-              const maxVolume = Math.max(...volumeProfileData.profile.map((r: any) => r.volume));
-
-              // Find top 5 bars by volume for debugging
-              const top5 = [...volumeProfileData.profile]
-                .sort((a, b) => b.volume - a.volume)
-                .slice(0, 5)
-                .map(r => ({ price: r.price.toFixed(2), volume: r.volume.toFixed(0) }));
-
-              console.log('[VP] Rendering with manual positioning:', {
-                minPrice: minPrice.toFixed(2),
-                maxPrice: maxPrice.toFixed(2),
-                priceRange: priceRange.toFixed(2),
-                chartHeight,
-                barCount: volumeProfileData.profile.length,
-                poc: volumeProfileData.poc.toFixed(2),
-                top5VolumeBar: top5,
-              });
-
-              return volumeProfileData.profile.map((row: any, index: number) => {
-                try {
-                  // Use TradingView's price-to-coordinate API for accurate positioning
-                  const yCoord = candlestickSeriesRef.current?.priceToCoordinate(row.price);
-
-                  // Skip if price is outside visible range
-                  if (yCoord === null || yCoord === undefined) {
-                    return null;
-                  }
-
-                  // Calculate bar width (responsive for mobile)
-                  const maxBarWidth = isMobile ? 60 : 120;
-                  const barWidth = Math.max(2, (row.volume / maxVolume) * maxBarWidth);
-
-                  // Check if this is in the value area
-                  const isInValueArea = row.price >= volumeProfileData.valueAreaLow &&
-                                        row.price <= volumeProfileData.valueAreaHigh;
-
-                  // Check if this is POC
-                  const isPOC = Math.abs(row.price - volumeProfileData.poc) < (volumeProfileData.poc * 0.001);
-
-                  return (
-                    <div
-                      key={index}
-                      className="absolute"
-                      style={{
-                        top: yCoord + 'px',
-                        left: isMobile ? '35px' : '70px',
-                        width: barWidth + 'px',
-                        height: isMobile ? '1.5px' : '2px',
-                        backgroundColor: isPOC
-                          ? '#FF0000'
-                          : isInValueArea
-                            ? 'rgba(33, 150, 243, 0.9)'
-                            : 'rgba(156, 163, 175, 0.7)',
-                        boxShadow: isPOC ? '0 0 4px rgba(255,0,0,1)' : 'none',
-                      }}
-                    />
-                  );
-                } catch (e) {
-                  console.error('[VP] Error rendering bar:', e);
-                  return null;
-                }
-              });
-            })()}
-          </div>
-        )}
 
         {/* Volume Profile Histogram - Visible Range (on right side in green) */}
         {indicators.volumeProfileVisible && volumeProfileVisibleData && mainChartInstanceRef.current && (

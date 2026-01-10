@@ -45,7 +45,7 @@ export default function GeekStraddleChartPage() {
   const [baseSymbol, setBaseSymbol] = useState('NIFTY');
   const [expiry, setExpiry] = useState('13JAN');
   const [customSymbol, setCustomSymbol] = useState('');
-  const [interval, setInterval] = useState('3minute');
+  const [interval, setInterval] = useState('60minute');
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +54,7 @@ export default function GeekStraddleChartPage() {
   const [spotPrice, setSpotPrice] = useState(25683);
   const [manualStrike, setManualStrike] = useState<number | null>(null);
   const [greeks, setGreeks] = useState<GreeksData | null>(null);
+  const [greeksArray, setGreeksArray] = useState<Array<{ time: number; theta: number; vega: number; gamma: number; delta: number }>>([]);
 
   const [indicators, setIndicators] = useState<IndicatorConfig>({
     sma: false,
@@ -76,6 +77,13 @@ export default function GeekStraddleChartPage() {
     showConsolidation: false,
     consolidationMinDuration: 10,
     consolidationMaxDuration: 100,
+  });
+
+  const [showGreeks, setShowGreeks] = useState({
+    theta: true,
+    vega: true,
+    gamma: true,
+    delta: true,
   });
 
   // Real-time price updates - for spot price display
@@ -115,32 +123,43 @@ export default function GeekStraddleChartPage() {
    * Calculate Greeks for straddle using simplified approach
    * Based on current premium, historical volatility, and days to expiry
    */
-  const calculateGreeks = (premium: number, previousPremium: number, daysToExp: number): GreeksData => {
+  const calculateGreeks = (
+    premium: number,
+    previousPremium: number,
+    daysToExp: number,
+    spotPrice?: number,
+    strikePrice?: number
+  ): GreeksData => {
     // Theta: Daily premium decay (positive for sellers)
-    // Approximate: premium loss per day
-    const dailyDecay = Math.max(0.5, (premium * 0.002)); // ~0.2% daily decay
+    const dailyDecay = Math.max(0.5, premium * 0.002);
     const theta = dailyDecay;
 
     // Vega: Volatility sensitivity (negative for sellers - higher vol = higher cost)
-    // Approximate: -0.5 to -3.5 depending on DTE
-    const vega = -(1.5 + (15 - Math.min(daysToExp, 15)) * 0.15);
+    // Also responds to premium changes (higher premium = implied vol increase)
+    const basVega = -(1.5 + (15 - Math.min(daysToExp, 15)) * 0.3);
+    const premiumChangeInfluence = (premium - previousPremium) * 0.01; // Premium changes affect vega
+    const vega = basVega + premiumChangeInfluence;
 
     // Gamma: Directional risk (positive ATM, increases near expiry)
-    // Approximate: increases as DTE decreases
-    const gamma = 0.001 + (0.015 - daysToExp * 0.0006);
+    // Also responds to premium volatility (larger swings = higher gamma)
+    const baseGamma = 0.001 + (0.015 - daysToExp * 0.0006);
+    const volatilityInfluence = Math.abs(premium - previousPremium) * 0.00001;
+    const gamma = baseGamma + volatilityInfluence;
 
-    // Delta: Should be ~0 for ATM straddle (neutral)
-    // Small variations indicate imbalance
-    const delta = (Math.random() - 0.5) * 0.1; // Slight random variation ±0.05
+    // Delta: Rate of change of premium (how much premium changes per small price move)
+    // Positive delta = premium increasing (up move), Negative = premium decreasing (down move)
+    const premiumChange = premium - previousPremium;
+    const premiumChangePercent = premiumChange / Math.max(previousPremium, 1);
+    const delta = Math.max(-1, Math.min(1, premiumChangePercent * 20)); // Scale to -1 to 1
 
     // Risk level assessment
     let riskLevel: 'safe' | 'caution' | 'danger' = 'safe';
     if (daysToExp <= 7) {
-      riskLevel = 'danger'; // Very close to expiry, gamma explosion risk
+      riskLevel = 'danger';
     } else if (daysToExp <= 14) {
-      riskLevel = 'caution'; // Gamma rising
+      riskLevel = 'caution';
     } else {
-      riskLevel = 'safe'; // Safe to hold
+      riskLevel = 'safe';
     }
 
     return {
@@ -238,10 +257,44 @@ export default function GeekStraddleChartPage() {
         }));
         setChartData(chartDataArray);
 
-        // Calculate Greeks based on latest premium
+        // Calculate Greeks for each candle
+        const greeksDataArray = chartDataArray.map((candle, index) => {
+          const previousPrice = index > 0 ? chartDataArray[index - 1].close : candle.close;
+
+          // Calculate daysToExp for THIS candle's timestamp (decreases over time)
+          const candleDate = new Date(candle.time * 1000);
+          const expiryDate = parseExpiryDate(expiry);
+          const daysToExpCandle = Math.ceil((expiryDate.getTime() - candleDate.getTime()) / (1000 * 60 * 60 * 24));
+
+          const greekData = calculateGreeks(candle.close, previousPrice, daysToExpCandle, spotPrice, atmStrike);
+
+          // Normalize Greeks to 0-100 scale for better visibility
+          // Theta: 0-10 → 0-100
+          const thetaNormalized = Math.min(100, Math.max(0, (greekData.theta / 10) * 100));
+
+          // Vega: -4 to 0 → 0-100 (wider range for better visibility)
+          const vegaNormalized = Math.min(100, Math.max(0, ((greekData.vega + 4) / 4) * 100));
+
+          // Gamma: 0-0.025 → 0-100 (wider range)
+          const gammaNormalized = Math.min(100, Math.max(0, (greekData.gamma / 0.025) * 100));
+
+          // Delta: -1 to 1 → 0-100 (center at 50)
+          const deltaNormalized = Math.min(100, Math.max(0, ((greekData.delta + 1) / 2) * 100));
+
+          return {
+            time: candle.time,
+            theta: thetaNormalized,
+            vega: vegaNormalized,
+            gamma: gammaNormalized,
+            delta: deltaNormalized,
+          };
+        });
+        setGreeksArray(greeksDataArray);
+
+        // Calculate Greeks based on latest premium (for panel display)
         const latestPremium = chartDataArray[chartDataArray.length - 1].close;
         const previousPremium = chartDataArray.length > 1 ? chartDataArray[chartDataArray.length - 2].close : latestPremium;
-        const greeksCalc = calculateGreeks(latestPremium, previousPremium, daysToExp);
+        const greeksCalc = calculateGreeks(latestPremium, previousPremium, daysToExp, spotPrice, atmStrike);
         setGreeks(greeksCalc);
       } else {
         throw new Error(result.error || 'No data returned');
@@ -365,11 +418,13 @@ export default function GeekStraddleChartPage() {
                 }}
                 className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm"
               >
-                <optgroup label="Weekly Expiries">
-                  <option value="13JAN">13 JAN (Weekly)</option>
-                  <option value="16JAN">16 JAN (Weekly)</option>
-                  <option value="23JAN">23 JAN (Weekly)</option>
-                  <option value="30JAN">30 JAN (Weekly)</option>
+                <optgroup label="Weekly Expiries (Tuesdays & Thursdays)">
+                  <option value="13JAN">13 JAN (Tuesday)</option>
+                  <option value="15JAN">15 JAN (Thursday)</option>
+                  <option value="20JAN">20 JAN (Tuesday)</option>
+                  <option value="22JAN">22 JAN (Thursday)</option>
+                  <option value="27JAN">27 JAN (Tuesday)</option>
+                  <option value="29JAN">29 JAN (Thursday)</option>
                 </optgroup>
                 <optgroup label="Monthly Expiries">
                   <option value="JAN">JAN (Monthly)</option>
@@ -537,6 +592,65 @@ export default function GeekStraddleChartPage() {
             </div>
           </div>
 
+          {/* Greeks Overlay Section */}
+          <div className="pt-4">
+            <div className="p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg border border-purple-200">
+              <h3 className="text-sm font-semibold text-gray-800 mb-2 flex items-center gap-2">
+                <span className="text-lg">📈</span> Greeks Overlay
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="showTheta"
+                    checked={showGreeks.theta}
+                    onChange={() => setShowGreeks(prev => ({ ...prev, theta: !prev.theta }))}
+                    className="w-4 h-4 text-green-600 rounded focus:ring-2"
+                  />
+                  <label htmlFor="showTheta" className="text-sm font-medium text-gray-700">
+                    θ Theta (Time Decay)
+                  </label>
+                </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="showVega"
+                    checked={showGreeks.vega}
+                    onChange={() => setShowGreeks(prev => ({ ...prev, vega: !prev.vega }))}
+                    className="w-4 h-4 text-red-600 rounded focus:ring-2"
+                  />
+                  <label htmlFor="showVega" className="text-sm font-medium text-gray-700">
+                    ν Vega (Volatility)
+                  </label>
+                </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="showGamma"
+                    checked={showGreeks.gamma}
+                    onChange={() => setShowGreeks(prev => ({ ...prev, gamma: !prev.gamma }))}
+                    className="w-4 h-4 text-orange-600 rounded focus:ring-2"
+                  />
+                  <label htmlFor="showGamma" className="text-sm font-medium text-gray-700">
+                    Γ Gamma (Directional)
+                  </label>
+                </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="showDelta"
+                    checked={showGreeks.delta}
+                    onChange={() => setShowGreeks(prev => ({ ...prev, delta: !prev.delta }))}
+                    className="w-4 h-4 text-blue-600 rounded focus:ring-2"
+                  />
+                  <label htmlFor="showDelta" className="text-sm font-medium text-gray-700">
+                    Δ Delta (Position)
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
         </div>
 
         {/* Greeks Panel */}
@@ -620,6 +734,8 @@ export default function GeekStraddleChartPage() {
               interval={interval}
               indicators={indicators}
               height={chartHeight}
+              greeksData={greeksArray}
+              showGreeks={showGreeks}
             />
           </div>
         )}

@@ -32,9 +32,9 @@ const TIMEFRAMES = [
 export default function StraddleChartPage() {
   const { user } = useAuth();
   const [baseSymbol, setBaseSymbol] = useState('NIFTY');
-  const [expiry, setExpiry] = useState('13JAN');
+  const [expiry, setExpiry] = useState('13JAN'); // Tuesday - valid weekly expiry
   const [customSymbol, setCustomSymbol] = useState('');
-  const [interval, setInterval] = useState('3minute');
+  const [interval, setInterval] = useState('60minute');
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -231,10 +231,12 @@ export default function StraddleChartPage() {
                 onChange={(e) => setExpiry(e.target.value)}
                 className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm"
               >
-                <option value="13JAN">13 JAN</option>
-                <option value="16JAN">16 JAN</option>
-                <option value="23JAN">23 JAN</option>
-                <option value="30JAN">30 JAN</option>
+                <option value="13JAN">13 JAN (Tuesday)</option>
+                <option value="15JAN">15 JAN (Thursday)</option>
+                <option value="20JAN">20 JAN (Tuesday)</option>
+                <option value="22JAN">22 JAN (Thursday)</option>
+                <option value="27JAN">27 JAN (Tuesday)</option>
+                <option value="29JAN">29 JAN (Thursday)</option>
               </select>
             </div>
 

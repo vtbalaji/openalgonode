@@ -70,9 +70,6 @@ export default function GeekStrangleChartPage() {
     showSignals: true,
     fastEma: 9,
     slowEma: 32,
-    adx: false,
-    adxPeriod: 14,
-    adxThreshold: 25,
     useVolumeFilter: false,
     useTimeFilter: false,
     showConsolidation: false,
@@ -639,21 +636,6 @@ export default function GeekStrangleChartPage() {
                     max="200"
                   />
                   <span className="text-xs text-gray-500">(32)</span>
-                </div>
-
-                {/* ADX Trend Filter */}
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    id="adx"
-                    checked={indicators.adx}
-                    onChange={() => toggleIndicator('adx')}
-                    className="w-4 h-4 text-purple-600 rounded focus:ring-2"
-                  />
-                  <label htmlFor="adx" className="text-sm font-medium text-gray-700">
-                    ADX Filter
-                  </label>
-                  <span className="text-xs text-gray-500">(Optional)</span>
                 </div>
 
                 {/* RSI */}

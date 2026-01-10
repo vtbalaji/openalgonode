@@ -173,6 +173,7 @@ export default function GeekStraddleChartPage() {
     const monthlyMatch = expiryStr.match(/^([A-Z]{3})$/);
     if (monthlyMatch) {
       const month = monthMap[monthlyMatch[1]];
+      // For monthly options, use the last day of the month
       const lastDay = new Date(2026, month + 1, 0).getDate();
       return new Date(2026, month, lastDay);
     }

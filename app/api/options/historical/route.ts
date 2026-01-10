@@ -20,39 +20,18 @@ import { detectUserBroker } from '@/lib/brokerDetection';
 import { decryptData } from '@/lib/encryptionUtils';
 
 /**
- * Get the last Thursday of a month (last trading day for monthly options)
- */
-function getLastThursday(year: number, month: number): number {
-  // Start from the last day of the month
-  let date = new Date(year, month + 1, 0);
-
-  // Move back to the previous Thursday if needed
-  while (date.getDay() !== 4) { // 4 = Thursday
-    date.setDate(date.getDate() - 1);
-  }
-
-  return date.getDate();
-}
-
-/**
- * Convert text expiry format to Fyers numeric format
+ * Convert text expiry format to Fyers symbol format
  * Supports both weekly and monthly expiries:
  * - Weekly: {YY}{M}{dd} where M is single digit (1-9, O, N, D)
  *   Examples: "13JAN" → "26113", "30JAN" → "26130"
- * - Monthly: {YY}{M}{lastThursday}
- *   Examples: "JAN" → "26131" (Jan 31, 2026 is last Thursday)
+ * - Monthly: {YY}{MMM} where MMM is full month name
+ *   Examples: "JAN" → "26JAN", "OCT" → "26OCT"
  */
 function convertExpiryToNumeric(textExpiry: string): string {
   const monthMap: { [key: string]: string } = {
     'JAN': '1', 'FEB': '2', 'MAR': '3', 'APR': '4',
     'MAY': '5', 'JUN': '6', 'JUL': '7', 'AUG': '8',
     'SEP': '9', 'OCT': 'O', 'NOV': 'N', 'DEC': 'D'
-  };
-
-  const monthNameToNum: { [key: string]: number } = {
-    'JAN': 0, 'FEB': 1, 'MAR': 2, 'APR': 3,
-    'MAY': 4, 'JUN': 5, 'JUL': 6, 'AUG': 7,
-    'SEP': 8, 'OCT': 9, 'NOV': 10, 'DEC': 11
   };
 
   const year = '26'; // 2026
@@ -70,17 +49,13 @@ function convertExpiryToNumeric(textExpiry: string): string {
     }
   }
 
-  // Try monthly format: "JAN" (month only) - use last Thursday of month
+  // Try monthly format: "JAN" (month only) - use month abbreviation
   const monthlyMatch = textExpiry.match(/^([A-Z]{3})$/);
   if (monthlyMatch) {
     const monthName = monthlyMatch[1];
-    const month = monthMap[monthName];
-    const monthNum = monthNameToNum[monthName];
-
-    if (month) {
-      const lastThursday = getLastThursday(2026, monthNum).toString().padStart(2, '0');
-      const result = `${year}${month}${lastThursday}`;
-      console.log(`[OPTIONS-HISTORICAL] Converted monthly expiry "${textExpiry}" → "${result}" (last Thursday)`);
+    if (monthMap[monthName]) {
+      const result = `${year}${monthName}`;
+      console.log(`[OPTIONS-HISTORICAL] Converted monthly expiry "${textExpiry}" → "${result}"`);
       return result;
     }
   }

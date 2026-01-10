@@ -130,7 +130,7 @@ export default function StraddleChartPage() {
         {/* Chart */}
         <div className="bg-slate-950 rounded-lg shadow-lg p-4 border border-slate-700">
           <StraddleChart
-            baseSymbol={symbol.replace('FUT', '')} // NIFTY26JANFUT → NIFTY
+            baseSymbol={symbol.replace(/\d.*/, '')} // NIFTY26JANFUT → NIFTY
             expiry={expiry}
             userId={userId}
             height={chartHeight}

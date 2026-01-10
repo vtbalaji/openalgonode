@@ -282,16 +282,35 @@ export default function GeekStrangleChartPage() {
         ceStrikeResult.data.forEach((ceStrikeCandle: any) => {
           const peStrikeCandle = peStrikeMap.get(ceStrikeCandle.time);
           if (peStrikeCandle) {
-            // Strangle premium = CE (from higher strike) + PE (from lower strike)
-            const cePremium = ceStrikeCandle.cePrice || (ceStrikeCandle.close / 2); // Use cePrice if available, else estimate
-            const pePremium = peStrikeCandle.pePrice || (peStrikeCandle.close / 2); // Use pePrice if available, else estimate
+            // For strangle, extract individual option prices
+            // ceStrike candle contains: CE26000 + PE26000 combined OHLC + individual cePrice/pePrice
+            // peStrike candle contains: CE25500 + PE25500 combined OHLC + individual cePrice/pePrice
 
+            const ceClose = ceStrikeCandle.cePrice || 0;
+            const peClose = peStrikeCandle.pePrice || 0;
+
+            // Extract individual OHLC by using the ratio of close to combined close
+            // For CE strike candle: ratio = cePrice / (cePrice + pePrice)
+            const ceRatio = (ceStrikeCandle.cePrice || 0) / Math.max(ceStrikeCandle.close, 1);
+            const peRatio = (peStrikeCandle.pePrice || 0) / Math.max(peStrikeCandle.close, 1);
+
+            // Calculate individual OHLC for CE at higher strike
+            const ceOpen = ceStrikeCandle.open * ceRatio;
+            const ceHigh = ceStrikeCandle.high * ceRatio;
+            const ceLow = ceStrikeCandle.low * ceRatio;
+
+            // Calculate individual OHLC for PE at lower strike
+            const peOpen = peStrikeCandle.open * peRatio;
+            const peHigh = peStrikeCandle.high * peRatio;
+            const peLow = peStrikeCandle.low * peRatio;
+
+            // Combine for strangle
             chartDataArray.push({
               time: ceStrikeCandle.time,
-              open: cePremium + pePremium,
-              high: cePremium + pePremium,
-              low: cePremium + pePremium,
-              close: cePremium + pePremium,
+              open: ceOpen + peOpen,
+              high: ceHigh + peHigh,
+              low: ceLow + peLow,
+              close: ceClose + peClose,
               volume: (ceStrikeCandle.ceVolume || 0) + (peStrikeCandle.peVolume || 0),
             });
           }

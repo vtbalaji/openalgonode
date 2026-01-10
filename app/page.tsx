@@ -309,6 +309,20 @@ export default function Home() {
             <p className="text-gray-600">Theta, Vega, Gamma analysis for option selling decisions</p>
           </Link>
 
+          {/* Geek Strangle Chart */}
+          <Link
+            href="/chart-geekstrangle"
+            className="block rounded-lg bg-white p-6 shadow transition hover:shadow-lg border-2 border-rose-200"
+          >
+            <div className="mb-4 inline-block rounded-lg bg-rose-100 p-3">
+              <svg className="h-6 w-6 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            </div>
+            <h3 className="mb-2 text-lg font-semibold text-gray-900">Geek Strangle (with Greeks)</h3>
+            <p className="text-gray-600">Dual strike options strategy with Greeks overlay</p>
+          </Link>
+
           {/* API Documentation */}
           <Link
             href="/api-docs"

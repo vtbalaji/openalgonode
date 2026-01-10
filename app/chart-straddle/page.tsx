@@ -110,72 +110,37 @@ export default function StraddleChartPage() {
       const from = new Date(today);
       from.setDate(today.getDate() - lookbackDays);
 
-      // Calculate ATM strike from spot price
-      const atmStrike = Math.round(spotPrice / 100) * 100;
-
-      // Fetch CE and PE data separately
-      const ceSymbol = `${baseSymbol}${expiry}${atmStrike}CE`;
-      const peSymbol = `${baseSymbol}${expiry}${atmStrike}PE`;
-
       const params = new URLSearchParams({
-        symbol: ceSymbol,
-        interval,
+        symbol: baseSymbol,
+        expiry,
+        spotPrice: spotPrice.toString(),
         userId: user.uid,
         from: from.toISOString().split('T')[0],
         to: today.toISOString().split('T')[0],
+        interval: interval.replace('minute', ''),
       });
 
-      const ceResponse = await fetch('/api/chart/historical?' + params.toString());
+      const response = await fetch('/api/options/historical?' + params.toString());
 
-      if (!ceResponse.ok) {
-        throw new Error('Failed to fetch CE data: ' + ceResponse.status);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to fetch data: ${response.status}`);
       }
 
-      const ceResult = await ceResponse.json();
+      const result = await response.json();
 
-      // Now fetch PE with same params
-      const peParams = new URLSearchParams({
-        symbol: peSymbol,
-        interval,
-        userId: user.uid,
-        from: from.toISOString().split('T')[0],
-        to: today.toISOString().split('T')[0],
-      });
-
-      const peResponse = await fetch('/api/chart/historical?' + peParams.toString());
-
-      if (!peResponse.ok) {
-        throw new Error('Failed to fetch PE data: ' + peResponse.status);
-      }
-
-      const peResult = await peResponse.json();
-
-      // Combine CE and PE data
-      if (ceResult.success && ceResult.data && peResult.success && peResult.data) {
-        const ceData = ceResult.data;
-        const peData = peResult.data;
-
-        // Create combined straddle data
-        const combinedData: ChartData[] = [];
-
-        for (let i = 0; i < Math.min(ceData.length, peData.length); i++) {
-          const ceCandle = ceData[i];
-          const peCandle = peData[i];
-
-          // Combine prices and volumes
-          combinedData.push({
-            time: Math.max(ceCandle.time, peCandle.time),
-            open: (ceCandle.open || 0) + (peCandle.open || 0),
-            high: (ceCandle.high || 0) + (peCandle.high || 0),
-            low: (ceCandle.low || 0) + (peCandle.low || 0),
-            close: (ceCandle.close || 0) + (peCandle.close || 0),
-            volume: (ceCandle.volume || 0) + (peCandle.volume || 0), // Sum volumes
-          });
-        }
-
-        setChartData(combinedData);
+      if (result.success && result.data && result.data.length > 0) {
+        const chartDataArray: ChartData[] = result.data.map((candle: any) => ({
+          time: candle.time,
+          open: candle.open,
+          high: candle.high,
+          low: candle.low,
+          close: candle.close,
+          volume: candle.volume,
+        }));
+        setChartData(chartDataArray);
       } else {
-        throw new Error(ceResult.error || peResult.error || 'Failed to load data');
+        throw new Error(result.error || 'No data returned');
       }
     } catch (err: any) {
       setError(err.message);

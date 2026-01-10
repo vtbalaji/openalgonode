@@ -31,6 +31,41 @@ function calculateATMStrike(spotPrice: number): number {
 }
 
 /**
+ * Convert text expiry format to numeric YYMMDD format for Fyers
+ * Examples:
+ * - "13JAN" (current month) → "260113" (Jan 13, 2026)
+ * - "16JAN" → "260116"
+ * - "23JAN" → "260123"
+ * Assumes always current/next year
+ */
+function convertExpiryToNumeric(textExpiry: string): string {
+  const monthMap: { [key: string]: string } = {
+    'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04',
+    'MAY': '05', 'JUN': '06', 'JUL': '07', 'AUG': '08',
+    'SEP': '09', 'OCT': '10', 'NOV': '11', 'DEC': '12'
+  };
+
+  // Extract day and month from format like "13JAN"
+  const match = textExpiry.match(/^(\d{1,2})([A-Z]{3})$/);
+  if (!match) {
+    console.warn(`[OPTIONS-QUOTES] Could not parse expiry: ${textExpiry}`);
+    return textExpiry; // Return as-is if can't parse
+  }
+
+  const day = match[1].padStart(2, '0');
+  const month = monthMap[match[2]];
+
+  if (!month) {
+    console.warn(`[OPTIONS-QUOTES] Unknown month in expiry: ${textExpiry}`);
+    return textExpiry;
+  }
+
+  // Current year (assuming 2026 based on context, but should ideally get from current date)
+  const year = '26';
+  return `${year}${month}${day}`;
+}
+
+/**
  * Get cache key for a straddle
  */
 function getCacheKey(symbol: string, expiry: string, strike: number): string {
@@ -47,46 +82,67 @@ async function fetchFyersOptionPrices(
   appId: string
 ): Promise<{ ce: number; ceVol: number; pe: number; peVol: number } | null> {
   try {
-    // Fyers quotes endpoint
-    const response = await fetch('https://api-t1.fyers.in/api/v3/quotes/', {
-      method: 'POST',
-      headers: {
-        'Authorization': `${appId}:${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        symbols: [`${ceSymbol},${peSymbol}`],
-      }),
-    });
+    // Use /data/history/ endpoint with latest candle (1-minute) to get real-time prices
+    // This works like historical data but with 1-minute resolution for latest price
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
 
-    if (!response.ok) {
-      console.error('[OPTIONS-QUOTES] Fyers API error:', response.status);
+    // For latest intraday price, fetch 1-minute data for today
+    const [ceResponse, peResponse] = await Promise.all([
+      fetch(
+        `https://api-t1.fyers.in/data/history?symbol=${encodeURIComponent(ceSymbol)}&resolution=1&date_format=1&range_from=${todayStr}&range_to=${todayStr}`,
+        {
+          headers: {
+            'Authorization': `${appId}:${accessToken}`,
+          },
+        }
+      ),
+      fetch(
+        `https://api-t1.fyers.in/data/history?symbol=${encodeURIComponent(peSymbol)}&resolution=1&date_format=1&range_from=${todayStr}&range_to=${todayStr}`,
+        {
+          headers: {
+            'Authorization': `${appId}:${accessToken}`,
+          },
+        }
+      ),
+    ]);
+
+    if (!ceResponse.ok || !peResponse.ok) {
+      const ceErr = await ceResponse.text();
+      const peErr = await peResponse.text();
+      console.error('[OPTIONS-QUOTES] Fyers history error - CE:', ceResponse.status, ceErr);
+      console.error('[OPTIONS-QUOTES] Fyers history error - PE:', peResponse.status, peErr);
       return null;
     }
 
-    const data = await response.json();
-    console.log('[OPTIONS-QUOTES] Fyers quotes response:', data);
+    const ceData = await ceResponse.json();
+    const peData = await peResponse.json();
 
-    if (data.s !== 'ok' || !data.d) {
-      console.error('[OPTIONS-QUOTES] Invalid response from Fyers');
+    console.log('[OPTIONS-QUOTES] Fyers CE history:', ceData);
+    console.log('[OPTIONS-QUOTES] Fyers PE history:', peData);
+
+    if (ceData.s !== 'ok' || !ceData.d || peData.s !== 'ok' || !peData.d) {
+      console.error('[OPTIONS-QUOTES] Invalid history response from Fyers');
       return null;
     }
 
-    // Parse quotes
-    const quotes = data.d;
-    const ceQuote = quotes[ceSymbol];
-    const peQuote = quotes[peSymbol];
+    // Get the latest candle for each
+    const ceCandles = ceData.d;
+    const peCandles = peData.d;
 
-    if (!ceQuote || !peQuote) {
-      console.error('[OPTIONS-QUOTES] Missing CE or PE quote');
+    if (!ceCandles || ceCandles.length === 0 || !peCandles || peCandles.length === 0) {
+      console.error('[OPTIONS-QUOTES] No candle data returned');
       return null;
     }
+
+    const ceLatest = ceCandles[ceCandles.length - 1]; // Latest candle
+    const peLatest = peCandles[peCandles.length - 1];
 
     return {
-      ce: ceQuote.ltp || ceQuote.close || 0,
-      ceVol: ceQuote.volume || 0,
-      pe: peQuote.ltp || peQuote.close || 0,
-      peVol: peQuote.volume || 0,
+      ce: ceLatest.close || ceLatest.open || 0,
+      ceVol: ceLatest.volume || 0,
+      pe: peLatest.close || peLatest.open || 0,
+      peVol: peLatest.volume || 0,
     };
   } catch (error: any) {
     console.error('[OPTIONS-QUOTES] Error fetching Fyers quotes:', error.message);
@@ -119,12 +175,13 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Build option symbols
-    const ceSymbol = `${baseSymbol}${expiry}${strike}CE`;
-    const peSymbol = `${baseSymbol}${expiry}${strike}PE`;
+    // Build option symbols - convert expiry to numeric format for Fyers
+    const numericExpiry = convertExpiryToNumeric(expiry);
+    const ceSymbol = `${baseSymbol}${numericExpiry}${strike}CE`;
+    const peSymbol = `${baseSymbol}${numericExpiry}${strike}PE`;
     const cacheKey = getCacheKey(baseSymbol, expiry, strike);
 
-    console.log(`[OPTIONS-QUOTES] Fetching ${ceSymbol} and ${peSymbol}`);
+    console.log(`[OPTIONS-QUOTES] Fetching ${ceSymbol} and ${peSymbol} (expiry: ${expiry} → ${numericExpiry})`);
 
     // Detect broker
     const brokerDetection = await detectUserBroker(userId);

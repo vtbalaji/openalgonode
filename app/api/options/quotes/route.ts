@@ -31,18 +31,20 @@ function calculateATMStrike(spotPrice: number): number {
 }
 
 /**
- * Convert text expiry format to numeric YYMMDD format for Fyers
+ * Convert text expiry format to Fyers numeric format
+ * Format: {YY}{M}{dd} where M is single digit (1-9, O, N, D)
  * Examples:
- * - "13JAN" (current month) → "260113" (Jan 13, 2026)
- * - "16JAN" → "260116"
- * - "23JAN" → "260123"
- * Assumes always current/next year
+ * - "13JAN" → "26113" (Jan 13, 2026)
+ * - "16FEB" → "26216" (Feb 16, 2026)
+ * - "23OCT" → "26O23" (Oct 23, 2026)
+ * - "10NOV" → "26N10" (Nov 10, 2026)
+ * - "25DEC" → "26D25" (Dec 25, 2026)
  */
 function convertExpiryToNumeric(textExpiry: string): string {
   const monthMap: { [key: string]: string } = {
-    'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04',
-    'MAY': '05', 'JUN': '06', 'JUL': '07', 'AUG': '08',
-    'SEP': '09', 'OCT': '10', 'NOV': '11', 'DEC': '12'
+    'JAN': '1', 'FEB': '2', 'MAR': '3', 'APR': '4',
+    'MAY': '5', 'JUN': '6', 'JUL': '7', 'AUG': '8',
+    'SEP': '9', 'OCT': 'O', 'NOV': 'N', 'DEC': 'D'
   };
 
   // Extract day and month from format like "13JAN"
@@ -60,7 +62,7 @@ function convertExpiryToNumeric(textExpiry: string): string {
     return textExpiry;
   }
 
-  // Current year (assuming 2026 based on context, but should ideally get from current date)
+  // Current year (2026)
   const year = '26';
   return `${year}${month}${day}`;
 }
@@ -82,30 +84,72 @@ async function fetchFyersOptionPrices(
   appId: string
 ): Promise<{ ce: number; ceVol: number; pe: number; peVol: number } | null> {
   try {
-    // Use /data/history/ endpoint with latest candle (1-minute) to get real-time prices
-    // This works like historical data but with 1-minute resolution for latest price
+    // Use /data/history/ endpoint with 1-minute resolution for latest price
+    // Try today first, then yesterday if no data
     const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
 
-    // For latest intraday price, fetch 1-minute data for today
-    const [ceResponse, peResponse] = await Promise.all([
-      fetch(
-        `https://api-t1.fyers.in/data/history?symbol=${encodeURIComponent(ceSymbol)}&resolution=1&date_format=1&range_from=${todayStr}&range_to=${todayStr}`,
+    const todayStr = today.toISOString().split('T')[0];
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+    console.log(`[OPTIONS-QUOTES] Attempting to fetch option data for dates: ${todayStr}, ${yesterdayStr}`);
+
+    // Try today's data first
+    let ceResponse = await fetch(
+      `https://api-t1.fyers.in/data/history?symbol=${encodeURIComponent(ceSymbol)}&resolution=1&date_format=1&range_from=${todayStr}&range_to=${todayStr}`,
+      {
+        headers: {
+          'Authorization': `${appId}:${accessToken}`,
+        },
+      }
+    );
+
+    let peResponse = await fetch(
+      `https://api-t1.fyers.in/data/history?symbol=${encodeURIComponent(peSymbol)}&resolution=1&date_format=1&range_from=${todayStr}&range_to=${todayStr}`,
+      {
+        headers: {
+          'Authorization': `${appId}:${accessToken}`,
+        },
+      }
+    );
+
+    let ceData = await ceResponse.json();
+    let peData = await peResponse.json();
+
+    console.log('[OPTIONS-QUOTES] Fyers CE response (today):', { s: ceData.s, count: ceData.candles?.length || ceData.d?.length || 0 });
+    console.log('[OPTIONS-QUOTES] Fyers PE response (today):', { s: peData.s, count: peData.candles?.length || peData.d?.length || 0 });
+
+    // If today has no data, try yesterday
+    if (ceData.s === 'no_data' || !ceData.d || ceData.d.length === 0 ||
+        peData.s === 'no_data' || !peData.d || peData.d.length === 0) {
+
+      console.log('[OPTIONS-QUOTES] No data for today, trying yesterday...');
+
+      ceResponse = await fetch(
+        `https://api-t1.fyers.in/data/history?symbol=${encodeURIComponent(ceSymbol)}&resolution=1&date_format=1&range_from=${yesterdayStr}&range_to=${yesterdayStr}`,
         {
           headers: {
             'Authorization': `${appId}:${accessToken}`,
           },
         }
-      ),
-      fetch(
-        `https://api-t1.fyers.in/data/history?symbol=${encodeURIComponent(peSymbol)}&resolution=1&date_format=1&range_from=${todayStr}&range_to=${todayStr}`,
+      );
+
+      peResponse = await fetch(
+        `https://api-t1.fyers.in/data/history?symbol=${encodeURIComponent(peSymbol)}&resolution=1&date_format=1&range_from=${yesterdayStr}&range_to=${yesterdayStr}`,
         {
           headers: {
             'Authorization': `${appId}:${accessToken}`,
           },
         }
-      ),
-    ]);
+      );
+
+      ceData = await ceResponse.json();
+      peData = await peResponse.json();
+
+      console.log('[OPTIONS-QUOTES] Fyers CE response (yesterday):', { s: ceData.s, count: ceData.candles?.length || ceData.d?.length || 0 });
+      console.log('[OPTIONS-QUOTES] Fyers PE response (yesterday):', { s: peData.s, count: peData.candles?.length || peData.d?.length || 0 });
+    }
 
     if (!ceResponse.ok || !peResponse.ok) {
       const ceErr = await ceResponse.text();
@@ -115,34 +159,42 @@ async function fetchFyersOptionPrices(
       return null;
     }
 
-    const ceData = await ceResponse.json();
-    const peData = await peResponse.json();
-
-    console.log('[OPTIONS-QUOTES] Fyers CE history:', ceData);
-    console.log('[OPTIONS-QUOTES] Fyers PE history:', peData);
-
-    if (ceData.s !== 'ok' || !ceData.d || peData.s !== 'ok' || !peData.d) {
-      console.error('[OPTIONS-QUOTES] Invalid history response from Fyers');
+    if (ceData.s !== 'ok' || peData.s !== 'ok') {
+      console.error('[OPTIONS-QUOTES] Invalid response status from Fyers:', { ce: ceData.s, pe: peData.s });
       return null;
     }
 
-    // Get the latest candle for each
-    const ceCandles = ceData.d;
-    const peCandles = peData.d;
+    // Get the latest candle for each - Fyers returns data in either 'd' or 'candles' field
+    const ceCandles = ceData.d || ceData.candles;
+    const peCandles = peData.d || peData.candles;
 
     if (!ceCandles || ceCandles.length === 0 || !peCandles || peCandles.length === 0) {
-      console.error('[OPTIONS-QUOTES] No candle data returned');
+      console.error('[OPTIONS-QUOTES] No candle data returned', {
+        ceCount: ceCandles?.length || 0,
+        peCount: peCandles?.length || 0
+      });
       return null;
     }
 
     const ceLatest = ceCandles[ceCandles.length - 1]; // Latest candle
     const peLatest = peCandles[peCandles.length - 1];
 
+    console.log('[OPTIONS-QUOTES] Latest CE candle:', ceLatest);
+    console.log('[OPTIONS-QUOTES] Latest PE candle:', peLatest);
+
+    // Extract price from available fields (OHLC array or individual fields)
+    const cePrice = Array.isArray(ceLatest) ? ceLatest[3] : (ceLatest.close || ceLatest.c || ceLatest.ltp || 0);
+    const pePrice = Array.isArray(peLatest) ? peLatest[3] : (peLatest.close || peLatest.c || peLatest.ltp || 0);
+    const ceVol = Array.isArray(ceLatest) ? ceLatest[4] : (ceLatest.volume || ceLatest.v || 0);
+    const peVol = Array.isArray(peLatest) ? peLatest[4] : (peLatest.volume || peLatest.v || 0);
+
+    console.log('[OPTIONS-QUOTES] Extracted prices - CE:', cePrice, 'PE:', pePrice, 'Volumes - CE:', ceVol, 'PE:', peVol);
+
     return {
-      ce: ceLatest.close || ceLatest.open || 0,
-      ceVol: ceLatest.volume || 0,
-      pe: peLatest.close || peLatest.open || 0,
-      peVol: peLatest.volume || 0,
+      ce: cePrice,
+      ceVol: ceVol,
+      pe: pePrice,
+      peVol: peVol,
     };
   } catch (error: any) {
     console.error('[OPTIONS-QUOTES] Error fetching Fyers quotes:', error.message);

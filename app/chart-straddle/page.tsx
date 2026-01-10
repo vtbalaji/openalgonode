@@ -7,9 +7,7 @@ import { useRealtimePrice } from '@/hooks/useRealtimePrice';
 export default function StraddleChartPage() {
   const [symbol, setSymbol] = useState('NIFTY26JANFUT');
   const [expiry, setExpiry] = useState('13JAN');
-  const [interval, setInterval] = useState('5minute');
   const [chartHeight, setChartHeight] = useState(600);
-  const [lookbackDays, setLookbackDays] = useState(10);
   const [spotPrice, setSpotPrice] = useState(25683);
   const userId = 'ZnT1kjZKElV6NJte2wgoDU5dF8j2';
 
@@ -58,7 +56,7 @@ export default function StraddleChartPage() {
 
         {/* Controls */}
         <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-lg shadow-lg p-6 mb-6 border border-slate-700">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
             {/* Underlying Symbol */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -92,37 +90,14 @@ export default function StraddleChartPage() {
               </select>
             </div>
 
-            {/* Interval */}
+            {/* ATM Strike Info */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
-                Interval
+                ATM Strike
               </label>
-              <select
-                value={interval}
-                onChange={(e) => setInterval(e.target.value)}
-                className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-blue-500 focus:outline-none"
-              >
-                <option value="minute">1 Min</option>
-                <option value="5minute">5 Min</option>
-                <option value="15minute">15 Min</option>
-                <option value="60minute">1 Hour</option>
-                <option value="day">Daily</option>
-              </select>
-            </div>
-
-            {/* Lookback */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Lookback Days
-              </label>
-              <input
-                type="number"
-                min="1"
-                max="100"
-                value={lookbackDays}
-                onChange={(e) => setLookbackDays(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
-                className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-blue-500 focus:outline-none"
-              />
+              <div className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white font-semibold">
+                {(Math.round(spotPrice / 100) * 100).toLocaleString('en-IN')}
+              </div>
             </div>
 
             {/* Status */}
@@ -145,9 +120,9 @@ export default function StraddleChartPage() {
           {/* Info */}
           <div className="mt-4 p-4 bg-slate-900 rounded border border-slate-700">
             <p className="text-sm text-gray-400">
-              <strong>📊 Straddle Premium:</strong> Sum of Call (CE) and Put (PE) option prices at ATM
-              strike. <strong>Volume:</strong> Sum of CE and PE volumes. Strike is
-              auto-detected based on current spot price (rounded to nearest 100).
+              <strong>📊 Real-time Straddle Premium:</strong> Real-time sum of Call (CE) and Put (PE) option prices at ATM strike.
+              <strong> Volume:</strong> Combined CE and PE volumes.
+              <strong> Data:</strong> Last 1-3 days of real-time quotes, updated every 60 seconds. Strike is auto-detected based on current spot price (rounded to nearest 100).
             </p>
           </div>
         </div>
@@ -157,10 +132,8 @@ export default function StraddleChartPage() {
           <StraddleChart
             baseSymbol={symbol.replace('FUT', '')} // NIFTY26JANFUT → NIFTY
             expiry={expiry}
-            interval={interval}
             userId={userId}
             height={chartHeight}
-            lookbackDays={lookbackDays}
             spotPrice={spotPrice}
             autoRefresh={true}
           />

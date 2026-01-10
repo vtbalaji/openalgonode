@@ -12,10 +12,8 @@ import {
 export interface StraddleChartProps {
   baseSymbol: string;
   expiry: string;
-  interval: string;
   userId: string;
   height: number;
-  lookbackDays: number;
   spotPrice: number;
   autoRefresh?: boolean;
 }
@@ -23,10 +21,8 @@ export interface StraddleChartProps {
 export default function StraddleChart({
   baseSymbol,
   expiry,
-  interval,
   userId,
   height,
-  lookbackDays,
   spotPrice,
   autoRefresh = true,
 }: StraddleChartProps) {
@@ -127,31 +123,22 @@ export default function StraddleChart({
     }
   }, [height]);
 
-  // Fetch straddle data
+  // Fetch straddle data (real-time quotes)
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
         setError(null);
 
-        const today = new Date();
-        const from = new Date(today);
-        from.setDate(today.getDate() - lookbackDays);
-
-        const fromStr = from.toISOString().split('T')[0];
-        const toStr = today.toISOString().split('T')[0];
-
+        // For real-time quotes, we don't need date ranges - just fetch last available data
         const params = new URLSearchParams({
           symbol: baseSymbol,
           expiry,
-          interval,
           userId,
-          from: fromStr,
-          to: toStr,
           spotPrice: spotPrice.toString(),
         });
 
-        const response = await fetch(`/api/options/straddle?${params.toString()}`);
+        const response = await fetch(`/api/options/quotes?${params.toString()}`);
 
         if (!response.ok) {
           const error = await response.json().catch(() => ({}));
@@ -166,17 +153,17 @@ export default function StraddleChart({
 
         setStrike(result.strike);
 
-        // Transform data for charting
+        // Transform real-time quote data for charting
         const candleData: CandlestickData[] = [];
         const volumeData: HistogramData[] = [];
         const ceData: any[] = [];
         const peData: any[] = [];
 
-        result.data.forEach((candle: any) => {
-          // Straddle premium candlestick
-          const premium = candle.straddlePremium;
+        result.data.forEach((point: any) => {
+          // Straddle premium candlestick (single point, so all OHLC are same)
+          const premium = point.straddlePremium;
           candleData.push({
-            time: candle.time,
+            time: point.time,
             open: premium,
             high: premium,
             low: premium,
@@ -185,20 +172,20 @@ export default function StraddleChart({
 
           // Volume histogram
           volumeData.push({
-            time: candle.time,
-            value: candle.totalVolume,
-            color: candle.totalVolume > 0 ? 'rgba(76, 175, 80, 0.5)' : 'rgba(244, 67, 54, 0.5)',
+            time: point.time,
+            value: point.totalVolume,
+            color: point.totalVolume > 0 ? 'rgba(76, 175, 80, 0.5)' : 'rgba(244, 67, 54, 0.5)',
           });
 
           // CE and PE lines
           ceData.push({
-            time: candle.time,
-            value: candle.cePrice,
+            time: point.time,
+            value: point.cePrice,
           });
 
           peData.push({
-            time: candle.time,
-            value: candle.pePrice,
+            time: point.time,
+            value: point.pePrice,
           });
         });
 
@@ -222,12 +209,13 @@ export default function StraddleChart({
     };
 
     fetchData();
-    const intervalId = autoRefresh ? setInterval(fetchData, 5 * 60 * 1000) : undefined;
+    // For real-time quotes, refresh every 60 seconds (1 minute) instead of 5 minutes
+    const intervalId = autoRefresh ? setInterval(fetchData, 60 * 1000) : undefined;
 
     return () => {
       if (intervalId) clearInterval(intervalId);
     };
-  }, [baseSymbol, expiry, interval, userId, lookbackDays, spotPrice, autoRefresh]);
+  }, [baseSymbol, expiry, userId, spotPrice, autoRefresh]);
 
   // Show error message with debugging info
   if (error) {

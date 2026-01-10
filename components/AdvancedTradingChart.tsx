@@ -133,8 +133,8 @@ export function AdvancedTradingChart({
   const emaSignalsRef = useRef<any[]>([]);
 
   // Refs to prevent infinite loop from setState in useEffect
-  const prevVolumeProfileRef = useRef<any>(null);
-  const prevVolumeProfileVisibleRef = useRef<any>(null);
+  const prevVolumeProfileDataRef = useRef<string>('');
+  const prevVolumeProfileVisibleDataRef = useRef<string>('');
 
   // SMC data states
   const [smcFVG, setSMCFVG] = useState<FairValueGap[]>([]);
@@ -949,10 +949,16 @@ export function AdvancedTradingChart({
         0.70
       );
 
-      // Store for histogram rendering - only update if data has changed
-      if (prevVolumeProfileRef.current !== volumeProfileResult) {
+      // Store for histogram rendering - only update if data has actually changed
+      const volumeProfileDataHash = JSON.stringify({
+        poc: volumeProfileResult.poc,
+        bins: volumeProfileResult.profile.length,
+        totalVolume: volumeProfileResult.totalVolume
+      });
+
+      if (prevVolumeProfileDataRef.current !== volumeProfileDataHash) {
         setVolumeProfileData(volumeProfileResult);
-        prevVolumeProfileRef.current = volumeProfileResult;
+        prevVolumeProfileDataRef.current = volumeProfileDataHash;
       }
 
       // Find max volume for verification
@@ -1093,10 +1099,16 @@ export function AdvancedTradingChart({
           0.70
         );
 
-        // Store for histogram rendering - only update if data has changed
-        if (prevVolumeProfileVisibleRef.current !== volumeProfileVisibleResult) {
+        // Store for histogram rendering - only update if data has actually changed
+        const volumeProfileVisibleDataHash = JSON.stringify({
+          poc: volumeProfileVisibleResult.poc,
+          bins: volumeProfileVisibleResult.profile.length,
+          totalVolume: volumeProfileVisibleResult.totalVolume
+        });
+
+        if (prevVolumeProfileVisibleDataRef.current !== volumeProfileVisibleDataHash) {
           setVolumeProfileVisibleData(volumeProfileVisibleResult);
-          prevVolumeProfileVisibleRef.current = volumeProfileVisibleResult;
+          prevVolumeProfileVisibleDataRef.current = volumeProfileVisibleDataHash;
         }
 
         // Get top 5 bars by volume

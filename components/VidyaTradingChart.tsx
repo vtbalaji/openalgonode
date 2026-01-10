@@ -184,14 +184,28 @@ export default function VidyaTradingChart({
         rightPriceScale: { autoScale: true },
         localization: {
           timeFormatter: (time: any) => {
-            // Convert Unix timestamp to IST for crosshair tooltip
+            // Convert Unix timestamp to IST (UTC+5:30)
             const date = new Date(time * 1000);
-            return date.toLocaleTimeString('en-IN', {
+
+            // Format: "21 Jan at 04:31 PM" in IST timezone
+            const day = date.toLocaleString('en-IN', {
+              timeZone: 'Asia/Kolkata',
+              day: '2-digit',
+            });
+
+            const month = date.toLocaleString('en-IN', {
+              timeZone: 'Asia/Kolkata',
+              month: 'short',
+            });
+
+            const timeStr = date.toLocaleString('en-IN', {
               timeZone: 'Asia/Kolkata',
               hour: '2-digit',
               minute: '2-digit',
-              hour12: false
+              hour12: true,
             });
+
+            return `${day} ${month} at ${timeStr}`;
           },
         },
       });

@@ -20,11 +20,27 @@ import { detectUserBroker } from '@/lib/brokerDetection';
 import { decryptData } from '@/lib/encryptionUtils';
 
 /**
+ * Get the last Thursday of a month (last trading day for monthly options)
+ */
+function getLastThursday(year: number, month: number): number {
+  // Start from the last day of the month
+  let date = new Date(year, month + 1, 0);
+
+  // Move back to the previous Thursday if needed
+  while (date.getDay() !== 4) { // 4 = Thursday
+    date.setDate(date.getDate() - 1);
+  }
+
+  return date.getDate();
+}
+
+/**
  * Convert text expiry format to Fyers numeric format
- * Format: {YY}{M}{dd} where M is single digit (1-9, O, N, D)
- * Examples:
- * - "13JAN" → "26113" (Jan 13, 2026)
- * - "16FEB" → "26216" (Feb 16, 2026)
+ * Supports both weekly and monthly expiries:
+ * - Weekly: {YY}{M}{dd} where M is single digit (1-9, O, N, D)
+ *   Examples: "13JAN" → "26113", "30JAN" → "26130"
+ * - Monthly: {YY}{M}{lastThursday}
+ *   Examples: "JAN" → "26131" (Jan 31, 2026 is last Thursday)
  */
 function convertExpiryToNumeric(textExpiry: string): string {
   const monthMap: { [key: string]: string } = {
@@ -33,22 +49,44 @@ function convertExpiryToNumeric(textExpiry: string): string {
     'SEP': '9', 'OCT': 'O', 'NOV': 'N', 'DEC': 'D'
   };
 
-  const match = textExpiry.match(/^(\d{1,2})([A-Z]{3})$/);
-  if (!match) {
-    console.warn(`[OPTIONS-HISTORICAL] Could not parse expiry: ${textExpiry}`);
-    return textExpiry;
-  }
-
-  const day = match[1].padStart(2, '0');
-  const month = monthMap[match[2]];
-
-  if (!month) {
-    console.warn(`[OPTIONS-HISTORICAL] Unknown month in expiry: ${textExpiry}`);
-    return textExpiry;
-  }
+  const monthNameToNum: { [key: string]: number } = {
+    'JAN': 0, 'FEB': 1, 'MAR': 2, 'APR': 3,
+    'MAY': 4, 'JUN': 5, 'JUL': 6, 'AUG': 7,
+    'SEP': 8, 'OCT': 9, 'NOV': 10, 'DEC': 11
+  };
 
   const year = '26'; // 2026
-  return `${year}${month}${day}`;
+
+  // Try weekly format first: "13JAN" (day + month)
+  const weeklyMatch = textExpiry.match(/^(\d{1,2})([A-Z]{3})$/);
+  if (weeklyMatch) {
+    const day = weeklyMatch[1].padStart(2, '0');
+    const month = monthMap[weeklyMatch[2]];
+
+    if (month) {
+      const result = `${year}${month}${day}`;
+      console.log(`[OPTIONS-HISTORICAL] Converted weekly expiry "${textExpiry}" → "${result}"`);
+      return result;
+    }
+  }
+
+  // Try monthly format: "JAN" (month only) - use last Thursday of month
+  const monthlyMatch = textExpiry.match(/^([A-Z]{3})$/);
+  if (monthlyMatch) {
+    const monthName = monthlyMatch[1];
+    const month = monthMap[monthName];
+    const monthNum = monthNameToNum[monthName];
+
+    if (month) {
+      const lastThursday = getLastThursday(2026, monthNum).toString().padStart(2, '0');
+      const result = `${year}${month}${lastThursday}`;
+      console.log(`[OPTIONS-HISTORICAL] Converted monthly expiry "${textExpiry}" → "${result}" (last Thursday)`);
+      return result;
+    }
+  }
+
+  console.warn(`[OPTIONS-HISTORICAL] Could not parse expiry: ${textExpiry}`);
+  return textExpiry;
 }
 
 /**
@@ -120,14 +158,27 @@ async function fetchFyersOptionHistory(
     }
 
     // Transform to standard format
-    const transformed = candles.map((candle: any[]) => ({
-      time: Math.floor(candle[0] / 1000), // Convert ms to seconds
-      open: candle[1],
-      high: candle[2],
-      low: candle[3],
-      close: candle[4],
-      volume: candle[5] || 0,
-    }));
+    // Fyers returns timestamps in milliseconds (Unix timestamp)
+    // Convert to seconds for lightweight-charts (which expects Unix timestamp in seconds)
+    // Note: Timestamps are timezone-agnostic; IST display is handled by chart's timeFormatter
+    const transformed = candles.map((candle: any[]) => {
+      // Fyers timestamp can be in milliseconds or seconds, handle both
+      let timestamp = candle[0];
+
+      // If timestamp is very large (> 10^11), it's in milliseconds, convert to seconds
+      if (timestamp > 100000000000) {
+        timestamp = Math.floor(timestamp / 1000);
+      }
+
+      return {
+        time: timestamp,
+        open: candle[1],
+        high: candle[2],
+        low: candle[3],
+        close: candle[4],
+        volume: candle[5] || 0,
+      };
+    });
 
     console.log(`[OPTIONS-HISTORICAL] Got ${transformed.length} candles for ${symbol}`);
     return transformed;
@@ -177,7 +228,12 @@ export async function GET(request: NextRequest) {
     const ceSymbol = `NSE:${baseSymbol}${numericExpiry}${strike}CE`;
     const peSymbol = `NSE:${baseSymbol}${numericExpiry}${strike}PE`;
 
-    console.log(`[OPTIONS-HISTORICAL] CE: ${ceSymbol}, PE: ${peSymbol}`);
+    console.log(`[OPTIONS-HISTORICAL] Raw expiry input: "${expiry}"`);
+    console.log(`[OPTIONS-HISTORICAL] Converted numeric expiry: "${numericExpiry}"`);
+    console.log(`[OPTIONS-HISTORICAL] Base symbol: ${baseSymbol}`);
+    console.log(`[OPTIONS-HISTORICAL] Strike: ${strike}`);
+    console.log(`[OPTIONS-HISTORICAL] CE Symbol: ${ceSymbol}`);
+    console.log(`[OPTIONS-HISTORICAL] PE Symbol: ${peSymbol}`);
 
     // Detect broker
     const brokerDetection = await detectUserBroker(userId);
@@ -222,28 +278,38 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Combine CE and PE data
-    const combinedData = [];
-    const minLength = Math.min(ceData.length, peData.length);
+    // Combine CE and PE data by matching timestamps (not by index)
+    const combinedData: any[] = [];
 
-    for (let i = 0; i < minLength; i++) {
-      const ce = ceData[i];
-      const pe = peData[i];
+    // Create a map of PE data by timestamp for fast lookup
+    const peMap = new Map();
+    peData.forEach((pe) => {
+      peMap.set(pe.time, pe);
+    });
 
-      combinedData.push({
-        time: Math.max(ce.time, pe.time),
-        open: ce.open + pe.open,
-        high: ce.high + pe.high,
-        low: ce.low + pe.low,
-        close: ce.close + pe.close,
-        volume: ce.volume + pe.volume,
-        // Also include individual prices for reference
-        cePrice: ce.close,
-        pePrice: pe.close,
-        ceVolume: ce.volume,
-        peVolume: pe.volume,
-      });
-    }
+    // Iterate through CE data and match with PE data by timestamp
+    ceData.forEach((ce) => {
+      const pe = peMap.get(ce.time);
+
+      // Only include if both CE and PE have data for this timestamp
+      if (pe) {
+        combinedData.push({
+          time: ce.time,
+          open: ce.open + pe.open,
+          high: ce.high + pe.high,
+          low: ce.low + pe.low,
+          close: ce.close + pe.close,
+          volume: ce.volume + pe.volume,
+          // Also include individual prices for reference
+          cePrice: ce.close,
+          pePrice: pe.close,
+          ceVolume: ce.volume,
+          peVolume: pe.volume,
+        });
+      }
+    });
+
+    console.log(`[OPTIONS-HISTORICAL] Combined ${combinedData.length} matching candles (CE: ${ceData.length}, PE: ${peData.length})`);
 
     return NextResponse.json({
       success: true,

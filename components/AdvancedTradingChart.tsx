@@ -159,14 +159,26 @@ export function AdvancedTradingChart({
         timeFormatter: (timestamp: number) => {
           // Convert Unix timestamp to IST (UTC+5:30)
           const date = new Date(timestamp * 1000);
-          // Format in IST timezone
-          return date.toLocaleString('en-IN', {
+
+          // Format: "21 Jan at 04:31 PM" in IST timezone
+          const day = date.toLocaleString('en-IN', {
+            timeZone: 'Asia/Kolkata',
+            day: '2-digit',
+          });
+
+          const month = date.toLocaleString('en-IN', {
+            timeZone: 'Asia/Kolkata',
+            month: 'short',
+          });
+
+          const time = date.toLocaleString('en-IN', {
             timeZone: 'Asia/Kolkata',
             hour: '2-digit',
             minute: '2-digit',
-            day: '2-digit',
-            month: 'short',
+            hour12: true,
           });
+
+          return `${day} ${month} at ${time}`;
         },
       },
       grid: {
@@ -259,14 +271,26 @@ export function AdvancedTradingChart({
           timeFormatter: (timestamp: number) => {
             // Convert Unix timestamp to IST (UTC+5:30)
             const date = new Date(timestamp * 1000);
-            // Format in IST timezone
-            return date.toLocaleString('en-IN', {
+
+            // Format: "21 Jan at 04:31 PM" in IST timezone
+            const day = date.toLocaleString('en-IN', {
+              timeZone: 'Asia/Kolkata',
+              day: '2-digit',
+            });
+
+            const month = date.toLocaleString('en-IN', {
+              timeZone: 'Asia/Kolkata',
+              month: 'short',
+            });
+
+            const time = date.toLocaleString('en-IN', {
               timeZone: 'Asia/Kolkata',
               hour: '2-digit',
               minute: '2-digit',
-              day: '2-digit',
-              month: 'short',
+              hour12: true,
             });
+
+            return `${day} ${month} at ${time}`;
           },
         },
         grid: {

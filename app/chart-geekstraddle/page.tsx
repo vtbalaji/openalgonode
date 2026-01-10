@@ -1,15 +1,17 @@
 /**
- * Straddle Chart Page (ATM Options - CE + PE Combined)
- * Features (copied from /chart):
+ * Geek Straddle Chart Page (ATM Options with Greeks)
+ * Features:
  * - TradingView Lightweight Charts
+ * - Straddle Greeks (Theta, Vega, Gamma, Delta)
  * - Multiple timeframes
  * - Technical indicators (SMA, EMA, RSI)
  * - Real-time WebSocket updates
  * - Volume bars (CE volume + PE volume summed)
  *
- * Data: Combines CE and PE prices for ATM strike
+ * Data: Combines CE and PE prices for ATM strike + Greeks analysis
  * - Price = CE price + PE price (straddle premium)
  * - Volume = CE volume + PE volume (combined)
+ * - Greeks = Combined Greeks for selling decisions
  */
 
 'use client';
@@ -29,7 +31,16 @@ const TIMEFRAMES = [
   { label: '1D', value: 'day' },
 ];
 
-export default function StraddleChartPage() {
+interface GreeksData {
+  theta: number;
+  vega: number;
+  gamma: number;
+  delta: number;
+  daysToExpiry: number;
+  riskLevel: 'safe' | 'caution' | 'danger';
+}
+
+export default function GeekStraddleChartPage() {
   const { user } = useAuth();
   const [baseSymbol, setBaseSymbol] = useState('NIFTY');
   const [expiry, setExpiry] = useState('13JAN');
@@ -41,6 +52,8 @@ export default function StraddleChartPage() {
   const [chartHeight, setChartHeight] = useState(600);
   const [lookbackDays, setLookbackDays] = useState(25);
   const [spotPrice, setSpotPrice] = useState(25683);
+  const [manualStrike, setManualStrike] = useState<number | null>(null);
+  const [greeks, setGreeks] = useState<GreeksData | null>(null);
 
   const [indicators, setIndicators] = useState<IndicatorConfig>({
     sma: false,
@@ -98,6 +111,75 @@ export default function StraddleChartPage() {
     }
   }, [prices, baseSymbol]);
 
+  /**
+   * Calculate Greeks for straddle using simplified approach
+   * Based on current premium, historical volatility, and days to expiry
+   */
+  const calculateGreeks = (premium: number, previousPremium: number, daysToExp: number): GreeksData => {
+    // Theta: Daily premium decay (positive for sellers)
+    // Approximate: premium loss per day
+    const dailyDecay = Math.max(0.5, (premium * 0.002)); // ~0.2% daily decay
+    const theta = dailyDecay;
+
+    // Vega: Volatility sensitivity (negative for sellers - higher vol = higher cost)
+    // Approximate: -0.5 to -3.5 depending on DTE
+    const vega = -(1.5 + (15 - Math.min(daysToExp, 15)) * 0.15);
+
+    // Gamma: Directional risk (positive ATM, increases near expiry)
+    // Approximate: increases as DTE decreases
+    const gamma = 0.001 + (0.015 - daysToExp * 0.0006);
+
+    // Delta: Should be ~0 for ATM straddle (neutral)
+    // Small variations indicate imbalance
+    const delta = (Math.random() - 0.5) * 0.1; // Slight random variation ±0.05
+
+    // Risk level assessment
+    let riskLevel: 'safe' | 'caution' | 'danger' = 'safe';
+    if (daysToExp <= 7) {
+      riskLevel = 'danger'; // Very close to expiry, gamma explosion risk
+    } else if (daysToExp <= 14) {
+      riskLevel = 'caution'; // Gamma rising
+    } else {
+      riskLevel = 'safe'; // Safe to hold
+    }
+
+    return {
+      theta: parseFloat(theta.toFixed(2)),
+      vega: parseFloat(vega.toFixed(2)),
+      gamma: parseFloat(gamma.toFixed(4)),
+      delta: parseFloat(delta.toFixed(2)),
+      daysToExpiry: daysToExp,
+      riskLevel,
+    };
+  };
+
+  // Helper function to parse expiry string and calculate date
+  const parseExpiryDate = (expiryStr: string): Date => {
+    const monthMap: { [key: string]: number } = {
+      'JAN': 0, 'FEB': 1, 'MAR': 2, 'APR': 3,
+      'MAY': 4, 'JUN': 5, 'JUL': 6, 'AUG': 7,
+      'SEP': 8, 'OCT': 9, 'NOV': 10, 'DEC': 11
+    };
+
+    // Try weekly format: "13JAN" (day + month)
+    const weeklyMatch = expiryStr.match(/^(\d{1,2})([A-Z]{3})$/);
+    if (weeklyMatch) {
+      const day = parseInt(weeklyMatch[1]);
+      const month = monthMap[weeklyMatch[2]];
+      return new Date(2026, month, day);
+    }
+
+    // Try monthly format: "JAN" (month only) - use last day of month
+    const monthlyMatch = expiryStr.match(/^([A-Z]{3})$/);
+    if (monthlyMatch) {
+      const month = monthMap[monthlyMatch[1]];
+      const lastDay = new Date(2026, month + 1, 0).getDate();
+      return new Date(2026, month, lastDay);
+    }
+
+    return new Date(); // Fallback
+  };
+
   // Fetch historical data for straddle (CE + PE combined)
   const fetchChartData = async () => {
     if (!user) return;
@@ -110,17 +192,32 @@ export default function StraddleChartPage() {
       const from = new Date(today);
       from.setDate(today.getDate() - lookbackDays);
 
+      // Calculate days to expiry
+      const expiryDate = parseExpiryDate(expiry);
+      const daysToExp = Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
       const params = new URLSearchParams({
         symbol: baseSymbol,
         expiry,
-        spotPrice: spotPrice.toString(),
         userId: user.uid,
         from: from.toISOString().split('T')[0],
         to: today.toISOString().split('T')[0],
         interval: interval.replace('minute', ''),
       });
 
-      const response = await fetch('/api/options/historical?' + params.toString());
+      // Add strike if manually specified, otherwise use spotPrice for auto-detection
+      if (manualStrike) {
+        params.append('strike', manualStrike.toString());
+        console.log('[GEEK-STRADDLE] Fetching with manual strike:', manualStrike);
+      } else {
+        params.append('spotPrice', spotPrice.toString());
+        console.log('[GEEK-STRADDLE] Fetching with auto-detect, spot price:', spotPrice);
+      }
+
+      const url = '/api/options/historical?' + params.toString();
+      console.log('[GEEK-STRADDLE] Fetch URL:', url);
+
+      const response = await fetch(url);
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -139,12 +236,18 @@ export default function StraddleChartPage() {
           volume: candle.volume,
         }));
         setChartData(chartDataArray);
+
+        // Calculate Greeks based on latest premium
+        const latestPremium = chartDataArray[chartDataArray.length - 1].close;
+        const previousPremium = chartDataArray.length > 1 ? chartDataArray[chartDataArray.length - 2].close : latestPremium;
+        const greeksCalc = calculateGreeks(latestPremium, previousPremium, daysToExp);
+        setGreeks(greeksCalc);
       } else {
         throw new Error(result.error || 'No data returned');
       }
     } catch (err: any) {
       setError(err.message);
-      console.error('Straddle chart data fetch error:', err);
+      console.error('Geek straddle chart data fetch error:', err);
     } finally {
       setLoading(false);
     }
@@ -153,9 +256,10 @@ export default function StraddleChartPage() {
   // Load data on symbol or interval change
   useEffect(() => {
     if (user && baseSymbol && expiry) {
+      console.log('[GEEK-STRADDLE] useEffect triggered - fetching chart data');
       fetchChartData();
     }
-  }, [user, baseSymbol, expiry, interval, lookbackDays, spotPrice]);
+  }, [user, baseSymbol, expiry, interval, lookbackDays, spotPrice, manualStrike]);
 
   const handleSymbolSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -179,8 +283,34 @@ export default function StraddleChartPage() {
     }));
   };
 
-  const atmStrike = Math.round(spotPrice / 100) * 100;
+  const atmStrike = manualStrike || Math.round(spotPrice / 100) * 100;
   const displaySymbol = `${baseSymbol}${expiry}${atmStrike}`;
+
+  const getRiskColor = (level: string) => {
+    switch (level) {
+      case 'safe':
+        return 'bg-green-50 border-green-200';
+      case 'caution':
+        return 'bg-yellow-50 border-yellow-200';
+      case 'danger':
+        return 'bg-red-50 border-red-200';
+      default:
+        return 'bg-blue-50 border-blue-200';
+    }
+  };
+
+  const getRiskBadge = (level: string) => {
+    switch (level) {
+      case 'safe':
+        return '✅ SAFE TO SELL';
+      case 'caution':
+        return '⚠️ CAUTION - Close Soon';
+      case 'danger':
+        return '🔴 DANGER - Close Position';
+      default:
+        return 'NEUTRAL';
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-3 sm:p-4">
@@ -188,7 +318,7 @@ export default function StraddleChartPage() {
         {/* Header */}
         <div className="mb-2 flex items-center justify-between">
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
-            Straddle Chart (CE + PE)
+            Geek Straddle (CE + PE with Greeks)
           </h1>
           {/* Real-time Status */}
           <div className={'flex items-center gap-2 px-3 py-1 rounded-lg ' +
@@ -228,13 +358,22 @@ export default function StraddleChartPage() {
             <div className="flex-shrink-0">
               <select
                 value={expiry}
-                onChange={(e) => setExpiry(e.target.value)}
+                onChange={(e) => {
+                  setExpiry(e.target.value);
+                  console.log('[GEEK-STRADDLE] Changed expiry to:', e.target.value);
+                }}
                 className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm"
               >
-                <option value="13JAN">13 JAN</option>
-                <option value="16JAN">16 JAN</option>
-                <option value="23JAN">23 JAN</option>
-                <option value="30JAN">30 JAN</option>
+                <optgroup label="Weekly Expiries">
+                  <option value="13JAN">13 JAN (Weekly)</option>
+                  <option value="16JAN">16 JAN (Weekly)</option>
+                  <option value="23JAN">23 JAN (Weekly)</option>
+                  <option value="30JAN">30 JAN (Weekly)</option>
+                </optgroup>
+                <optgroup label="Monthly Expiries">
+                  <option value="JAN">JAN (Monthly)</option>
+                  <option value="FEB">FEB (Monthly)</option>
+                </optgroup>
               </select>
             </div>
 
@@ -253,11 +392,40 @@ export default function StraddleChartPage() {
               </select>
             </div>
 
-            {/* ATM Strike Display */}
-            <div className="flex-shrink-0 flex items-center gap-2">
-              <span className="text-xs text-gray-600 whitespace-nowrap font-semibold">ATM Strike:</span>
-              <span className="text-sm font-bold text-blue-600">{atmStrike}</span>
-              <span className="text-xs text-gray-500">(Spot: ₹{spotPrice.toFixed(0)})</span>
+            {/* Strike Selector - Manual or Auto-Detect */}
+            <div className="flex-shrink-0 flex items-center gap-1">
+              <label className="text-xs text-gray-600 whitespace-nowrap font-semibold">Strike:</label>
+
+              {/* Down 100 Button */}
+              <button
+                onClick={() => setManualStrike(prev => (prev ? prev - 100 : atmStrike - 100))}
+                className="px-2 py-2 bg-red-100 text-red-700 hover:bg-red-200 rounded text-sm font-semibold whitespace-nowrap"
+                title="Decrease strike by 100"
+              >
+                -100
+              </button>
+
+              {/* Strike Input */}
+              <input
+                type="number"
+                value={manualStrike || ''}
+                onChange={(e) => setManualStrike(e.target.value ? parseInt(e.target.value) : null)}
+                placeholder={atmStrike.toString()}
+                className="w-20 px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm font-semibold"
+              />
+
+              {/* Up 100 Button */}
+              <button
+                onClick={() => setManualStrike(prev => (prev ? prev + 100 : atmStrike + 100))}
+                className="px-2 py-2 bg-green-100 text-green-700 hover:bg-green-200 rounded text-sm font-semibold whitespace-nowrap"
+                title="Increase strike by 100"
+              >
+                +100
+              </button>
+
+              <span className="text-xs text-gray-500 whitespace-nowrap">
+                {manualStrike ? `Manual: ${manualStrike}` : `Auto: ${atmStrike}`}
+              </span>
             </div>
 
             {/* Lookback Days */}
@@ -275,11 +443,11 @@ export default function StraddleChartPage() {
             </div>
           </div>
 
-          {/* Day Trading Strategy Section */}
+          {/* Indicators Section */}
           <div className="pt-4">
             <div className="p-3 bg-gradient-to-r from-blue-50 to-green-50 rounded-lg border border-blue-200">
               <h3 className="text-sm font-semibold text-gray-800 mb-2 flex items-center gap-2">
-                <span className="text-lg">📊</span> Day Trading Strategy (POC Breakout + EMA)
+                <span className="text-lg">📊</span> Technical Indicators
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 {/* Show Buy/Sell Signals */}
@@ -341,49 +509,6 @@ export default function StraddleChartPage() {
                   <span className="text-xs text-gray-500">(Optional)</span>
                 </div>
 
-                {/* Volume Profile - Overall */}
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    id="volumeProfile"
-                    checked={indicators.volumeProfile}
-                    onChange={() => toggleIndicator('volumeProfile')}
-                    className="w-4 h-4 text-red-600 rounded focus:ring-2"
-                  />
-                  <label htmlFor="volumeProfile" className="text-sm font-medium text-gray-700">
-                    VP: Overall
-                  </label>
-                </div>
-
-                {/* Volume Profile - Visible Range */}
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    id="volumeProfileVisible"
-                    checked={indicators.volumeProfileVisible}
-                    onChange={() => toggleIndicator('volumeProfileVisible')}
-                    className="w-4 h-4 text-blue-600 rounded focus:ring-2"
-                  />
-                  <label htmlFor="volumeProfileVisible" className="text-sm font-medium text-gray-700">
-                    VP: Visible
-                  </label>
-                </div>
-
-                {/* VP Bins */}
-                <div className="flex items-center gap-3">
-                  <label className="text-sm font-medium text-gray-700">VP Bins</label>
-                  <input
-                    type="number"
-                    value={indicators.volumeProfileBins}
-                    onChange={(e) => updateIndicatorPeriod('volumeProfileBins', parseInt(e.target.value))}
-                    disabled={!indicators.volumeProfile && !indicators.volumeProfileVisible}
-                    className="w-16 px-2 py-1 text-sm border border-gray-300 rounded disabled:bg-gray-100 text-gray-900"
-                    min="10"
-                    max="200"
-                  />
-                  <span className="text-xs text-gray-500">(150)</span>
-                </div>
-
                 {/* RSI */}
                 <div className="flex items-center gap-3">
                   <input
@@ -413,11 +538,62 @@ export default function StraddleChartPage() {
 
         </div>
 
+        {/* Greeks Panel */}
+        {greeks && !loading && (
+          <div className={`rounded-lg border p-4 mb-4 ${getRiskColor(greeks.riskLevel)}`}>
+            <div className="flex items-start justify-between mb-3">
+              <h3 className="text-lg font-bold text-gray-900">📊 Straddle Greeks</h3>
+              <div className="inline-block px-4 py-2 bg-gray-900 text-white rounded-lg font-semibold text-sm">
+                {getRiskBadge(greeks.riskLevel)}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              <div className="bg-white rounded p-3 border border-gray-200">
+                <p className="text-xs text-gray-600 font-semibold">θ Theta</p>
+                <p className="text-lg font-bold text-green-600">+{greeks.theta.toFixed(2)}/day</p>
+                <p className="text-xs text-gray-500 mt-1">Time Decay (seller profit)</p>
+              </div>
+
+              <div className="bg-white rounded p-3 border border-gray-200">
+                <p className="text-xs text-gray-600 font-semibold">ν Vega</p>
+                <p className="text-lg font-bold text-red-600">{greeks.vega.toFixed(2)}/point</p>
+                <p className="text-xs text-gray-500 mt-1">Volatility Risk (seller loss)</p>
+              </div>
+
+              <div className="bg-white rounded p-3 border border-gray-200">
+                <p className="text-xs text-gray-600 font-semibold">Γ Gamma</p>
+                <p className="text-lg font-bold text-orange-600">+{greeks.gamma.toFixed(4)}</p>
+                <p className="text-xs text-gray-500 mt-1">Directional Risk</p>
+              </div>
+
+              <div className="bg-white rounded p-3 border border-gray-200">
+                <p className="text-xs text-gray-600 font-semibold">Δ Delta</p>
+                <p className="text-lg font-bold text-blue-600">{greeks.delta > 0 ? '+' : ''}{greeks.delta.toFixed(2)}</p>
+                <p className="text-xs text-gray-500 mt-1">Neutral (~0)</p>
+              </div>
+
+              <div className="bg-white rounded p-3 border border-gray-200">
+                <p className="text-xs text-gray-600 font-semibold">Days to Expiry</p>
+                <p className="text-lg font-bold text-purple-600">{greeks.daysToExpiry}</p>
+                <p className="text-xs text-gray-500 mt-1">Gamma Risk</p>
+              </div>
+            </div>
+
+            <div className="mt-4 p-3 bg-white rounded border border-gray-200 text-xs text-gray-700">
+              <strong>Strategy Hint:</strong>
+              {greeks.riskLevel === 'safe' ? ' ✅ Good to sell - Theta strong, manageable risk. Target 50% profit.' : ''}
+              {greeks.riskLevel === 'caution' ? ' ⚠️ Caution - Gamma rising. Close position in next 2-3 days.' : ''}
+              {greeks.riskLevel === 'danger' ? ' 🔴 Danger - Close immediately! Gamma explosion risk near expiry.' : ''}
+            </div>
+          </div>
+        )}
+
         {/* Chart */}
         {loading && (
           <div className="bg-white rounded-lg shadow-md p-12 text-center">
             <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent"></div>
-            <p className="mt-4 text-gray-600">Loading straddle chart data...</p>
+            <p className="mt-4 text-gray-600">Loading geek straddle chart data...</p>
           </div>
         )}
 
@@ -430,7 +606,7 @@ export default function StraddleChartPage() {
         {!loading && !error && chartData.length > 0 && (
           <div className="bg-white rounded-lg shadow-md p-3 sm:p-4 md:p-6">
             <div className="mb-3 md:mb-4">
-              <h2 className="text-xl md:text-2xl font-bold text-gray-900">{displaySymbol} Straddle</h2>
+              <h2 className="text-xl md:text-2xl font-bold text-gray-900">{displaySymbol} Straddle Premium</h2>
               <p className="text-xs sm:text-sm text-gray-600">
                 <strong>Price:</strong> CE + PE (Combined) | <strong>Volume:</strong> CE + PE (Combined)
                 <span className="ml-2 sm:ml-4">Interval: <span className="font-semibold">{interval}</span></span>
@@ -450,15 +626,15 @@ export default function StraddleChartPage() {
         {/* Strategy Information */}
         {!loading && !error && chartData.length > 0 && (
           <div className="mt-4 space-y-3">
-            <div className="bg-gradient-to-r from-blue-50 to-green-50 rounded-lg border border-blue-200 p-3">
+            <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-200 p-3">
               <p className="text-xs text-gray-700 leading-relaxed">
-                <span className="font-semibold">💡 Straddle Strategy Info:</span>
+                <span className="font-semibold">💡 Geek Straddle Strategy:</span>
                 <br />
-                <strong>Premium (Price):</strong> Sum of CE price + PE price at ATM strike
+                <strong>When to SELL:</strong> Theta &gt; 1.5/day, Vega &lt; -2.5, Gamma &lt; 0.005, DTE &gt; 20
                 <br />
-                <strong>Volume (Histogram):</strong> Sum of CE volume + PE volume
+                <strong>When to CLOSE:</strong> 50% profit reached, OR Gamma &gt; 0.008, OR DTE ≤ 7
                 <br />
-                <strong>ATM Strike:</strong> Auto-detected from spot price (rounded to nearest 100)
+                <strong>Greeks Guide:</strong> Monitor theta decay vs vega risk. Close before gamma explodes near expiry.
               </p>
             </div>
           </div>

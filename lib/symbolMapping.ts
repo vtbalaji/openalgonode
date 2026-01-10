@@ -95,6 +95,17 @@ export function convertToBrokerSymbol(standardSymbol: string, broker: 'zerodha' 
   if (!mapping) {
     // Fallback: detect symbol type and format appropriately for Fyers
     if (broker === 'fyers') {
+      // Check if this is an option contract (ends with CE or PE)
+      const isOption = standardSymbol.endsWith('CE') || standardSymbol.endsWith('PE');
+
+      if (isOption) {
+        // Option contracts: NSE:NIFTY13JAN25700CE (no -CE suffix, it's part of the symbol)
+        if (!standardSymbol.includes(':')) {
+          return `NSE:${standardSymbol}`;
+        }
+        return standardSymbol;
+      }
+
       const symbolType = detectSymbolType(standardSymbol);
       if (!standardSymbol.includes('-')) {
         if (symbolType === 'future') {

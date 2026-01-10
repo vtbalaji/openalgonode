@@ -83,7 +83,7 @@ export default function GeekStraddleChartPage() {
     theta: true,
     vega: true,
     gamma: true,
-    delta: true,
+    delta: false,
   });
 
   // Real-time price updates - for spot price display

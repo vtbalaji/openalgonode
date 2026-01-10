@@ -229,6 +229,48 @@ export default function StraddleChart({
     };
   }, [baseSymbol, expiry, interval, userId, lookbackDays, spotPrice, autoRefresh]);
 
+  // Show error message with debugging info
+  if (error) {
+    return (
+      <div className="w-full">
+        <div className="bg-red-950 p-6 rounded-lg border border-red-800">
+          <h3 className="text-lg font-bold text-red-400 mb-2">⚠️ Could Not Load Straddle Data</h3>
+          <p className="text-red-200 mb-4">{error}</p>
+
+          <div className="bg-red-900 p-4 rounded text-sm text-red-100 space-y-2">
+            <p><strong>Debug Info:</strong></p>
+            <p>Symbol: {baseSymbol}{expiry}</p>
+            <p>Strike: {strike || 'Auto-detect'}</p>
+            <p>Period: Last {lookbackDays} days</p>
+
+            <p className="mt-3 text-red-300"><strong>Possible Causes:</strong></p>
+            <ul className="list-disc list-inside space-y-1">
+              <li>Fyers API may not support historical option data</li>
+              <li>Option contract symbol format might be different</li>
+              <li>Option expiry date might not exist yet (check dates)</li>
+              <li>Broker might not have option data for this symbol</li>
+            </ul>
+
+            <p className="mt-3 text-red-300"><strong>Solutions:</strong></p>
+            <ul className="list-disc list-inside space-y-1">
+              <li>Check if your broker supports option historical data</li>
+              <li>Verify the option expiry date is valid</li>
+              <li>Try switching to a different broker if available</li>
+              <li>Contact your broker API support for option data format</li>
+            </ul>
+          </div>
+
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-4 px-4 py-2 bg-red-700 hover:bg-red-600 text-white rounded"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full">
       {/* Info Panel */}

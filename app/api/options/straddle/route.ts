@@ -144,16 +144,56 @@ export async function GET(request: NextRequest) {
     // Combine CE and PE data
     const straddleData: StraddleCandle[] = [];
 
-    for (let i = 0; i < ceData.length; i++) {
+    console.log(`[STRADDLE] CE data length: ${ceData.length}, PE data length: ${peData.length}`);
+
+    if (ceData.length === 0 && peData.length === 0) {
+      console.error('[STRADDLE] Both CE and PE returned no data');
+      return NextResponse.json(
+        {
+          error: `Option data not available for ${ceSymbol} and ${peSymbol}. Fyers API may not support historical option data. Try using Zerodha broker or check if option contracts are available.`,
+          debug: {
+            requestedCE: ceSymbol,
+            requestedPE: peSymbol,
+            broker,
+            dates: { from, to },
+          },
+        },
+        { status: 404 }
+      );
+    }
+
+    if (ceData.length === 0) {
+      console.error('[STRADDLE] CE data is empty');
+      return NextResponse.json(
+        {
+          error: `Call (CE) option data not found for ${ceSymbol}. Check if symbol and dates are correct.`,
+          debug: { symbol: ceSymbol, dates: { from, to } },
+        },
+        { status: 404 }
+      );
+    }
+
+    if (peData.length === 0) {
+      console.error('[STRADDLE] PE data is empty');
+      return NextResponse.json(
+        {
+          error: `Put (PE) option data not found for ${peSymbol}. Check if symbol and dates are correct.`,
+          debug: { symbol: peSymbol, dates: { from, to } },
+        },
+        { status: 404 }
+      );
+    }
+
+    for (let i = 0; i < Math.min(ceData.length, peData.length); i++) {
       const cCandle = ceData[i];
       const pCandle = peData[i];
 
-      if (cCandle && pCandle && cCandle.time === pCandle.time) {
+      if (cCandle && pCandle) {
         straddleData.push({
-          time: cCandle.time,
-          straddlePremium: cCandle.close + pCandle.close,
-          cePrice: cCandle.close,
-          pePrice: pCandle.close,
+          time: Math.max(cCandle.time, pCandle.time), // Use latest time
+          straddlePremium: (cCandle.close || 0) + (pCandle.close || 0),
+          cePrice: cCandle.close || 0,
+          pePrice: pCandle.close || 0,
           ceVolume: cCandle.volume || 0,
           peVolume: pCandle.volume || 0,
           totalVolume: (cCandle.volume || 0) + (pCandle.volume || 0),
@@ -162,6 +202,23 @@ export async function GET(request: NextRequest) {
     }
 
     console.log(`[STRADDLE] Combined ${straddleData.length} candles`);
+
+    if (straddleData.length === 0) {
+      return NextResponse.json(
+        {
+          error: `No matching candles found for ${ceSymbol} and ${peSymbol}. Timestamps may not align.`,
+          debug: {
+            ceDataCount: ceData.length,
+            peDataCount: peData.length,
+            ceFirstTime: ceData[0]?.time,
+            ceLastTime: ceData[ceData.length - 1]?.time,
+            peFirstTime: peData[0]?.time,
+            peLastTime: peData[peData.length - 1]?.time,
+          },
+        },
+        { status: 400 }
+      );
+    }
 
     return NextResponse.json({
       success: true,

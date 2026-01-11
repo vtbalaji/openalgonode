@@ -129,13 +129,13 @@ export default function GeekStraddleChartPage() {
   const getGreekValueColor = (greekType: 'theta' | 'vega' | 'gamma' | 'delta', value: number): string => {
     switch (greekType) {
       case 'theta':
-        // Theta: scaled 0-100 based on range -0.05 to -3.0 per day
-        // Green (excellent sell): theta > -1.5/day → scale >50
-        // Orange (good to sell): theta > -0.9/day → scale >30
-        // Red (weak decay): theta < -0.5/day → scale <17
-        if (value > 50) return '#22C55E'; // Green (SELL - excellent decay >-1.5/day)
-        if (value > 30) return '#F97316'; // Orange (HOLD - good decay -0.9 to -1.5/day)
-        return '#EF4444'; // Red (BUY - weak decay <-0.5/day)
+        // Theta: scaled 0-100 with divisor 40 (actual range 5-35+/day)
+        // Green (excellent): >20/day → scale >50 on 0-100
+        // Orange (good): >12/day → scale >30 on 0-100
+        // Red (weak): <12/day → scale <30 on 0-100
+        if (value > 50) return '#22C55E'; // Green (SELL - excellent decay >20/day)
+        if (value > 30) return '#F97316'; // Orange (HOLD - good decay 12-20/day)
+        return '#EF4444'; // Red (BUY - weak decay <12/day)
 
       case 'vega':
         // Vega: negative is good for sellers
@@ -325,10 +325,12 @@ export default function GeekStraddleChartPage() {
           // Normalize Greeks to 0-100 scale based on REAL Black-Scholes ranges
           // Ranges researched for short-dated NIFTY options (5-14 DTE)
 
-          // THETA: Range -0.05 to -3.0 per day (absolute value for display)
-          // At 14 DTE: -0.25, At 7 DTE: -0.5, At 5 DTE: -1.0, At 1 DTE: -3.0
-          // Divide by 3.0 to get 0-100 scale: -1.0 → 33, -2.0 → 67, -3.0 → 100
-          const thetaNormalized = Math.min(100, Math.max(0, (Math.abs(greekData.theta) / 3.0) * 100));
+          // THETA: Actual range observed for NIFTY options (5-35+ per day)
+          // Short-dated (5 DTE): 5-10/day
+          // Medium (7-10 DTE): 8-15/day
+          // Monthly (20-30 DTE): 15-35+/day
+          // Divide by 40 to get 0-100 scale: 5 → 12, 10 → 25, 20 → 50, 35 → 87
+          const thetaNormalized = Math.min(100, Math.max(0, (Math.abs(greekData.theta) / 40.0) * 100));
 
           // VEGA: Range 0.5 to 15 per 1% IV change
           // At 14 DTE: 5-10, At 7 DTE: 2-4, At 5 DTE: 1-2, At 1 DTE: <0.5
@@ -767,7 +769,7 @@ export default function GeekStraddleChartPage() {
               <p className="text-xs text-gray-700 leading-relaxed">
                 <span className="font-semibold">💡 Geek Straddle Strategy:</span>
                 <br />
-                <strong>When to SELL:</strong> Theta &gt; -1.0/day (absolute), Vega 1-10, Gamma &lt; 0.004, DTE 7-14
+                <strong>When to SELL:</strong> Theta &gt; 12/day (good), Vega 5-20, Gamma &lt; 0.008, DTE 7-30
                 <br />
                 <strong>When to CLOSE:</strong> 50% profit reached, OR Gamma &gt; 0.008, OR DTE ≤ 7
                 <br />

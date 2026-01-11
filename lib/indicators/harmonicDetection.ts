@@ -216,8 +216,19 @@ export function detectHarmonicPatterns(
     // Determine status
     let status: 'forming' | 'valid' | 'broken' | 'invalidated' = 'forming';
 
+    // Check if any candle after B broke above B level (invalidates B point)
+    let B_broken = false;
+    for (let i = B.index + 1; i < data.length; i++) {
+      if (data[i].high > B.price) {
+        B_broken = true;
+        break;
+      }
+    }
+
     // For bullish pattern: invalidated if price closes below C (violates bullish expectation)
-    if (C && data.length > 0) {
+    if (B_broken) {
+      status = 'broken'; // Price broke above B, B point invalidated
+    } else if (C && data.length > 0) {
       const latestCandle = data[data.length - 1];
       if (latestCandle.close < C.price) {
         status = 'invalidated'; // Price closed below C, breaks bullish expectation
@@ -334,8 +345,19 @@ export function detectHarmonicPatterns(
     // Determine status
     let status: 'forming' | 'valid' | 'broken' | 'invalidated' = 'forming';
 
+    // Check if any candle after B broke below B level (invalidates B point)
+    let B_broken = false;
+    for (let i = B.index + 1; i < data.length; i++) {
+      if (data[i].low < B.price) {
+        B_broken = true;
+        break;
+      }
+    }
+
     // For bearish pattern: invalidated if price closes above C (violates bearish expectation)
-    if (C && data.length > 0) {
+    if (B_broken) {
+      status = 'broken'; // Price broke below B, B point invalidated
+    } else if (C && data.length > 0) {
       const latestCandle = data[data.length - 1];
       if (latestCandle.close > C.price) {
         status = 'invalidated'; // Price closed above C, breaks bearish expectation

@@ -55,6 +55,8 @@ export default function GeekStrangleChartPage() {
   const [ceStrike, setCeStrike] = useState<number | null>(null);
   const [peStrike, setPeStrike] = useState<number | null>(null);
   const [greeks, setGreeks] = useState<GreeksData | null>(null);
+  const [ceGreeks, setCeGreeks] = useState<GreeksData | null>(null);
+  const [peGreeks, setPeGreeks] = useState<GreeksData | null>(null);
   const [greeksArray, setGreeksArray] = useState<Array<{ time: number; theta: number; vega: number; gamma: number; delta: number }>>([]);
 
   const [indicators, setIndicators] = useState<IndicatorConfig>({
@@ -318,6 +320,18 @@ export default function GeekStrangleChartPage() {
 
         setChartData(chartDataArray);
 
+        // Store CE and PE prices for each candle for individual Greeks calculation
+        const ceDataMap = new Map();
+        const peDataMap = new Map();
+
+        ceStrikeResult.data.forEach((ceStrikeCandle: any) => {
+          ceDataMap.set(ceStrikeCandle.time, ceStrikeCandle.cePrice || 0);
+        });
+
+        peStrikeResult.data.forEach((peStrikeCandle: any) => {
+          peDataMap.set(peStrikeCandle.time, peStrikeCandle.pePrice || 0);
+        });
+
         // Calculate Greeks for each candle
         const greeksDataArray = chartDataArray.map((candle, index) => {
           const previousPrice = index > 0 ? chartDataArray[index - 1].close : candle.close;
@@ -357,6 +371,21 @@ export default function GeekStrangleChartPage() {
         const previousPremium = chartDataArray.length > 1 ? chartDataArray[chartDataArray.length - 2].close : latestPremium;
         const greeksCalc = calculateGreeks(latestPremium, previousPremium, daysToExp, spotPrice);
         setGreeks(greeksCalc);
+
+        // Calculate individual Greeks for CE and PE
+        const latestCandle = chartDataArray[chartDataArray.length - 1];
+        const latestCePrice = ceDataMap.get(latestCandle.time) || 0;
+        const latestPePrice = peDataMap.get(latestCandle.time) || 0;
+
+        const previousCandle = chartDataArray.length > 1 ? chartDataArray[chartDataArray.length - 2] : latestCandle;
+        const previousCePrice = ceDataMap.get(previousCandle.time) || latestCePrice;
+        const previousPePrice = peDataMap.get(previousCandle.time) || latestPePrice;
+
+        const ceGreeksCalc = calculateGreeks(latestCePrice, previousCePrice, daysToExp, spotPrice);
+        const peGreeksCalc = calculateGreeks(latestPePrice, previousPePrice, daysToExp, spotPrice);
+
+        setCeGreeks(ceGreeksCalc);
+        setPeGreeks(peGreeksCalc);
       } else {
         throw new Error('Failed to fetch option data');
       }
@@ -541,9 +570,9 @@ export default function GeekStrangleChartPage() {
                   </button>
                 </div>
               </div>
-              {greeks && (
+              {ceGreeks && (
                 <div className="text-xs text-gray-700 mt-1 whitespace-nowrap">
-                  θ {greeks.theta > 0 ? '+' : ''}{greeks.theta.toFixed(2)} | ν {greeks.vega.toFixed(2)} | γ {greeks.gamma.toFixed(4)} | δ {greeks.delta.toFixed(2)}
+                  θ {ceGreeks.theta > 0 ? '+' : ''}{ceGreeks.theta.toFixed(2)} | ν {ceGreeks.vega.toFixed(2)} | γ {ceGreeks.gamma.toFixed(4)} | δ {ceGreeks.delta > 0 ? '+' : ''}{ceGreeks.delta.toFixed(2)}
                 </div>
               )}
             </div>
@@ -578,9 +607,9 @@ export default function GeekStrangleChartPage() {
                   </button>
                 </div>
               </div>
-              {greeks && (
+              {peGreeks && (
                 <div className="text-xs text-gray-700 mt-1 whitespace-nowrap">
-                  θ {greeks.theta > 0 ? '+' : ''}{greeks.theta.toFixed(2)} | ν {greeks.vega.toFixed(2)} | γ {greeks.gamma.toFixed(4)} | δ {greeks.delta.toFixed(2)}
+                  θ {peGreeks.theta > 0 ? '+' : ''}{peGreeks.theta.toFixed(2)} | ν {peGreeks.vega.toFixed(2)} | γ {peGreeks.gamma.toFixed(4)} | δ {peGreeks.delta > 0 ? '+' : ''}{peGreeks.delta.toFixed(2)}
                 </div>
               )}
             </div>

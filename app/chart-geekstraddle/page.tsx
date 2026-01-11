@@ -129,12 +129,13 @@ export default function GeekStraddleChartPage() {
   const getGreekValueColor = (greekType: 'theta' | 'vega' | 'gamma' | 'delta', value: number): string => {
     switch (greekType) {
       case 'theta':
-        // Theta: positive is good for sellers (daily decay in rupees)
-        // Black-Scholes gives actual daily decay values (much larger than heuristic)
-        // High theta (>5) = Green, Medium (2-5) = Orange, Low (<2) = Red
-        if (value > 5) return '#22C55E'; // Green (SELL - strong decay)
-        if (value > 2) return '#F97316'; // Orange (HOLD - moderate decay)
-        return '#EF4444'; // Red (BUY - weak decay)
+        // Theta: scaled 0-100 based on range -0.05 to -3.0 per day
+        // Green (excellent sell): theta > -1.5/day → scale >50
+        // Orange (good to sell): theta > -0.9/day → scale >30
+        // Red (weak decay): theta < -0.5/day → scale <17
+        if (value > 50) return '#22C55E'; // Green (SELL - excellent decay >-1.5/day)
+        if (value > 30) return '#F97316'; // Orange (HOLD - good decay -0.9 to -1.5/day)
+        return '#EF4444'; // Red (BUY - weak decay <-0.5/day)
 
       case 'vega':
         // Vega: negative is good for sellers
@@ -766,7 +767,7 @@ export default function GeekStraddleChartPage() {
               <p className="text-xs text-gray-700 leading-relaxed">
                 <span className="font-semibold">💡 Geek Straddle Strategy:</span>
                 <br />
-                <strong>When to SELL:</strong> Theta &gt; 1.5/day, Vega &lt; -2.5, Gamma &lt; 0.005, DTE &gt; 20
+                <strong>When to SELL:</strong> Theta &gt; -1.0/day (absolute), Vega 1-10, Gamma &lt; 0.004, DTE 7-14
                 <br />
                 <strong>When to CLOSE:</strong> 50% profit reached, OR Gamma &gt; 0.008, OR DTE ≤ 7
                 <br />

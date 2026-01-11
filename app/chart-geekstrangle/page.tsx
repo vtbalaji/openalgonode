@@ -16,10 +16,11 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { AdvancedTradingChart, ChartData, IndicatorConfig } from '@/components/AdvancedTradingChart';
 import { useRealtimePrice } from '@/hooks/useRealtimePrice';
+import { calculateStrangleGreeks, type OptionsGreeksInput } from '@/lib/indicators/optionsGreeks';
 
 const TIMEFRAMES = [
   { label: '1m', value: 'minute' },
@@ -88,6 +89,8 @@ export default function GeekStrangleChartPage() {
     gamma: true,
     delta: false,
   });
+
+  const [spotPriceHistory, setSpotPriceHistory] = useState<number[]>([]);
 
   // Real-time price updates - for spot price display
   const { prices, isConnected } = useRealtimePrice({
@@ -170,49 +173,45 @@ export default function GeekStrangleChartPage() {
     previousPremium: number,
     daysToExp: number,
     spotPrice?: number,
-    strikePrice?: number
+    ceStrikeVal?: number,
+    peStrikeVal?: number
   ): GreeksData => {
-    // Theta: Daily premium decay (positive for sellers)
-    // Removed Math.max clamping to allow true Greeks summation property
-    // Individual Greeks should sum to combined Greeks without artificial inflation
-    const dailyDecay = premium * 0.002;
-    const theta = dailyDecay;
+    // Use Black-Scholes calculation via optionsGreeks
+    // Strangle: CE and PE at different strikes
+    // Premium = CE price + PE price, split evenly for simplicity
+    const cePrice = premium / 2;
+    const pePrice = premium / 2;
 
-    // Vega: Volatility sensitivity (negative for sellers - higher vol = higher cost)
-    // Also responds to premium changes (higher premium = implied vol increase)
-    const basVega = -(1.5 + (15 - Math.min(daysToExp, 15)) * 0.3);
-    const premiumChangeInfluence = (premium - previousPremium) * 0.01; // Premium changes affect vega
-    const vega = basVega + premiumChangeInfluence;
+    const ceInput: OptionsGreeksInput = {
+      spotPrice: spotPrice || 25683,
+      strikePrice: ceStrikeVal || 26200,
+      marketPrice: cePrice,
+      optionType: 'call',
+      daysToExpiry: daysToExp,
+      historicalSpotPrices: spotPriceHistory,
+      riskFreeRate: 0.07,
+    };
 
-    // Gamma: Directional risk (positive ATM, increases near expiry)
-    // Also responds to premium volatility (larger swings = higher gamma)
-    const baseGamma = 0.001 + (0.015 - daysToExp * 0.0006);
-    const volatilityInfluence = Math.abs(premium - previousPremium) * 0.00001;
-    const gamma = baseGamma + volatilityInfluence;
+    const peInput: OptionsGreeksInput = {
+      spotPrice: spotPrice || 25683,
+      strikePrice: peStrikeVal || 26000,
+      marketPrice: pePrice,
+      optionType: 'put',
+      daysToExpiry: daysToExp,
+      historicalSpotPrices: spotPriceHistory,
+      riskFreeRate: 0.07,
+    };
 
-    // Delta: Rate of change of premium (how much premium changes per small price move)
-    // Positive delta = premium increasing (up move), Negative = premium decreasing (down move)
-    const premiumChange = premium - previousPremium;
-    const premiumChangePercent = premiumChange / Math.max(previousPremium, 1);
-    const delta = Math.max(-1, Math.min(1, premiumChangePercent * 20)); // Scale to -1 to 1
-
-    // Risk level assessment
-    let riskLevel: 'safe' | 'caution' | 'danger' = 'safe';
-    if (daysToExp <= 7) {
-      riskLevel = 'danger';
-    } else if (daysToExp <= 14) {
-      riskLevel = 'caution';
-    } else {
-      riskLevel = 'safe';
-    }
+    // Calculate combined strangle Greeks
+    const { combined } = calculateStrangleGreeks(ceInput, peInput);
 
     return {
-      theta: parseFloat(theta.toFixed(2)),
-      vega: parseFloat(vega.toFixed(2)),
-      gamma: parseFloat(gamma.toFixed(4)),
-      delta: parseFloat(delta.toFixed(2)),
+      theta: Math.abs(parseFloat(combined.theta.toFixed(2))), // Absolute value for display
+      vega: parseFloat(combined.vega.toFixed(2)),
+      gamma: parseFloat(combined.gamma.toFixed(4)),
+      delta: parseFloat(combined.delta.toFixed(2)),
       daysToExpiry: daysToExp,
-      riskLevel,
+      riskLevel: combined.riskLevel,
     };
   };
 
@@ -361,6 +360,19 @@ export default function GeekStrangleChartPage() {
 
         setChartData(chartDataArray);
 
+        // Extract spot price and days to expiry from API responses
+        const apiSpotPrice = ceStrikeResult.spotPrice || peStrikeResult.spotPrice || spotPrice;
+        const apiDaysToExpiry = ceStrikeResult.daysToExpiry || peStrikeResult.daysToExpiry || daysToExp;
+
+        // Update spot price if API provided it
+        if (apiSpotPrice && apiSpotPrice !== spotPrice) {
+          setSpotPrice(apiSpotPrice);
+        }
+
+        // Build spot price history
+        const spotHistory = chartDataArray.map(() => apiSpotPrice);
+        setSpotPriceHistory(spotHistory);
+
         // Store CE and PE prices for each candle for individual Greeks calculation
         const ceDataMap = new Map();
         const peDataMap = new Map();
@@ -382,7 +394,7 @@ export default function GeekStrangleChartPage() {
           const expiryDate = parseExpiryDate(expiry);
           const daysToExpCandle = Math.ceil((expiryDate.getTime() - candleDate.getTime()) / (1000 * 60 * 60 * 24));
 
-          const greekData = calculateGreeks(candle.close, previousPrice, daysToExpCandle, spotPrice);
+          const greekData = calculateGreeks(candle.close, previousPrice, daysToExpCandle, apiSpotPrice, ceStrikeValue, peStrikeValue);
 
           // Normalize Greeks to 0-100 scale for better visibility
           // Theta: 0-10 → 0-100
@@ -410,7 +422,7 @@ export default function GeekStrangleChartPage() {
         // Calculate Greeks based on latest premium (for panel display)
         const latestPremium = chartDataArray[chartDataArray.length - 1].close;
         const previousPremium = chartDataArray.length > 1 ? chartDataArray[chartDataArray.length - 2].close : latestPremium;
-        const greeksCalc = calculateGreeks(latestPremium, previousPremium, daysToExp, spotPrice);
+        const greeksCalc = calculateGreeks(latestPremium, previousPremium, apiDaysToExpiry, apiSpotPrice, ceStrikeValue, peStrikeValue);
         setGreeks(greeksCalc);
 
         // Calculate individual Greeks for CE and PE
@@ -422,8 +434,8 @@ export default function GeekStrangleChartPage() {
         const previousCePrice = ceDataMap.get(previousCandle.time) || latestCePrice;
         const previousPePrice = peDataMap.get(previousCandle.time) || latestPePrice;
 
-        const ceGreeksCalc = calculateGreeks(latestCePrice, previousCePrice, daysToExp, spotPrice);
-        const peGreeksCalc = calculateGreeks(latestPePrice, previousPePrice, daysToExp, spotPrice);
+        const ceGreeksCalc = calculateGreeks(latestCePrice, previousCePrice, apiDaysToExpiry, apiSpotPrice, ceStrikeValue, peStrikeValue);
+        const peGreeksCalc = calculateGreeks(latestPePrice, previousPePrice, apiDaysToExpiry, apiSpotPrice, ceStrikeValue, peStrikeValue);
 
         setCeGreeks(ceGreeksCalc);
         setPeGreeks(peGreeksCalc);

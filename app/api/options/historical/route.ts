@@ -72,6 +72,152 @@ function calculateATMStrike(spotPrice: number): number {
 }
 
 /**
+ * Fetch current spot price from Fyers API
+ */
+async function fetchSpotPrice(
+  baseSymbol: string,
+  accessToken: string,
+  apiKey: string
+): Promise<number | null> {
+  try {
+    // For NIFTY, use NIFTY50 spot index
+    // For BANKNIFTY, use NIFTY BANK spot index
+    const spotSymbol =
+      baseSymbol === 'NIFTY' ? 'NSE:NIFTY50-INDEX' : 'NSE:NIFTYBANK-INDEX';
+
+    const url = 'https://api-t1.fyers.in/data/quotes';
+    const params = new URLSearchParams({
+      symbols: spotSymbol,
+    });
+
+    const fullUrl = `${url}?${params.toString()}`;
+    console.log(`[OPTIONS-HISTORICAL] Fetching spot price for ${spotSymbol}`);
+
+    const response = await fetch(fullUrl, {
+      headers: {
+        'Authorization': `${apiKey}:${accessToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      console.error(
+        `[OPTIONS-HISTORICAL] Spot price fetch failed (${response.status})`
+      );
+      return null;
+    }
+
+    const data = await response.json();
+
+    // Check response status
+    if (data.s !== 'ok') {
+      console.error(
+        `[OPTIONS-HISTORICAL] Spot price API returned: ${data.s}`,
+        data.message || ''
+      );
+      return null;
+    }
+
+    // Extract spot price from quotes
+    // Fyers returns array of quotes
+    if (data.d && Array.isArray(data.d) && data.d.length > 0) {
+      const quote = data.d[0];
+      if (quote && quote.v && typeof quote.v.lp === 'number') {
+        const spotPrice = quote.v.lp;
+        console.log(
+          `[OPTIONS-HISTORICAL] Got spot price for ${spotSymbol}: ${spotPrice}`
+        );
+        return spotPrice;
+      }
+    }
+
+    console.warn(`[OPTIONS-HISTORICAL] Could not extract spot price from response`);
+    return null;
+  } catch (error: any) {
+    console.error(
+      `[OPTIONS-HISTORICAL] Error fetching spot price:`,
+      error.message
+    );
+    return null;
+  }
+}
+
+/**
+ * Parse expiry string and calculate date and days to expiry
+ */
+function parseExpiryDate(expiryStr: string): {
+  date: Date;
+  daysToExpiry: number;
+} {
+  const monthMap: { [key: string]: number } = {
+    JAN: 0,
+    FEB: 1,
+    MAR: 2,
+    APR: 3,
+    MAY: 4,
+    JUN: 5,
+    JUL: 6,
+    AUG: 7,
+    SEP: 8,
+    OCT: 9,
+    NOV: 10,
+    DEC: 11,
+  };
+
+  // Try weekly format: "13JAN"
+  const weeklyMatch = expiryStr.match(/^(\d{1,2})([A-Z]{3})$/);
+  if (weeklyMatch) {
+    const day = parseInt(weeklyMatch[1]);
+    const month = monthMap[weeklyMatch[2]];
+
+    if (month !== undefined) {
+      // Create date object for expiry (market closes at 3:30 PM IST)
+      const expiryDate = new Date(2026, month, day, 15, 30, 0);
+
+      // Calculate days to expiry
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const daysToExp = Math.ceil(
+        (expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+      );
+
+      console.log(
+        `[OPTIONS-HISTORICAL] Parsed weekly expiry "${expiryStr}" → ${expiryDate.toISOString()}, DTE: ${daysToExp}`
+      );
+
+      return { date: expiryDate, daysToExpiry: Math.max(0, daysToExp) };
+    }
+  }
+
+  // Try monthly format: "JAN"
+  const monthlyMatch = expiryStr.match(/^([A-Z]{3})$/);
+  if (monthlyMatch) {
+    const monthName = monthlyMatch[1];
+    const month = monthMap[monthName];
+
+    if (month !== undefined) {
+      // For monthly, use last day of month
+      const expiryDate = new Date(2026, month + 1, 0, 15, 30, 0);
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const daysToExp = Math.ceil(
+        (expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+      );
+
+      console.log(
+        `[OPTIONS-HISTORICAL] Parsed monthly expiry "${expiryStr}" → ${expiryDate.toISOString()}, DTE: ${daysToExp}`
+      );
+
+      return { date: expiryDate, daysToExpiry: Math.max(0, daysToExp) };
+    }
+  }
+
+  // Fallback: return today + 0 DTE
+  console.warn(`[OPTIONS-HISTORICAL] Could not parse expiry: ${expiryStr}`);
+  return { date: new Date(), daysToExpiry: 0 };
+}
+
+/**
  * Fetch historical option data from Fyers API
  */
 async function fetchFyersOptionHistory(
@@ -231,8 +377,12 @@ export async function GET(request: NextRequest) {
     const accessToken = decryptData(configData.accessToken);
     const apiKey = decryptData(configData.apiKey);
 
-    // Fetch CE and PE data in parallel
-    const [ceData, peData] = await Promise.all([
+    // Parse expiry to get date and days to expiry
+    const { date: expiryDate, daysToExpiry } = parseExpiryDate(expiry);
+
+    // Fetch spot price, CE data, and PE data in parallel
+    const [spotPriceValue, ceData, peData] = await Promise.all([
+      fetchSpotPrice(baseSymbol, accessToken, apiKey),
       fetchFyersOptionHistory(ceSymbol, accessToken, apiKey, from, to, interval),
       fetchFyersOptionHistory(peSymbol, accessToken, apiKey, from, to, interval),
     ]);
@@ -295,6 +445,9 @@ export async function GET(request: NextRequest) {
       peSymbol,
       interval,
       dateRange: { from, to },
+      spotPrice: spotPriceValue,
+      expiryDate: expiryDate.toISOString(),
+      daysToExpiry,
       data: combinedData,
       count: combinedData.length,
       priceRange: combinedData.length > 0 ? {

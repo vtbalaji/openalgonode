@@ -322,16 +322,19 @@ export default function GeekStraddleChartPage() {
           const greekData = calculateGreeks(candle.close, previousPrice, daysToExpCandle, apiSpotPrice, atmStrike);
 
           // Normalize Greeks to 0-100 scale for better visibility
-          // Theta: 0-10 → 0-100
-          const thetaNormalized = Math.min(100, Math.max(0, (greekData.theta / 10) * 100));
+          // Black-Scholes Greeks are actual values, scale them appropriately
 
-          // Vega: -4 to 0 → 0-100 (wider range for better visibility)
-          const vegaNormalized = Math.min(100, Math.max(0, ((greekData.vega + 4) / 4) * 100));
+          // Theta: typical range 0-15 (daily decay in rupees) → normalize to 0-100
+          const thetaNormalized = Math.min(100, Math.max(0, (greekData.theta / 15) * 100));
 
-          // Gamma: 0-0.025 → 0-100 (wider range)
-          const gammaNormalized = Math.min(100, Math.max(0, (greekData.gamma / 0.025) * 100));
+          // Vega: typical range -5 to -0.5 (volatility sensitivity) → normalize to 0-100
+          // More negative = better for sellers, so invert: -5 becomes 100, -0.5 becomes 10
+          const vegaNormalized = Math.min(100, Math.max(0, ((greekData.vega + 5) / 5) * 100));
 
-          // Delta: -1 to 1 → 0-100 (center at 50)
+          // Gamma: typical range 0-0.05 (delta acceleration) → normalize to 0-100
+          const gammaNormalized = Math.min(100, Math.max(0, (greekData.gamma / 0.05) * 100));
+
+          // Delta: range -1 to 1 → 0-100 (center at 50, neutrality = 50)
           const deltaNormalized = Math.min(100, Math.max(0, ((greekData.delta + 1) / 2) * 100));
 
           return {

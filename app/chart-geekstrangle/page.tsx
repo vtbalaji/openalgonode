@@ -31,6 +31,7 @@ const TIMEFRAMES = [
   { label: '1D', value: 'day' },
 ];
 
+
 interface GreeksData {
   theta: number;
   vega: number;
@@ -42,9 +43,8 @@ interface GreeksData {
 
 export default function GeekStrangleChartPage() {
   const { user } = useAuth();
-  const [baseSymbol, setBaseSymbol] = useState('NIFTY');
+  const baseSymbol = 'NIFTY'; // Fixed to NIFTY only
   const [expiry, setExpiry] = useState('13JAN');
-  const [customSymbol, setCustomSymbol] = useState('');
   const [interval, setInterval] = useState('60minute');
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [loading, setLoading] = useState(false);
@@ -123,6 +123,45 @@ export default function GeekStrangleChartPage() {
   }, [prices, baseSymbol]);
 
   /**
+   * Get color based on Greek value signal (Buy/Hold/Sell)
+   * Green = SELL (favorable), Orange = HOLD, Red = BUY (unfavorable)
+   */
+  const getGreekValueColor = (greekType: 'theta' | 'vega' | 'gamma' | 'delta', value: number): string => {
+    switch (greekType) {
+      case 'theta':
+        // Theta: positive is good for sellers
+        // High theta (>1.5) = Green, Medium (0.5-1.5) = Orange, Low (<0.5) = Red
+        if (value > 1.5) return '#22C55E'; // Green (SELL)
+        if (value > 0.5) return '#F97316'; // Orange (HOLD)
+        return '#EF4444'; // Red (BUY)
+
+      case 'vega':
+        // Vega: negative is good for sellers
+        // Very negative (<-2.0) = Green, Medium (-2.0 to -0.5) = Orange, Positive (>-0.5) = Red
+        if (value < -2.0) return '#22C55E'; // Green (SELL)
+        if (value < -0.5) return '#F97316'; // Orange (HOLD)
+        return '#EF4444'; // Red (BUY)
+
+      case 'gamma':
+        // Gamma: low is good for sellers
+        // Low (<0.005) = Green, Medium (0.005-0.010) = Orange, High (>0.010) = Red
+        if (value < 0.005) return '#22C55E'; // Green (SELL)
+        if (value < 0.010) return '#F97316'; // Orange (HOLD)
+        return '#EF4444'; // Red (BUY)
+
+      case 'delta':
+        // Delta: near zero is good for strangles (neutral)
+        // Near zero (-0.2 to 0.2) = Green, Medium (0.2-0.5) = Orange, Far (>0.5 or <-0.5) = Red
+        if (value >= -0.2 && value <= 0.2) return '#22C55E'; // Green (SELL/neutral)
+        if (value >= -0.5 && value <= 0.5) return '#F97316'; // Orange (HOLD)
+        return '#EF4444'; // Red (BUY/directional)
+
+      default:
+        return '#6B7280'; // Gray fallback
+    }
+  };
+
+  /**
    * Calculate Greeks for strangle using simplified approach
    * Based on current premium, historical volatility, and days to expiry
    */
@@ -134,7 +173,9 @@ export default function GeekStrangleChartPage() {
     strikePrice?: number
   ): GreeksData => {
     // Theta: Daily premium decay (positive for sellers)
-    const dailyDecay = Math.max(0.5, premium * 0.002);
+    // Removed Math.max clamping to allow true Greeks summation property
+    // Individual Greeks should sum to combined Greeks without artificial inflation
+    const dailyDecay = premium * 0.002;
     const theta = dailyDecay;
 
     // Vega: Volatility sensitivity (negative for sellers - higher vol = higher cost)
@@ -399,19 +440,11 @@ export default function GeekStrangleChartPage() {
 
   // Load data on symbol or interval change
   useEffect(() => {
-    if (user && baseSymbol && expiry) {
+    if (user && expiry) {
       console.log('[GEEK-STRANGLE] useEffect triggered - fetching chart data');
       fetchChartData();
     }
-  }, [user, baseSymbol, expiry, interval, lookbackDays, spotPrice, ceStrike, peStrike]);
-
-  const handleSymbolSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (customSymbol.trim()) {
-      setBaseSymbol(customSymbol.toUpperCase().trim());
-      setCustomSymbol('');
-    }
-  };
+  }, [user, expiry, interval, lookbackDays, spotPrice, ceStrike, peStrike]);
 
   const toggleIndicator = (indicator: keyof IndicatorConfig) => {
     setIndicators((prev) => ({
@@ -481,25 +514,6 @@ export default function GeekStrangleChartPage() {
         {/* Controls */}
         <div className="bg-white rounded-lg shadow-md p-3 mb-3">
           <div className="flex flex-wrap items-center gap-3">
-            {/* Base Symbol Input */}
-            <div className="flex-shrink-0">
-              <form onSubmit={handleSymbolSubmit} className="flex gap-2 items-center">
-                <input
-                  type="text"
-                  value={customSymbol}
-                  onChange={(e) => setCustomSymbol(e.target.value)}
-                  className="w-40 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm"
-                  placeholder="e.g., NIFTY, BANKNIFTY"
-                />
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm whitespace-nowrap h-10"
-                >
-                  Load
-                </button>
-              </form>
-            </div>
-
             {/* Expiry Selector */}
             <div className="flex-shrink-0">
               <select
@@ -510,17 +524,14 @@ export default function GeekStrangleChartPage() {
                 }}
                 className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm h-10"
               >
-                <optgroup label="Weekly Expiries (Tuesdays & Thursdays)">
+                <optgroup label="Weekly Expiries (Tuesdays)">
                   <option value="13JAN">13 JAN (Tuesday)</option>
-                  <option value="15JAN">15 JAN (Thursday)</option>
                   <option value="20JAN">20 JAN (Tuesday)</option>
-                  <option value="22JAN">22 JAN (Thursday)</option>
-                  <option value="27JAN">27 JAN (Tuesday)</option>
-                  <option value="29JAN">29 JAN (Thursday)</option>
                 </optgroup>
                 <optgroup label="Monthly Expiries">
                   <option value="JAN">JAN (Monthly)</option>
                   <option value="FEB">FEB (Monthly)</option>
+                  <option value="MAR">MAR (Monthly)</option>
                 </optgroup>
               </select>
             </div>
@@ -570,11 +581,6 @@ export default function GeekStrangleChartPage() {
                   </button>
                 </div>
               </div>
-              {ceGreeks && (
-                <div className="text-xs text-gray-700 mt-1 whitespace-nowrap">
-                  θ {ceGreeks.theta > 0 ? '+' : ''}{ceGreeks.theta.toFixed(2)} | ν {ceGreeks.vega.toFixed(2)} | γ {ceGreeks.gamma.toFixed(4)} | δ {ceGreeks.delta > 0 ? '+' : ''}{ceGreeks.delta.toFixed(2)}
-                </div>
-              )}
             </div>
 
             {/* PE Strike Selector */}
@@ -607,11 +613,6 @@ export default function GeekStrangleChartPage() {
                   </button>
                 </div>
               </div>
-              {peGreeks && (
-                <div className="text-xs text-gray-700 mt-1 whitespace-nowrap">
-                  θ {peGreeks.theta > 0 ? '+' : ''}{peGreeks.theta.toFixed(2)} | ν {peGreeks.vega.toFixed(2)} | γ {peGreeks.gamma.toFixed(4)} | δ {peGreeks.delta > 0 ? '+' : ''}{peGreeks.delta.toFixed(2)}
-                </div>
-              )}
             </div>
 
             {/* Lookback Days */}
@@ -632,9 +633,6 @@ export default function GeekStrangleChartPage() {
           {/* Indicators Section */}
           <div className="pt-4">
             <div className="p-3 bg-gradient-to-r from-blue-50 to-green-50 rounded-lg border border-blue-200">
-              <h3 className="text-sm font-semibold text-gray-800 mb-2 flex items-center gap-2">
-                <span className="text-lg">📊</span> Technical Indicators
-              </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 {/* Show Buy/Sell Signals */}
                 <div className="flex items-center gap-3">
@@ -707,102 +705,106 @@ export default function GeekStrangleChartPage() {
             </div>
           </div>
 
-          {/* Greeks Overlay Section */}
-          <div className="pt-4">
-            <div className="p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg border border-purple-200">
-              <h3 className="text-sm font-semibold text-gray-800 mb-2 flex items-center gap-2">
-                <span className="text-lg">📈</span> Greeks Overlay
-              </h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    id="showTheta"
-                    checked={showGreeks.theta}
-                    onChange={() => setShowGreeks(prev => ({ ...prev, theta: !prev.theta }))}
-                    className="w-4 h-4 text-green-600 rounded focus:ring-2"
-                  />
-                  <label htmlFor="showTheta" className="text-sm font-medium text-gray-700">
-                    θ Theta (Time Decay)
-                  </label>
-                </div>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    id="showVega"
-                    checked={showGreeks.vega}
-                    onChange={() => setShowGreeks(prev => ({ ...prev, vega: !prev.vega }))}
-                    className="w-4 h-4 text-red-600 rounded focus:ring-2"
-                  />
-                  <label htmlFor="showVega" className="text-sm font-medium text-gray-700">
-                    ν Vega (Volatility)
-                  </label>
-                </div>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    id="showGamma"
-                    checked={showGreeks.gamma}
-                    onChange={() => setShowGreeks(prev => ({ ...prev, gamma: !prev.gamma }))}
-                    className="w-4 h-4 text-orange-600 rounded focus:ring-2"
-                  />
-                  <label htmlFor="showGamma" className="text-sm font-medium text-gray-700">
-                    Γ Gamma (Directional)
-                  </label>
-                </div>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    id="showDelta"
-                    checked={showGreeks.delta}
-                    onChange={() => setShowGreeks(prev => ({ ...prev, delta: !prev.delta }))}
-                    className="w-4 h-4 text-blue-600 rounded focus:ring-2"
-                  />
-                  <label htmlFor="showDelta" className="text-sm font-medium text-gray-700">
-                    Δ Delta (Position)
-                  </label>
-                </div>
-              </div>
-            </div>
-          </div>
 
         </div>
 
         {/* Greeks Panel */}
         {greeks && !loading && (
           <div className={`rounded-lg border p-4 mb-4 ${getRiskColor(greeks.riskLevel)}`}>
-            <div className="flex items-start justify-between mb-3">
-              <h3 className="text-lg font-bold text-gray-900">📊 Strangle Greeks</h3>
-              <div className="inline-block px-4 py-2 bg-gray-900 text-white rounded-lg font-semibold text-sm">
-                {getRiskBadge(greeks.riskLevel)}
-              </div>
-            </div>
-
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              {/* Theta Box with Checkbox */}
               <div className="bg-white rounded p-3 border border-gray-200">
-                <p className="text-xs text-gray-600 font-semibold">θ Theta</p>
-                <p className="text-lg font-bold text-green-600">+{greeks.theta.toFixed(2)}/day</p>
+                <div className="flex items-center gap-2 mb-2">
+                  <input
+                    type="checkbox"
+                    id="overlayTheta"
+                    checked={showGreeks.theta}
+                    onChange={() => setShowGreeks(prev => ({ ...prev, theta: !prev.theta }))}
+                    className="w-4 h-4 text-green-600 rounded cursor-pointer"
+                  />
+                  <label htmlFor="overlayTheta" className="text-xs font-semibold cursor-pointer" style={{ color: '#4CAF50' }}>
+                    θ Theta
+                  </label>
+                </div>
+                <p className="text-lg font-bold" style={{ color: getGreekValueColor('theta', greeks.theta) }}>+{greeks.theta.toFixed(2)}/day</p>
+                {ceGreeks && peGreeks && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    (CE: {ceGreeks.theta.toFixed(2)}, PE: {peGreeks.theta.toFixed(2)})
+                  </p>
+                )}
                 <p className="text-xs text-gray-500 mt-1">Time Decay (seller profit)</p>
               </div>
 
+              {/* Vega Box with Checkbox */}
               <div className="bg-white rounded p-3 border border-gray-200">
-                <p className="text-xs text-gray-600 font-semibold">ν Vega</p>
-                <p className="text-lg font-bold text-red-600">{greeks.vega.toFixed(2)}/point</p>
+                <div className="flex items-center gap-2 mb-2">
+                  <input
+                    type="checkbox"
+                    id="overlayVega"
+                    checked={showGreeks.vega}
+                    onChange={() => setShowGreeks(prev => ({ ...prev, vega: !prev.vega }))}
+                    className="w-4 h-4 text-red-600 rounded cursor-pointer"
+                  />
+                  <label htmlFor="overlayVega" className="text-xs font-semibold cursor-pointer" style={{ color: '#F44336' }}>
+                    ν Vega
+                  </label>
+                </div>
+                <p className="text-lg font-bold" style={{ color: getGreekValueColor('vega', greeks.vega) }}>{greeks.vega.toFixed(2)}/point</p>
+                {ceGreeks && peGreeks && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    (CE: {ceGreeks.vega.toFixed(2)}, PE: {peGreeks.vega.toFixed(2)})
+                  </p>
+                )}
                 <p className="text-xs text-gray-500 mt-1">Volatility Risk (seller loss)</p>
               </div>
 
+              {/* Gamma Box with Checkbox */}
               <div className="bg-white rounded p-3 border border-gray-200">
-                <p className="text-xs text-gray-600 font-semibold">Γ Gamma</p>
-                <p className="text-lg font-bold text-orange-600">+{greeks.gamma.toFixed(4)}</p>
+                <div className="flex items-center gap-2 mb-2">
+                  <input
+                    type="checkbox"
+                    id="overlayGamma"
+                    checked={showGreeks.gamma}
+                    onChange={() => setShowGreeks(prev => ({ ...prev, gamma: !prev.gamma }))}
+                    className="w-4 h-4 text-orange-600 rounded cursor-pointer"
+                  />
+                  <label htmlFor="overlayGamma" className="text-xs font-semibold cursor-pointer" style={{ color: '#FF9800' }}>
+                    Γ Gamma
+                  </label>
+                </div>
+                <p className="text-lg font-bold" style={{ color: getGreekValueColor('gamma', greeks.gamma) }}>+{greeks.gamma.toFixed(4)}</p>
+                {ceGreeks && peGreeks && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    (CE: {ceGreeks.gamma.toFixed(4)}, PE: {peGreeks.gamma.toFixed(4)})
+                  </p>
+                )}
                 <p className="text-xs text-gray-500 mt-1">Directional Risk</p>
               </div>
 
+              {/* Delta Box with Checkbox */}
               <div className="bg-white rounded p-3 border border-gray-200">
-                <p className="text-xs text-gray-600 font-semibold">Δ Delta</p>
-                <p className="text-lg font-bold text-blue-600">{greeks.delta > 0 ? '+' : ''}{greeks.delta.toFixed(2)}</p>
+                <div className="flex items-center gap-2 mb-2">
+                  <input
+                    type="checkbox"
+                    id="overlayDelta"
+                    checked={showGreeks.delta}
+                    onChange={() => setShowGreeks(prev => ({ ...prev, delta: !prev.delta }))}
+                    className="w-4 h-4 text-blue-600 rounded cursor-pointer"
+                  />
+                  <label htmlFor="overlayDelta" className="text-xs font-semibold cursor-pointer" style={{ color: '#2196F3' }}>
+                    Δ Delta
+                  </label>
+                </div>
+                <p className="text-lg font-bold" style={{ color: getGreekValueColor('delta', greeks.delta) }}>{greeks.delta > 0 ? '+' : ''}{greeks.delta.toFixed(2)}</p>
+                {ceGreeks && peGreeks && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    (CE: {ceGreeks.delta > 0 ? '+' : ''}{ceGreeks.delta.toFixed(2)}, PE: {peGreeks.delta > 0 ? '+' : ''}{peGreeks.delta.toFixed(2)})
+                  </p>
+                )}
                 <p className="text-xs text-gray-500 mt-1">Neutral (~0)</p>
               </div>
 
+              {/* Days to Expiry (no checkbox) */}
               <div className="bg-white rounded p-3 border border-gray-200">
                 <p className="text-xs text-gray-600 font-semibold">Days to Expiry</p>
                 <p className="text-lg font-bold text-purple-600">{greeks.daysToExpiry}</p>

@@ -15,10 +15,37 @@ export interface BrokerAuthStatus {
 }
 
 /**
+ * Calculate milliseconds until next midnight (IST)
+ * Tokens are valid till end of trading day (12:00 AM midnight)
+ */
+export function calculateMsUntilMidnight(fromDate: Date = new Date()): number {
+  // Create a date for next midnight in IST timezone
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    timeZone: 'Asia/Kolkata',
+  });
+
+  // Get today's date in IST
+  const istDateString = formatter.format(fromDate);
+  const [month, day, year] = istDateString.split('/');
+
+  // Create midnight of next day IST
+  const nextDayIST = new Date(`${year}-${month}-${day}T23:59:59+05:30`);
+  nextDayIST.setDate(nextDayIST.getDate() + 1);
+  nextDayIST.setHours(0, 0, 0, 0);
+
+  // Convert to milliseconds from now
+  const msUntilMidnight = nextDayIST.getTime() - fromDate.getTime();
+  return Math.max(msUntilMidnight, 0); // Ensure non-negative
+}
+
+/**
  * Calculate broker auth status based on lastAuthenticated timestamp
  *
- * Zerodha tokens expire at market close (3:30 PM IST) or next day
- * We estimate 6 hours validity from authentication time
+ * Fyers/NSE tokens expire at end of trading day (midnight 12:00 AM IST)
+ * They are valid for the entire trading day they are issued
  *
  * Status:
  * - valid: Token has >1 hour remaining
@@ -35,13 +62,12 @@ export function calculateBrokerAuthStatus(lastAuthenticatedAt: Date | null): Bro
     };
   }
 
-  // Zerodha tokens expire approximately 6 hours after authentication
-  // (until market close 3:30 PM IST next day, whichever comes first)
-  const TOKEN_VALIDITY_HOURS = 6;
+  // Tokens expire at end of current trading day (midnight IST)
   const EXPIRY_THRESHOLD_MINUTES = 30; // Show warning when <30 min left
 
   const lastAuthDate = new Date(lastAuthenticatedAt);
-  const expiresAt = new Date(lastAuthDate.getTime() + TOKEN_VALIDITY_HOURS * 60 * 60 * 1000);
+  const msUntilMidnight = calculateMsUntilMidnight(lastAuthDate);
+  const expiresAt = new Date(lastAuthDate.getTime() + msUntilMidnight);
   const now = new Date();
 
   const timeDiffMs = expiresAt.getTime() - now.getTime();

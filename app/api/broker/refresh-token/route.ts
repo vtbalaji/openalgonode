@@ -1,133 +1,130 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { adminAuth } from '@/lib/firebaseAdmin';
+import { getCachedBrokerConfig, invalidateBrokerConfig } from '@/lib/brokerConfigUtils';
+import { decryptData } from '@/lib/encryptionUtils';
+import { ensureValidAccessToken } from '@/lib/fyersTokenRefresh';
+
 /**
  * POST /api/broker/refresh-token
- * Refresh Fyers access token using stored refresh token
+ * Manually refresh broker access token
+ * Requires: Authorization header with Firebase ID token
+ * Body: { broker: "fyers" | "zerodha" | "angel" }
  *
- * Request body:
- * {
- *   userId: string (Firebase user ID)
- *   broker: 'fyers' | 'zerodha' (only Fyers is supported for now)
- * }
+ * Response: { success: true, message: "Token refreshed", broker, expiresAt }
  */
-
-import { NextRequest, NextResponse } from 'next/server';
-import { adminDb } from '@/lib/firebaseAdmin';
-import { decryptData, encryptData } from '@/lib/encryptionUtils';
-import { refreshFyersToken } from '@/lib/fyersClient';
-import { invalidateBrokerConfigCache } from '@/lib/brokerConfigCache';
-
 export async function POST(request: NextRequest) {
   try {
-    const { userId, broker } = await request.json();
-
-    if (!userId) {
+    // Get the Firebase ID token from Authorization header
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
       return NextResponse.json(
-        { error: 'Missing userId' },
+        { error: 'Missing or invalid authorization header' },
+        { status: 401 }
+      );
+    }
+
+    const idToken = authHeader.substring(7);
+
+    // Verify the token
+    let decodedToken;
+    try {
+      decodedToken = await adminAuth.verifyIdToken(idToken);
+    } catch (error) {
+      return NextResponse.json(
+        { error: 'Invalid or expired token' },
+        { status: 401 }
+      );
+    }
+
+    const userId = decodedToken.uid;
+    const { broker } = await request.json();
+
+    console.log(`[REFRESH-TOKEN] User=${userId}, Broker=${broker}`);
+
+    if (!broker) {
+      return NextResponse.json(
+        { error: 'Missing required field: broker' },
         { status: 400 }
       );
     }
 
-    if (!broker || !['fyers', 'zerodha'].includes(broker)) {
+    // Retrieve broker config from cache
+    const configData = await getCachedBrokerConfig(userId, broker);
+
+    if (!configData) {
       return NextResponse.json(
-        { error: 'Missing or invalid broker. Supported: fyers, zerodha' },
-        { status: 400 }
-      );
-    }
-
-    console.log(`[REFRESH-TOKEN] Attempting to refresh ${broker} token for user:`, userId.substring(0, 20) + '...');
-
-    // Get broker config from Firestore
-    const userBrokerRef = adminDb.collection('users').doc(userId).collection('brokerConfig').doc(broker);
-    const doc = await userBrokerRef.get();
-
-    if (!doc.exists) {
-      console.log(`[REFRESH-TOKEN] No ${broker} config found for user`);
-      return NextResponse.json(
-        { error: `No ${broker} configuration found` },
+        { error: 'Broker configuration not found. Please configure your broker first.' },
         { status: 404 }
       );
     }
 
-    const data = doc.data() as any;
-
-    if (!data.refreshToken) {
-      console.log(`[REFRESH-TOKEN] No refresh token stored for ${broker}`);
-      return NextResponse.json(
-        { error: `No refresh token available for ${broker}` },
-        { status: 400 }
-      );
-    }
-
+    // Handle Fyers token refresh
     if (broker === 'fyers') {
-      // Refresh Fyers token
-      console.log('[REFRESH-TOKEN] Refreshing Fyers token...');
-
-      const decryptedRefreshToken = decryptData(data.refreshToken);
-      const clientId = decryptData(data.apiKey); // apiKey contains clientId for Fyers
-      const clientSecret = decryptData(data.clientSecret); // clientSecret must be stored
-
-      if (!clientSecret) {
-        console.error('[REFRESH-TOKEN] Client secret not found for Fyers');
+      if (!configData.refreshToken || !configData.apiKey || !configData.apiSecret) {
         return NextResponse.json(
-          { error: 'Client secret not configured. Please re-authenticate with Fyers.' },
+          { error: 'Missing required credentials for Fyers refresh token' },
           { status: 400 }
         );
       }
 
       try {
-        const newTokens = await refreshFyersToken(decryptedRefreshToken, clientId, clientSecret);
+        const apiKey = decryptData(configData.apiKey);
+        const apiSecret = decryptData(configData.apiSecret);
+        const refreshToken = decryptData(configData.refreshToken);
+        const pin = configData.pin ? decryptData(configData.pin) : undefined;
 
-        console.log('[REFRESH-TOKEN] Token refresh successful, updating database...');
+        console.log('[REFRESH-TOKEN] Calling ensureValidAccessToken for Fyers...');
 
-        // Update the stored tokens
-        await userBrokerRef.update({
-          accessToken: encryptData(newTokens.accessToken),
-          refreshToken: encryptData(newTokens.refreshToken),
-          lastTokenRefresh: new Date().toISOString(),
-          status: 'active',
-        });
-
-        // Invalidate cache so next request gets fresh tokens
-        invalidateBrokerConfigCache(userId, broker);
-
-        console.log('[REFRESH-TOKEN] Tokens updated successfully');
-
-        return NextResponse.json({
-          success: true,
-          message: 'Token refreshed successfully',
+        const newAccessToken = await ensureValidAccessToken(
+          userId,
           broker,
-          lastRefresh: new Date().toISOString(),
-        });
-      } catch (error: any) {
-        console.error('[REFRESH-TOKEN] Fyers token refresh failed:', error.message);
+          apiKey,
+          apiSecret,
+          refreshToken,
+          configData.accessToken,
+          configData.accessTokenExpiresAt,
+          pin
+        );
 
-        // If refresh fails, mark the config as needing re-authentication
-        await userBrokerRef.update({
-          status: 'token_expired',
-          lastTokenRefreshError: error.message,
-          lastTokenRefreshAttempt: new Date().toISOString(),
-        });
+        if (!newAccessToken) {
+          return NextResponse.json(
+            { error: 'Failed to refresh Fyers access token' },
+            { status: 400 }
+          );
+        }
+
+        // Invalidate cache to ensure fresh token is picked up
+        invalidateBrokerConfig(userId, broker);
 
         return NextResponse.json(
-          { error: `Token refresh failed: ${error.message}. Please re-authenticate.` },
-          { status: 401 }
+          {
+            success: true,
+            message: 'Token refreshed successfully',
+            broker,
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          },
+          { status: 200 }
+        );
+      } catch (error: any) {
+        console.error('[REFRESH-TOKEN] Fyers refresh error:', error.message);
+        return NextResponse.json(
+          { error: error.message || 'Failed to refresh Fyers token' },
+          { status: 400 }
         );
       }
-    } else if (broker === 'zerodha') {
-      console.log('[REFRESH-TOKEN] Zerodha token refresh not yet implemented');
-      return NextResponse.json(
-        { error: 'Zerodha token refresh not yet implemented' },
-        { status: 501 }
-      );
     }
 
+    // For other brokers (Zerodha, Angel), manual refresh not supported
     return NextResponse.json(
-      { error: 'Invalid broker' },
+      {
+        error: `Manual token refresh not supported for ${broker}. Please re-authenticate.`,
+      },
       { status: 400 }
     );
-  } catch (error: any) {
-    console.error('[REFRESH-TOKEN] Error:', error.message);
+  } catch (error) {
+    console.error('[REFRESH-TOKEN] Error:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to refresh token' },
+      { error: 'Failed to refresh token' },
       { status: 500 }
     );
   }

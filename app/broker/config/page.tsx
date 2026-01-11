@@ -269,6 +269,44 @@ export default function BrokerConfigPage() {
     }
   };
 
+  const handleRefreshToken = async () => {
+    if (!selectedBroker) return;
+
+    setIsLoading(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const idToken = await user?.getIdToken();
+      const response = await fetch('/api/broker/refresh-token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          broker: selectedBroker,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setSuccess(`Token refreshed successfully! Valid till next midnight IST.`);
+        // Refresh config to show updated expiry time
+        setTimeout(() => {
+          fetchBrokerConfig();
+        }, 1000);
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Failed to refresh token');
+      }
+    } catch (err: any) {
+      setError(err.message || 'An error occurred while refreshing token');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   if (loading || isFetching) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -313,14 +351,25 @@ export default function BrokerConfigPage() {
                 />
               </div>
               {authStatus === 'active' && (
-                <button
-                  type="button"
-                  onClick={handleResetAuth}
-                  className="ml-4 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition"
-                  title="Clear authentication tokens for testing"
-                >
-                  🔄 Reset (Testing)
-                </button>
+                <div className="ml-4 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleRefreshToken}
+                    disabled={isLoading}
+                    className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded transition"
+                    title="Manually refresh access token (valid till next midnight IST)"
+                  >
+                    {isLoading ? '⏳ Refreshing...' : '🔄 Refresh Token'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleResetAuth}
+                    className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition"
+                    title="Clear authentication tokens for testing"
+                  >
+                    🔄 Reset (Testing)
+                  </button>
+                </div>
               )}
             </div>
           </div>

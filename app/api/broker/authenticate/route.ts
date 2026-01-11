@@ -366,13 +366,27 @@ export async function POST(request: NextRequest) {
       console.log(`[AUTH-FYERS] Saving access token to Firestore for user=${userId}`);
       try {
         // Build update data - only include refreshToken if not empty
+        // Calculate expiration till end of trading day (midnight IST)
+        const now = new Date();
+        const formatter = new Intl.DateTimeFormat('en-US', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          timeZone: 'Asia/Kolkata',
+        });
+        const istDateString = formatter.format(now);
+        const [month, day, year] = istDateString.split('/');
+        const nextMidnightIST = new Date(`${year}-${month}-${day}T23:59:59+05:30`);
+        nextMidnightIST.setDate(nextMidnightIST.getDate() + 1);
+        nextMidnightIST.setHours(0, 0, 0, 0);
+        const msUntilMidnight = nextMidnightIST.getTime() - now.getTime();
+
         const updateData: any = {
           accessToken: encryptData(accessToken),
           status: 'active',
           lastAuthenticated: new Date().toISOString(),
-          // Access tokens are typically valid for 24 hours from Fyers
-          // Calculate expiration time (now + 24 hours)
-          accessTokenExpiresAt: Date.now() + 24 * 60 * 60 * 1000,
+          // Access tokens are valid till end of trading day (midnight IST)
+          accessTokenExpiresAt: now.getTime() + msUntilMidnight,
         };
 
         // Store app_id if we extracted it from the JWT

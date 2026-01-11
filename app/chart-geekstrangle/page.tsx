@@ -398,22 +398,22 @@ export default function GeekStrangleChartPage() {
           const greekData = calculateGreeks(candle.close, previousPrice, daysToExpCandle, apiSpotPrice, ceStrikeValue, peStrikeValue);
 
           // Normalize Greeks to 0-100 scale for better visibility
-          // Black-Scholes Greeks are actual values, scale them appropriately
+          // Each Greek has different actual range - scale individually
 
-          // Theta: typical range 0-15 (daily decay in rupees) → normalize to 0-100
-          // Capped at 100 so it fits in chart
-          const thetaNormalized = Math.min(100, Math.max(0, (Math.abs(greekData.theta) / 15) * 100));
+          // Theta: actual range 0-10 per day (5-7 typical for short-dated) → normalize to 0-100
+          // Divide by 10 so theta=5 → 50, theta=7 → 70, theta=10 → 100
+          const thetaNormalized = Math.min(100, Math.max(0, (Math.abs(greekData.theta) / 10) * 100));
 
-          // Vega: typical range 0-3 (positive for buyers/sellers sensitivity) → normalize to 0-100
-          // Higher vega = more volatility sensitivity = higher value
-          const vegaNormalized = Math.min(100, Math.max(0, (greekData.vega / 3) * 100));
+          // Vega: actual range 0-2 per 1% vol (0.5-1.5 typical) → normalize to 0-100
+          // Divide by 2 so vega=0.5 → 25, vega=1 → 50, vega=2 → 100
+          const vegaNormalized = Math.min(100, Math.max(0, (greekData.vega / 2) * 100));
 
-          // Gamma: typical range 0-0.05 (delta acceleration) → normalize to 0-100
-          // Clipped at 50 for visibility if exceeds
-          const gammaNormalized = Math.min(100, Math.max(0, (greekData.gamma / 0.05) * 100));
+          // Gamma: actual range 0-0.01 per point (0.001-0.005 typical) → normalize to 0-100
+          // Divide by 0.01 so gamma=0.001 → 10, gamma=0.005 → 50, gamma=0.01 → 100
+          const gammaNormalized = Math.min(100, Math.max(0, (greekData.gamma / 0.01) * 100));
 
           // Delta: range -1 to 1 → 0-100 (center at 50, neutrality = 50)
-          // Near-zero delta (±0.2) = around 40-60 on scale
+          // Delta=0 → 50, Delta=0.5 → 75, Delta=-0.5 → 25 (unchanged, correct already)
           const deltaNormalized = Math.min(100, Math.max(0, ((greekData.delta + 1) / 2) * 100));
 
           return {

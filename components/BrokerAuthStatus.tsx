@@ -15,6 +15,8 @@ interface BrokerAuthStatusProps {
   lastAuthenticatedAt: Date | null;
   broker: string;
   onReAuth?: () => void;
+  onRefreshToken?: () => void;
+  isRefreshingToken?: boolean;
   showDetails?: boolean;
   compact?: boolean;
 }
@@ -23,6 +25,8 @@ export function BrokerAuthStatus({
   lastAuthenticatedAt,
   broker,
   onReAuth,
+  onRefreshToken,
+  isRefreshingToken = false,
   showDetails = true,
   compact = false,
 }: BrokerAuthStatusProps) {
@@ -110,23 +114,37 @@ export function BrokerAuthStatus({
           )}
         </div>
 
-        {(authStatus.status === 'expiring' || authStatus.status === 'expired') && onReAuth && (
-          <button
-            onClick={onReAuth}
-            className={`ml-6 px-4 py-2 rounded font-medium transition-colors ${buttonClass} flex-shrink-0`}
-          >
-            {authStatus.status === 'expired' ? 'Authenticate' : 'Re-authenticate'}
-          </button>
-        )}
+        <div className="ml-6 flex flex-col gap-2 flex-shrink-0">
+          {(authStatus.status === 'expiring' || authStatus.status === 'expired') && onReAuth && (
+            <button
+              onClick={onReAuth}
+              className={`px-4 py-2 rounded font-medium transition-colors ${buttonClass}`}
+            >
+              {authStatus.status === 'expired' ? 'Authenticate' : 'Re-authenticate'}
+            </button>
+          )}
 
-        {authStatus.status === 'valid' && onReAuth && (
-          <button
-            onClick={onReAuth}
-            className={`ml-6 px-4 py-2 rounded font-medium transition-colors ${buttonClass} flex-shrink-0 opacity-75 hover:opacity-100`}
-          >
-            Refresh
-          </button>
-        )}
+          {authStatus.status === 'valid' && onReAuth && (
+            <button
+              onClick={onReAuth}
+              className={`px-4 py-2 rounded font-medium transition-colors ${buttonClass} opacity-75 hover:opacity-100`}
+            >
+              Refresh (Auth)
+            </button>
+          )}
+
+          {authStatus.status === 'valid' && onRefreshToken && (
+            <button
+              onClick={onRefreshToken}
+              disabled={isRefreshingToken}
+              className={`px-4 py-2 rounded font-medium transition-colors ${buttonClass} ${
+                isRefreshingToken ? 'opacity-50 cursor-not-allowed' : 'opacity-75 hover:opacity-100'
+              }`}
+            >
+              {isRefreshingToken ? '⏳ Refreshing Token...' : 'Refresh (Token)'}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Status indicator dot */}

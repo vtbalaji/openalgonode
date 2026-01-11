@@ -337,40 +337,40 @@ export default function BrokerConfigPage() {
 
       {/* Main Content */}
       <main className="mx-auto max-w-2xl px-4 py-12 sm:px-6 lg:px-8">
-        {/* Status Card */}
+        {/* Status Card (Green Box) */}
         {selectedBroker && (
           <div className="mb-8">
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <BrokerAuthStatus
-                  lastAuthenticatedAt={lastAuthenticatedAt}
-                  broker={selectedBroker}
-                  onReAuth={handleGetLoginUrl}
-                  showDetails={true}
-                  compact={false}
-                />
+            <BrokerAuthStatus
+              lastAuthenticatedAt={lastAuthenticatedAt}
+              broker={selectedBroker}
+              onReAuth={handleGetLoginUrl}
+              onRefreshToken={handleRefreshToken}
+              isRefreshingToken={isLoading}
+              showDetails={true}
+              compact={false}
+            />
+          </div>
+        )}
+
+        {/* Reset Button (Red Box) */}
+        {selectedBroker && authStatus === 'active' && (
+          <div className="mb-8 rounded-lg bg-red-50 border-2 border-red-200 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-red-800">Testing & Reset</h3>
+                <p className="text-sm text-red-700 mt-1">
+                  Delete authentication tokens to test or re-authenticate with different credentials
+                </p>
               </div>
-              {authStatus === 'active' && (
-                <div className="ml-4 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={handleRefreshToken}
-                    disabled={isLoading}
-                    className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded transition"
-                    title="Manually refresh access token (valid till next midnight IST)"
-                  >
-                    {isLoading ? '⏳ Refreshing...' : '🔄 Refresh Token'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleResetAuth}
-                    className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition"
-                    title="Clear authentication tokens for testing"
-                  >
-                    🔄 Reset (Testing)
-                  </button>
-                </div>
-              )}
+              <button
+                type="button"
+                onClick={handleResetAuth}
+                disabled={isLoading}
+                className="ml-6 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white rounded font-medium transition flex-shrink-0"
+                title="Clear authentication tokens (requires confirmation)"
+              >
+                {isLoading ? '⏳ Resetting...' : '🔄 Reset Auth'}
+              </button>
             </div>
           </div>
         )}

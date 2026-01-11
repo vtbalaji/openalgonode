@@ -146,18 +146,42 @@ export function detectHarmonicPatterns(
     }
 
     // Find point B (retracement up from A)
-    // B should be between A and X, at 38.2%-61.8% retracement
+    // B should be an actual local swing high within 38.2%-61.8% of XA
+    // Find the local high that closest aligns to Fibonacci levels
+
     const minB = calculateFibRetracement(A.price, X.price, config.minABRetracement);
     const maxB = calculateFibRetracement(A.price, X.price, config.maxABRetracement);
 
     let B: Point | null = null;
-    let B_high = -Infinity;
+    const fibLevels = [0.382, 0.5, 0.618]; // Target Fibonacci levels
+    let closestDistance = Infinity;
 
-    // Scan candles after A for highest point in valid retracement range
+    // Find local swing highs (highs higher than surrounding candles)
     for (let i = A.index + 1; i < data.length; i++) {
       const candle = data[i];
-      if (candle.high >= minB && candle.high <= maxB && candle.high > B_high) {
-        B_high = candle.high;
+
+      // Check if this is a local high (higher than neighbors)
+      const isLocalHigh =
+        (i === A.index + 1 || candle.high >= data[i - 1].high) &&
+        (i === data.length - 1 || candle.high >= data[i + 1].high);
+
+      if (!isLocalHigh || candle.high < minB || candle.high > maxB) continue;
+
+      // Calculate how much this represents as % of XA
+      const retracementPct = (candle.high - A.price) / XA_range;
+
+      // Find which Fibonacci level this is closest to
+      let distanceToFib = Infinity;
+      for (const fib of fibLevels) {
+        const distance = Math.abs(retracementPct - fib);
+        if (distance < distanceToFib) {
+          distanceToFib = distance;
+        }
+      }
+
+      // Pick the swing high closest to a Fibonacci level
+      if (distanceToFib < closestDistance) {
+        closestDistance = distanceToFib;
         B = {
           time: candle.time,
           price: candle.high,
@@ -174,18 +198,40 @@ export function detectHarmonicPatterns(
     const AB_retracement = AB_range / XA_range;
 
     // Find point C (pullback down from B)
-    // C should pullback 38.2%-88.6% of AB move
+    // C should be an actual local swing low within 38.2%-88.6% of AB
     const minC = B.price - AB_range * config.maxBCPullback;
     const maxC = B.price - AB_range * config.minBCPullback;
 
     let C: Point | null = null;
-    let C_low = Infinity;
+    const fibLevelsC = [0.382, 0.5, 0.618, 0.786, 0.886]; // Pullback Fib levels
+    let closestDistanceC = Infinity;
 
-    // Scan candles after B for lowest point in valid pullback range
+    // Find local swing lows (lows lower than surrounding candles)
     for (let i = B.index + 1; i < data.length; i++) {
       const candle = data[i];
-      if (candle.low >= minC && candle.low <= maxC && candle.low < C_low) {
-        C_low = candle.low;
+
+      // Check if this is a local low (lower than neighbors)
+      const isLocalLow =
+        (i === B.index + 1 || candle.low <= data[i - 1].low) &&
+        (i === data.length - 1 || candle.low <= data[i + 1].low);
+
+      if (!isLocalLow || candle.low < minC || candle.low > maxC) continue;
+
+      // Calculate how much this represents as % of AB
+      const pullbackPct = (B.price - candle.low) / AB_range;
+
+      // Find which Fibonacci level this is closest to
+      let distanceToFib = Infinity;
+      for (const fib of fibLevelsC) {
+        const distance = Math.abs(pullbackPct - fib);
+        if (distance < distanceToFib) {
+          distanceToFib = distance;
+        }
+      }
+
+      // Pick the swing low closest to a Fibonacci level
+      if (distanceToFib < closestDistanceC) {
+        closestDistanceC = distanceToFib;
         C = {
           time: candle.time,
           price: candle.low,
@@ -279,16 +325,42 @@ export function detectHarmonicPatterns(
     }
 
     // Find point B (retracement down from A)
+    // B should be an actual local swing low within 38.2%-61.8% of XA
+    // Find the local low that closest aligns to Fibonacci levels
+
     const minB = calculateFibRetracement(A.price, X.price, config.maxABRetracement);
     const maxB = calculateFibRetracement(A.price, X.price, config.minABRetracement);
 
     let B: Point | null = null;
-    let B_low = Infinity;
+    const fibLevels = [0.382, 0.5, 0.618]; // Target Fibonacci levels
+    let closestDistance = Infinity;
 
+    // Find local swing lows (lows lower than surrounding candles)
     for (let i = A.index + 1; i < data.length; i++) {
       const candle = data[i];
-      if (candle.low >= minB && candle.low <= maxB && candle.low < B_low) {
-        B_low = candle.low;
+
+      // Check if this is a local low (lower than neighbors)
+      const isLocalLow =
+        (i === A.index + 1 || candle.low <= data[i - 1].low) &&
+        (i === data.length - 1 || candle.low <= data[i + 1].low);
+
+      if (!isLocalLow || candle.low < minB || candle.low > maxB) continue;
+
+      // Calculate how much this represents as % of XA
+      const retracementPct = (A.price - candle.low) / XA_range;
+
+      // Find which Fibonacci level this is closest to
+      let distanceToFib = Infinity;
+      for (const fib of fibLevels) {
+        const distance = Math.abs(retracementPct - fib);
+        if (distance < distanceToFib) {
+          distanceToFib = distance;
+        }
+      }
+
+      // Pick the swing low closest to a Fibonacci level
+      if (distanceToFib < closestDistance) {
+        closestDistance = distanceToFib;
         B = {
           time: candle.time,
           price: candle.low,
@@ -305,16 +377,40 @@ export function detectHarmonicPatterns(
     const AB_retracement = AB_range / XA_range;
 
     // Find point C (pullback up from B)
+    // C should be an actual local swing high within 38.2%-88.6% of AB
     const minC = B.price + AB_range * config.minBCPullback;
     const maxC = B.price + AB_range * config.maxBCPullback;
 
     let C: Point | null = null;
-    let C_high = -Infinity;
+    const fibLevelsC = [0.382, 0.5, 0.618, 0.786, 0.886]; // Pullback Fib levels
+    let closestDistanceC = Infinity;
 
+    // Find local swing highs (highs higher than surrounding candles)
     for (let i = B.index + 1; i < data.length; i++) {
       const candle = data[i];
-      if (candle.high >= minC && candle.high <= maxC && candle.high > C_high) {
-        C_high = candle.high;
+
+      // Check if this is a local high (higher than neighbors)
+      const isLocalHigh =
+        (i === B.index + 1 || candle.high >= data[i - 1].high) &&
+        (i === data.length - 1 || candle.high >= data[i + 1].high);
+
+      if (!isLocalHigh || candle.high < minC || candle.high > maxC) continue;
+
+      // Calculate how much this represents as % of AB
+      const pullbackPct = (candle.high - B.price) / AB_range;
+
+      // Find which Fibonacci level this is closest to
+      let distanceToFib = Infinity;
+      for (const fib of fibLevelsC) {
+        const distance = Math.abs(pullbackPct - fib);
+        if (distance < distanceToFib) {
+          distanceToFib = distance;
+        }
+      }
+
+      // Pick the swing high closest to a Fibonacci level
+      if (distanceToFib < closestDistanceC) {
+        closestDistanceC = distanceToFib;
         C = {
           time: candle.time,
           price: candle.high,

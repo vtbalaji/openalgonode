@@ -325,16 +325,19 @@ export default function GeekStraddleChartPage() {
           // Black-Scholes Greeks are actual values, scale them appropriately
 
           // Theta: typical range 0-15 (daily decay in rupees) → normalize to 0-100
-          const thetaNormalized = Math.min(100, Math.max(0, (greekData.theta / 15) * 100));
+          // Capped at 100 so it fits in chart
+          const thetaNormalized = Math.min(100, Math.max(0, (Math.abs(greekData.theta) / 15) * 100));
 
-          // Vega: typical range -5 to -0.5 (volatility sensitivity) → normalize to 0-100
-          // More negative = better for sellers, so invert: -5 becomes 100, -0.5 becomes 10
-          const vegaNormalized = Math.min(100, Math.max(0, ((greekData.vega + 5) / 5) * 100));
+          // Vega: typical range 0-3 (positive for buyers/sellers sensitivity) → normalize to 0-100
+          // Higher vega = more volatility sensitivity = higher value
+          const vegaNormalized = Math.min(100, Math.max(0, (greekData.vega / 3) * 100));
 
           // Gamma: typical range 0-0.05 (delta acceleration) → normalize to 0-100
+          // Clipped at 50 for visibility if exceeds
           const gammaNormalized = Math.min(100, Math.max(0, (greekData.gamma / 0.05) * 100));
 
           // Delta: range -1 to 1 → 0-100 (center at 50, neutrality = 50)
+          // Near-zero delta (±0.2) = around 40-60 on scale
           const deltaNormalized = Math.min(100, Math.max(0, ((greekData.delta + 1) / 2) * 100));
 
           return {

@@ -397,23 +397,28 @@ export default function GeekStrangleChartPage() {
 
           const greekData = calculateGreeks(candle.close, previousPrice, daysToExpCandle, apiSpotPrice, ceStrikeValue, peStrikeValue);
 
-          // Normalize Greeks to 0-100 scale for better visibility
-          // Each Greek has different actual range - scale individually
+          // Normalize Greeks to 0-100 scale based on REAL Black-Scholes ranges
+          // Ranges researched for short-dated NIFTY options (5-14 DTE)
 
-          // Theta: actual range 0-10 per day (5-7 typical for short-dated) → normalize to 0-100
-          // Divide by 10 so theta=5 → 50, theta=7 → 70, theta=10 → 100
-          const thetaNormalized = Math.min(100, Math.max(0, (Math.abs(greekData.theta) / 10) * 100));
+          // THETA: Range -0.05 to -3.0 per day (absolute value for display)
+          // At 14 DTE: -0.25, At 7 DTE: -0.5, At 5 DTE: -1.0, At 1 DTE: -3.0
+          // Divide by 3.0 to get 0-100 scale: -1.0 → 33, -2.0 → 67, -3.0 → 100
+          const thetaNormalized = Math.min(100, Math.max(0, (Math.abs(greekData.theta) / 3.0) * 100));
 
-          // Vega: actual range 0-2 per 1% vol (0.5-1.5 typical) → normalize to 0-100
-          // Divide by 2 so vega=0.5 → 25, vega=1 → 50, vega=2 → 100
-          const vegaNormalized = Math.min(100, Math.max(0, (greekData.vega / 2) * 100));
+          // VEGA: Range 0.5 to 15 per 1% IV change
+          // At 14 DTE: 5-10, At 7 DTE: 2-4, At 5 DTE: 1-2, At 1 DTE: <0.5
+          // Divide by 15 to get 0-100 scale: 1.0 → 7, 5.0 → 33, 10.0 → 67, 15.0 → 100
+          const vegaNormalized = Math.min(100, Math.max(0, (greekData.vega / 15.0) * 100));
 
-          // Gamma: actual range 0-0.01 per point (0.001-0.005 typical) → normalize to 0-100
-          // Divide by 0.01 so gamma=0.001 → 10, gamma=0.005 → 50, gamma=0.01 → 100
-          const gammaNormalized = Math.min(100, Math.max(0, (greekData.gamma / 0.01) * 100));
+          // GAMMA: Range 0.0005 to 0.015 per point move
+          // At 14 DTE: 0.001, At 7 DTE: 0.002, At 5 DTE: 0.005, At 1 DTE: 0.015
+          // Divide by 0.015 to get 0-100 scale: 0.005 → 33, 0.01 → 67, 0.015 → 100
+          // Danger zone: >0.008 (>53 on scale), Safe: <0.004 (<27 on scale)
+          const gammaNormalized = Math.min(100, Math.max(0, (greekData.gamma / 0.015) * 100));
 
-          // Delta: range -1 to 1 → 0-100 (center at 50, neutrality = 50)
-          // Delta=0 → 50, Delta=0.5 → 75, Delta=-0.5 → 25 (unchanged, correct already)
+          // DELTA: Range -1 to +1 (ATM straddle/strangle should be ±0.5 = neutral)
+          // -1.0 → 0, 0.0 → 50 (neutral), +1.0 → 100
+          // For straddle: delta close to 50 is ideal (balanced long/short)
           const deltaNormalized = Math.min(100, Math.max(0, ((greekData.delta + 1) / 2) * 100));
 
           return {

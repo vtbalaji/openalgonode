@@ -512,63 +512,77 @@ export default function GeekStrangleChartPage() {
             </div>
 
             {/* CE Strike Selector */}
-            <div className="flex-shrink-0 flex items-center gap-2">
-              <label className="text-xs text-gray-600 whitespace-nowrap font-semibold">CE:</label>
-              <div className="flex items-center h-10 bg-white rounded-lg border border-gray-300 px-2">
-                <button
-                  onClick={() => setCeStrike(prev => (prev ? prev - 100 : ceStrikeValue - 100))}
-                  className="px-2 py-0 text-red-600 hover:bg-red-50 rounded text-lg font-bold"
-                  title="Decrease CE strike by 100"
-                >
-                  −
-                </button>
+            <div className="flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-600 whitespace-nowrap font-semibold">CE:</label>
+                <div className="flex items-center h-10 bg-white rounded-lg border border-gray-300 px-2">
+                  <button
+                    onClick={() => setCeStrike(prev => (prev ? prev - 100 : ceStrikeValue - 100))}
+                    className="px-2 py-0 text-red-600 hover:bg-red-50 rounded text-lg font-bold"
+                    title="Decrease CE strike by 100"
+                  >
+                    −
+                  </button>
 
-                <input
-                  type="number"
-                  value={ceStrike || ceStrikeValue}
-                  onChange={(e) => setCeStrike(e.target.value ? parseInt(e.target.value) : null)}
-                  step="100"
-                  className="w-20 text-center border-0 text-gray-900 text-sm font-semibold focus:outline-none bg-transparent"
-                />
+                  <input
+                    type="number"
+                    value={ceStrike || ceStrikeValue}
+                    onChange={(e) => setCeStrike(e.target.value ? parseInt(e.target.value) : null)}
+                    step="100"
+                    className="w-20 text-center border-0 text-gray-900 text-sm font-semibold focus:outline-none bg-transparent"
+                  />
 
-                <button
-                  onClick={() => setCeStrike(prev => (prev ? prev + 100 : ceStrikeValue + 100))}
-                  className="px-2 py-0 text-green-600 hover:bg-green-50 rounded text-lg font-bold"
-                  title="Increase CE strike by 100"
-                >
-                  +
-                </button>
+                  <button
+                    onClick={() => setCeStrike(prev => (prev ? prev + 100 : ceStrikeValue + 100))}
+                    className="px-2 py-0 text-green-600 hover:bg-green-50 rounded text-lg font-bold"
+                    title="Increase CE strike by 100"
+                  >
+                    +
+                  </button>
+                </div>
               </div>
+              {greeks && (
+                <div className="text-xs text-gray-700 mt-1 whitespace-nowrap">
+                  θ {greeks.theta > 0 ? '+' : ''}{greeks.theta.toFixed(2)} | ν {greeks.vega.toFixed(2)} | γ {greeks.gamma.toFixed(4)} | δ {greeks.delta.toFixed(2)}
+                </div>
+              )}
             </div>
 
             {/* PE Strike Selector */}
-            <div className="flex-shrink-0 flex items-center gap-2">
-              <label className="text-xs text-gray-600 whitespace-nowrap font-semibold">PE:</label>
-              <div className="flex items-center h-10 bg-white rounded-lg border border-gray-300 px-2">
-                <button
-                  onClick={() => setPeStrike(prev => (prev ? prev - 100 : peStrikeValue - 100))}
-                  className="px-2 py-0 text-red-600 hover:bg-red-50 rounded text-lg font-bold"
-                  title="Decrease PE strike by 100"
-                >
-                  −
-                </button>
+            <div className="flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-600 whitespace-nowrap font-semibold">PE:</label>
+                <div className="flex items-center h-10 bg-white rounded-lg border border-gray-300 px-2">
+                  <button
+                    onClick={() => setPeStrike(prev => (prev ? prev - 100 : peStrikeValue - 100))}
+                    className="px-2 py-0 text-red-600 hover:bg-red-50 rounded text-lg font-bold"
+                    title="Decrease PE strike by 100"
+                  >
+                    −
+                  </button>
 
-                <input
-                  type="number"
-                  value={peStrike || peStrikeValue}
-                  onChange={(e) => setPeStrike(e.target.value ? parseInt(e.target.value) : null)}
-                  step="100"
-                  className="w-20 text-center border-0 text-gray-900 text-sm font-semibold focus:outline-none bg-transparent"
-                />
+                  <input
+                    type="number"
+                    value={peStrike || peStrikeValue}
+                    onChange={(e) => setPeStrike(e.target.value ? parseInt(e.target.value) : null)}
+                    step="100"
+                    className="w-20 text-center border-0 text-gray-900 text-sm font-semibold focus:outline-none bg-transparent"
+                  />
 
-                <button
-                  onClick={() => setPeStrike(prev => (prev ? prev + 100 : peStrikeValue + 100))}
-                  className="px-2 py-0 text-green-600 hover:bg-green-50 rounded text-lg font-bold"
-                  title="Increase PE strike by 100"
-                >
-                  +
-                </button>
+                  <button
+                    onClick={() => setPeStrike(prev => (prev ? prev + 100 : peStrikeValue + 100))}
+                    className="px-2 py-0 text-green-600 hover:bg-green-50 rounded text-lg font-bold"
+                    title="Increase PE strike by 100"
+                  >
+                    +
+                  </button>
+                </div>
               </div>
+              {greeks && (
+                <div className="text-xs text-gray-700 mt-1 whitespace-nowrap">
+                  θ {greeks.theta > 0 ? '+' : ''}{greeks.theta.toFixed(2)} | ν {greeks.vega.toFixed(2)} | γ {greeks.gamma.toFixed(4)} | δ {greeks.delta.toFixed(2)}
+                </div>
+              )}
             </div>
 
             {/* Lookback Days */}

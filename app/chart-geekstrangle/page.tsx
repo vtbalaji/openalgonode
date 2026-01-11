@@ -527,6 +527,7 @@ export default function GeekStrangleChartPage() {
                 type="number"
                 value={ceStrike || ceStrikeValue}
                 onChange={(e) => setCeStrike(e.target.value ? parseInt(e.target.value) : null)}
+                step="100"
                 className="w-20 text-center border-0 text-gray-900 text-sm font-semibold focus:outline-none bg-transparent"
               />
 
@@ -556,6 +557,7 @@ export default function GeekStrangleChartPage() {
                 type="number"
                 value={peStrike || peStrikeValue}
                 onChange={(e) => setPeStrike(e.target.value ? parseInt(e.target.value) : null)}
+                step="100"
                 className="w-20 text-center border-0 text-gray-900 text-sm font-semibold focus:outline-none bg-transparent"
               />
 

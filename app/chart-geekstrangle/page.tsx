@@ -514,45 +514,59 @@ export default function GeekStrangleChartPage() {
             {/* CE Strike Selector */}
             <div className="flex-shrink-0 flex items-center gap-2">
               <label className="text-xs text-gray-600 whitespace-nowrap font-semibold">CE:</label>
+              <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-300 p-2">
+              <button
+                onClick={() => setCeStrike(prev => (prev ? prev - 100 : ceStrikeValue - 100))}
+                className="px-2 py-1 text-red-600 hover:bg-red-50 rounded text-lg font-bold"
+                title="Decrease CE strike by 100"
+              >
+                −
+              </button>
 
-              {/* CE Strike Input with Spinner */}
               <input
                 type="number"
                 value={ceStrike || ceStrikeValue}
                 onChange={(e) => setCeStrike(e.target.value ? parseInt(e.target.value) : null)}
-                step="100"
-                className="w-24 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm font-semibold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                style={{
-                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='%23666' stroke-width='2'/%3E%3Cpolyline points='18 15 12 9 6 15'/%3E%3Cpolyline points='18 9 12 15 6 9'/%3E%3C/svg%3E")`,
-                  backgroundRepeat: 'no-repeat',
-                  backgroundPosition: 'right 4px center',
-                  backgroundSize: '20px',
-                  paddingRight: '28px',
-                }}
-                title="Adjust CE strike (use ↑↓ or type)"
+                className="w-20 text-center border-0 text-gray-900 text-sm font-semibold focus:outline-none bg-transparent"
               />
+
+              <button
+                onClick={() => setCeStrike(prev => (prev ? prev + 100 : ceStrikeValue + 100))}
+                className="px-2 py-1 text-green-600 hover:bg-green-50 rounded text-lg font-bold"
+                title="Increase CE strike by 100"
+              >
+                +
+              </button>
+              </div>
             </div>
 
             {/* PE Strike Selector */}
             <div className="flex-shrink-0 flex items-center gap-2">
               <label className="text-xs text-gray-600 whitespace-nowrap font-semibold">PE:</label>
+              <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-300 p-2">
+              <button
+                onClick={() => setPeStrike(prev => (prev ? prev - 100 : peStrikeValue - 100))}
+                className="px-2 py-1 text-red-600 hover:bg-red-50 rounded text-lg font-bold"
+                title="Decrease PE strike by 100"
+              >
+                −
+              </button>
 
-              {/* PE Strike Input with Spinner */}
               <input
                 type="number"
                 value={peStrike || peStrikeValue}
                 onChange={(e) => setPeStrike(e.target.value ? parseInt(e.target.value) : null)}
-                step="100"
-                className="w-24 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm font-semibold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                style={{
-                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='%23666' stroke-width='2'/%3E%3Cpolyline points='18 15 12 9 6 15'/%3E%3Cpolyline points='18 9 12 15 6 9'/%3E%3C/svg%3E")`,
-                  backgroundRepeat: 'no-repeat',
-                  backgroundPosition: 'right 4px center',
-                  backgroundSize: '20px',
-                  paddingRight: '28px',
-                }}
-                title="Adjust PE strike (use ↑↓ or type)"
+                className="w-20 text-center border-0 text-gray-900 text-sm font-semibold focus:outline-none bg-transparent"
               />
+
+              <button
+                onClick={() => setPeStrike(prev => (prev ? prev + 100 : peStrikeValue + 100))}
+                className="px-2 py-1 text-green-600 hover:bg-green-50 rounded text-lg font-bold"
+                title="Increase PE strike by 100"
+              >
+                +
+              </button>
+              </div>
             </div>
 
             {/* Lookback Days */}

@@ -116,13 +116,13 @@ export function detectHarmonicPatterns(
   swingLow: Point,
   config: {
     minABRetracement: number; // Default: 0.382
-    maxABRetracement: number; // Default: 0.886 (expanded to catch deep retracements)
+    maxABRetracement: number; // Default: 0.618 (strict Fibonacci: 38.2%, 50%, 61.8%)
     minBCPullback: number; // Default: 0.382
     maxBCPullback: number; // Default: 0.886
     minXASize: number; // Minimum XA leg size as % of price (default: 0.005 = 0.5%)
   } = {
     minABRetracement: 0.382,
-    maxABRetracement: 0.886, // Expanded to catch 78.6% and other deep retracements
+    maxABRetracement: 0.618, // Strict: Only 38.2%, 50%, 61.8% (not 88.6%)
     minBCPullback: 0.382,
     maxBCPullback: 0.886,
     minXASize: 0.005,
@@ -199,13 +199,11 @@ export function detectHarmonicPatterns(
     // Calculate confidence (based on how well it fits ideal ratios)
     let confidence = 0;
 
-    // AB Retracement scoring - recognize all key Fibonacci levels
-    if (AB_retracement >= 0.76 && AB_retracement <= 0.80) confidence += 50; // 78.6% - Deep harmonic (strongest)
-    else if (AB_retracement >= 0.6 && AB_retracement <= 0.65) confidence += 40; // 61.8% golden ratio
-    else if (AB_retracement >= 0.5 && AB_retracement <= 0.52) confidence += 35; // 50% midpoint
-    else if (AB_retracement >= 0.38 && AB_retracement <= 0.40) confidence += 30; // 38.2% shallow
-    else if (AB_retracement >= 0.85 && AB_retracement <= 0.89) confidence += 35; // 88.6% extreme
-    else confidence += 20; // Other levels
+    // AB Retracement scoring - recognize key Fibonacci levels (38.2%, 50%, 61.8%)
+    if (AB_retracement >= 0.60 && AB_retracement <= 0.65) confidence += 50; // 61.8% - Golden ratio (strongest)
+    else if (AB_retracement >= 0.48 && AB_retracement <= 0.52) confidence += 45; // 50% - Midpoint
+    else if (AB_retracement >= 0.38 && AB_retracement <= 0.42) confidence += 40; // 38.2% - Shallow
+    else confidence += 25; // Other valid levels
 
     // BC Pullback scoring
     if (BC_pullback && BC_pullback >= 0.38 && BC_pullback <= 0.5) confidence += 40; // Conservative pullback
@@ -319,13 +317,11 @@ export function detectHarmonicPatterns(
     // Calculate confidence (based on how well it fits ideal ratios)
     let confidence = 0;
 
-    // AB Retracement scoring - recognize all key Fibonacci levels
-    if (AB_retracement >= 0.76 && AB_retracement <= 0.80) confidence += 50; // 78.6% - Deep harmonic (strongest)
-    else if (AB_retracement >= 0.6 && AB_retracement <= 0.65) confidence += 40; // 61.8% golden ratio
-    else if (AB_retracement >= 0.5 && AB_retracement <= 0.52) confidence += 35; // 50% midpoint
-    else if (AB_retracement >= 0.38 && AB_retracement <= 0.40) confidence += 30; // 38.2% shallow
-    else if (AB_retracement >= 0.85 && AB_retracement <= 0.89) confidence += 35; // 88.6% extreme
-    else confidence += 20; // Other levels
+    // AB Retracement scoring - recognize key Fibonacci levels (38.2%, 50%, 61.8%)
+    if (AB_retracement >= 0.60 && AB_retracement <= 0.65) confidence += 50; // 61.8% - Golden ratio (strongest)
+    else if (AB_retracement >= 0.48 && AB_retracement <= 0.52) confidence += 45; // 50% - Midpoint
+    else if (AB_retracement >= 0.38 && AB_retracement <= 0.42) confidence += 40; // 38.2% - Shallow
+    else confidence += 25; // Other valid levels
 
     // BC Pullback scoring
     if (BC_pullback && BC_pullback >= 0.38 && BC_pullback <= 0.5) confidence += 40; // Conservative pullback

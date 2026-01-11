@@ -10,8 +10,12 @@ interface CachedBrokerConfig {
   apiKey: string;
   apiSecret: string;
   accessToken: string;
+  refreshToken?: string; // Fyers refresh token (15 day validity)
+  accessTokenExpiresAt?: number; // Unix timestamp when access token expires
+  pin?: string; // User's Fyers PIN (for token refresh)
   status: string;
   lastAuthenticated?: string;
+  lastTokenRefresh?: string;
   [key: string]: any;
 }
 

@@ -370,6 +370,9 @@ export async function POST(request: NextRequest) {
           accessToken: encryptData(accessToken),
           status: 'active',
           lastAuthenticated: new Date().toISOString(),
+          // Access tokens are typically valid for 24 hours from Fyers
+          // Calculate expiration time (now + 24 hours)
+          accessTokenExpiresAt: Date.now() + 24 * 60 * 60 * 1000,
         };
 
         // Store app_id if we extracted it from the JWT

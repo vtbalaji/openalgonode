@@ -388,6 +388,13 @@ export async function GET(request: NextRequest) {
     ]);
 
     if (!ceData || !peData) {
+      console.error('[OPTIONS-HISTORICAL] Data validation failed:', {
+        ceData: ceData ? `${ceData.length} candles` : 'null',
+        peData: peData ? `${peData.length} candles` : 'null',
+        ceSymbol,
+        peSymbol,
+      });
+
       return NextResponse.json(
         {
           error: `Failed to fetch option data. CE: ${ceData ? 'OK' : 'FAIL'}, PE: ${peData ? 'OK' : 'FAIL'}`,
@@ -397,6 +404,8 @@ export async function GET(request: NextRequest) {
             strike,
             ceSymbol,
             peSymbol,
+            ceLength: ceData ? ceData.length : 0,
+            peLength: peData ? peData.length : 0,
           },
         },
         { status: 404 }

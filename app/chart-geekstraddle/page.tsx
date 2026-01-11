@@ -129,11 +129,12 @@ export default function GeekStraddleChartPage() {
   const getGreekValueColor = (greekType: 'theta' | 'vega' | 'gamma' | 'delta', value: number): string => {
     switch (greekType) {
       case 'theta':
-        // Theta: positive is good for sellers
-        // High theta (>1.5) = Green, Medium (0.5-1.5) = Orange, Low (<0.5) = Red
-        if (value > 1.5) return '#22C55E'; // Green (SELL)
-        if (value > 0.5) return '#F97316'; // Orange (HOLD)
-        return '#EF4444'; // Red (BUY)
+        // Theta: positive is good for sellers (daily decay in rupees)
+        // Black-Scholes gives actual daily decay values (much larger than heuristic)
+        // High theta (>5) = Green, Medium (2-5) = Orange, Low (<2) = Red
+        if (value > 5) return '#22C55E'; // Green (SELL - strong decay)
+        if (value > 2) return '#F97316'; // Orange (HOLD - moderate decay)
+        return '#EF4444'; // Red (BUY - weak decay)
 
       case 'vega':
         // Vega: negative is good for sellers

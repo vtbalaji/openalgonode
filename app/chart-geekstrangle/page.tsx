@@ -451,7 +451,7 @@ export default function GeekStrangleChartPage() {
 
         {/* Controls */}
         <div className="bg-white rounded-lg shadow-md p-3 mb-3">
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             {/* Base Symbol Input */}
             <div className="flex-shrink-0">
               <form onSubmit={handleSymbolSubmit} className="flex gap-2 items-center">
@@ -464,7 +464,7 @@ export default function GeekStrangleChartPage() {
                 />
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm whitespace-nowrap"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm whitespace-nowrap h-10"
                 >
                   Load
                 </button>
@@ -479,7 +479,7 @@ export default function GeekStrangleChartPage() {
                   setExpiry(e.target.value);
                   console.log('[GEEK-STRANGLE] Changed expiry to:', e.target.value);
                 }}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm"
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm h-10"
               >
                 <optgroup label="Weekly Expiries (Tuesdays & Thursdays)">
                   <option value="13JAN">13 JAN (Tuesday)</option>
@@ -501,7 +501,7 @@ export default function GeekStrangleChartPage() {
               <select
                 value={interval}
                 onChange={(e) => setInterval(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm"
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm h-10"
               >
                 {TIMEFRAMES.map((tf) => (
                   <option key={tf.value} value={tf.value}>
@@ -514,60 +514,60 @@ export default function GeekStrangleChartPage() {
             {/* CE Strike Selector */}
             <div className="flex-shrink-0 flex items-center gap-2">
               <label className="text-xs text-gray-600 whitespace-nowrap font-semibold">CE:</label>
-              <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-300 p-2">
-              <button
-                onClick={() => setCeStrike(prev => (prev ? prev - 100 : ceStrikeValue - 100))}
-                className="px-2 py-1 text-red-600 hover:bg-red-50 rounded text-lg font-bold"
-                title="Decrease CE strike by 100"
-              >
-                −
-              </button>
+              <div className="flex items-center h-10 bg-white rounded-lg border border-gray-300 px-2">
+                <button
+                  onClick={() => setCeStrike(prev => (prev ? prev - 100 : ceStrikeValue - 100))}
+                  className="px-2 py-0 text-red-600 hover:bg-red-50 rounded text-lg font-bold"
+                  title="Decrease CE strike by 100"
+                >
+                  −
+                </button>
 
-              <input
-                type="number"
-                value={ceStrike || ceStrikeValue}
-                onChange={(e) => setCeStrike(e.target.value ? parseInt(e.target.value) : null)}
-                step="100"
-                className="w-20 text-center border-0 text-gray-900 text-sm font-semibold focus:outline-none bg-transparent"
-              />
+                <input
+                  type="number"
+                  value={ceStrike || ceStrikeValue}
+                  onChange={(e) => setCeStrike(e.target.value ? parseInt(e.target.value) : null)}
+                  step="100"
+                  className="w-20 text-center border-0 text-gray-900 text-sm font-semibold focus:outline-none bg-transparent"
+                />
 
-              <button
-                onClick={() => setCeStrike(prev => (prev ? prev + 100 : ceStrikeValue + 100))}
-                className="px-2 py-1 text-green-600 hover:bg-green-50 rounded text-lg font-bold"
-                title="Increase CE strike by 100"
-              >
-                +
-              </button>
+                <button
+                  onClick={() => setCeStrike(prev => (prev ? prev + 100 : ceStrikeValue + 100))}
+                  className="px-2 py-0 text-green-600 hover:bg-green-50 rounded text-lg font-bold"
+                  title="Increase CE strike by 100"
+                >
+                  +
+                </button>
               </div>
             </div>
 
             {/* PE Strike Selector */}
             <div className="flex-shrink-0 flex items-center gap-2">
               <label className="text-xs text-gray-600 whitespace-nowrap font-semibold">PE:</label>
-              <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-300 p-2">
-              <button
-                onClick={() => setPeStrike(prev => (prev ? prev - 100 : peStrikeValue - 100))}
-                className="px-2 py-1 text-red-600 hover:bg-red-50 rounded text-lg font-bold"
-                title="Decrease PE strike by 100"
-              >
-                −
-              </button>
+              <div className="flex items-center h-10 bg-white rounded-lg border border-gray-300 px-2">
+                <button
+                  onClick={() => setPeStrike(prev => (prev ? prev - 100 : peStrikeValue - 100))}
+                  className="px-2 py-0 text-red-600 hover:bg-red-50 rounded text-lg font-bold"
+                  title="Decrease PE strike by 100"
+                >
+                  −
+                </button>
 
-              <input
-                type="number"
-                value={peStrike || peStrikeValue}
-                onChange={(e) => setPeStrike(e.target.value ? parseInt(e.target.value) : null)}
-                step="100"
-                className="w-20 text-center border-0 text-gray-900 text-sm font-semibold focus:outline-none bg-transparent"
-              />
+                <input
+                  type="number"
+                  value={peStrike || peStrikeValue}
+                  onChange={(e) => setPeStrike(e.target.value ? parseInt(e.target.value) : null)}
+                  step="100"
+                  className="w-20 text-center border-0 text-gray-900 text-sm font-semibold focus:outline-none bg-transparent"
+                />
 
-              <button
-                onClick={() => setPeStrike(prev => (prev ? prev + 100 : peStrikeValue + 100))}
-                className="px-2 py-1 text-green-600 hover:bg-green-50 rounded text-lg font-bold"
-                title="Increase PE strike by 100"
-              >
-                +
-              </button>
+                <button
+                  onClick={() => setPeStrike(prev => (prev ? prev + 100 : peStrikeValue + 100))}
+                  className="px-2 py-0 text-green-600 hover:bg-green-50 rounded text-lg font-bold"
+                  title="Increase PE strike by 100"
+                >
+                  +
+                </button>
               </div>
             </div>
 
@@ -580,7 +580,7 @@ export default function GeekStrangleChartPage() {
                 max="100"
                 value={lookbackDays}
                 onChange={(e) => setLookbackDays(Math.max(1, Math.min(100, parseInt(e.target.value) || 50)))}
-                className="w-16 px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm"
+                className="w-16 px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm h-10"
               />
               <span className="text-xs text-gray-500">days</span>
             </div>

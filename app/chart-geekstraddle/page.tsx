@@ -620,6 +620,7 @@ export default function GeekStraddleChartPage() {
                   </label>
                 </div>
                 <p className="text-lg font-bold" style={{ color: getGreekValueColor('theta', greeks.theta) }}>+{greeks.theta.toFixed(2)}/day</p>
+                <p className="text-xs text-gray-600 mt-1">(expected &gt; 1.5)</p>
                 <p className="text-xs text-gray-500 mt-1">Time Decay (seller profit)</p>
               </div>
 
@@ -638,6 +639,7 @@ export default function GeekStraddleChartPage() {
                   </label>
                 </div>
                 <p className="text-lg font-bold" style={{ color: getGreekValueColor('vega', greeks.vega) }}>{greeks.vega.toFixed(2)}/point</p>
+                <p className="text-xs text-gray-600 mt-1">(expected &lt; -2.0)</p>
                 <p className="text-xs text-gray-500 mt-1">Volatility Risk (seller loss)</p>
               </div>
 
@@ -656,6 +658,7 @@ export default function GeekStraddleChartPage() {
                   </label>
                 </div>
                 <p className="text-lg font-bold" style={{ color: getGreekValueColor('gamma', greeks.gamma) }}>+{greeks.gamma.toFixed(4)}</p>
+                <p className="text-xs text-gray-600 mt-1">(expected &lt; 0.005)</p>
                 <p className="text-xs text-gray-500 mt-1">Directional Risk</p>
               </div>
 
@@ -674,6 +677,7 @@ export default function GeekStraddleChartPage() {
                   </label>
                 </div>
                 <p className="text-lg font-bold" style={{ color: getGreekValueColor('delta', greeks.delta) }}>{greeks.delta > 0 ? '+' : ''}{greeks.delta.toFixed(2)}</p>
+                <p className="text-xs text-gray-600 mt-1">(expected ±0.2)</p>
                 <p className="text-xs text-gray-500 mt-1">Neutral (~0)</p>
               </div>
 

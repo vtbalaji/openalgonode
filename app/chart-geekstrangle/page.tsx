@@ -727,6 +727,7 @@ export default function GeekStrangleChartPage() {
                   </label>
                 </div>
                 <p className="text-lg font-bold" style={{ color: getGreekValueColor('theta', greeks.theta) }}>+{greeks.theta.toFixed(2)}/day</p>
+                <p className="text-xs text-gray-600 mt-1">(expected &gt; 1.5)</p>
                 {ceGreeks && peGreeks && (
                   <p className="text-xs text-gray-500 mt-1">
                     (CE: {ceGreeks.theta.toFixed(2)}, PE: {peGreeks.theta.toFixed(2)})
@@ -750,6 +751,7 @@ export default function GeekStrangleChartPage() {
                   </label>
                 </div>
                 <p className="text-lg font-bold" style={{ color: getGreekValueColor('vega', greeks.vega) }}>{greeks.vega.toFixed(2)}/point</p>
+                <p className="text-xs text-gray-600 mt-1">(expected &lt; -2.0)</p>
                 {ceGreeks && peGreeks && (
                   <p className="text-xs text-gray-500 mt-1">
                     (CE: {ceGreeks.vega.toFixed(2)}, PE: {peGreeks.vega.toFixed(2)})
@@ -773,6 +775,7 @@ export default function GeekStrangleChartPage() {
                   </label>
                 </div>
                 <p className="text-lg font-bold" style={{ color: getGreekValueColor('gamma', greeks.gamma) }}>+{greeks.gamma.toFixed(4)}</p>
+                <p className="text-xs text-gray-600 mt-1">(expected &lt; 0.005)</p>
                 {ceGreeks && peGreeks && (
                   <p className="text-xs text-gray-500 mt-1">
                     (CE: {ceGreeks.gamma.toFixed(4)}, PE: {peGreeks.gamma.toFixed(4)})
@@ -796,6 +799,7 @@ export default function GeekStrangleChartPage() {
                   </label>
                 </div>
                 <p className="text-lg font-bold" style={{ color: getGreekValueColor('delta', greeks.delta) }}>{greeks.delta > 0 ? '+' : ''}{greeks.delta.toFixed(2)}</p>
+                <p className="text-xs text-gray-600 mt-1">(expected ±0.2)</p>
                 {ceGreeks && peGreeks && (
                   <p className="text-xs text-gray-500 mt-1">
                     (CE: {ceGreeks.delta > 0 ? '+' : ''}{ceGreeks.delta.toFixed(2)}, PE: {peGreeks.delta > 0 ? '+' : ''}{peGreeks.delta.toFixed(2)})

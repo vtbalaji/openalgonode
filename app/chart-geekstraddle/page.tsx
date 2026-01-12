@@ -168,17 +168,17 @@ export default function GeekStraddleChartPage() {
    * Uses Newton-Raphson to solve for Implied Volatility from market prices
    */
   const calculateGreeks = (
-    premium: number,
-    previousPremium: number,
+    cePremium: number,
+    pePremium: number,
     daysToExp: number,
     spotPrice?: number,
     strikePrice?: number
   ): GreeksData => {
     // Use Black-Scholes calculation via optionsGreeks
     // Straddle at ATM: CE and PE at same strike
-    // Premium = CE price + PE price, split evenly for simplicity
-    const cePrice = premium / 2;
-    const pePrice = premium / 2;
+    // Use actual individual CE and PE prices from API
+    const cePrice = cePremium;
+    const pePrice = pePremium;
 
     const ceInput: OptionsGreeksInput = {
       spotPrice: spotPrice || 25683,
@@ -313,14 +313,16 @@ export default function GeekStraddleChartPage() {
 
         // Calculate Greeks for each candle
         const greeksDataArray = chartDataArray.map((candle, index) => {
-          const previousPrice = index > 0 ? chartDataArray[index - 1].close : candle.close;
-
           // Calculate daysToExp for THIS candle's timestamp (decreases over time)
           const candleDate = new Date(candle.time * 1000);
           const expiryDate = parseExpiryDate(expiry);
           const daysToExpCandle = Math.ceil((expiryDate.getTime() - candleDate.getTime()) / (1000 * 60 * 60 * 24));
 
-          const greekData = calculateGreeks(candle.close, previousPrice, daysToExpCandle, apiSpotPrice, atmStrike);
+          // Use actual individual CE and PE prices from API response
+          const ccePrice = (candle as any).cePrice || candle.close / 2;
+          const ppePrice = (candle as any).pePrice || candle.close / 2;
+
+          const greekData = calculateGreeks(ccePrice, ppePrice, daysToExpCandle, apiSpotPrice, atmStrike);
 
           // Normalize Greeks to 0-100 scale based on REAL Black-Scholes ranges
           // Ranges researched for short-dated NIFTY options (5-14 DTE)
@@ -358,10 +360,11 @@ export default function GeekStraddleChartPage() {
         });
         setGreeksArray(greeksDataArray);
 
-        // Calculate Greeks based on latest premium (for panel display)
-        const latestPremium = chartDataArray[chartDataArray.length - 1].close;
-        const previousPremium = chartDataArray.length > 1 ? chartDataArray[chartDataArray.length - 2].close : latestPremium;
-        const greeksCalc = calculateGreeks(latestPremium, previousPremium, apiDaysToExpiry, apiSpotPrice, atmStrike);
+        // Calculate Greeks based on latest individual prices (for panel display)
+        const latestCandle = chartDataArray[chartDataArray.length - 1];
+        const latestCePrice = (latestCandle as any).cePrice || latestCandle.close / 2;
+        const latestPePrice = (latestCandle as any).pePrice || latestCandle.close / 2;
+        const greeksCalc = calculateGreeks(latestCePrice, latestPePrice, apiDaysToExpiry, apiSpotPrice, atmStrike);
         setGreeks(greeksCalc);
       } else {
         throw new Error(result.error || 'No data returned');

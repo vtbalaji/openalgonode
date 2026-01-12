@@ -171,18 +171,18 @@ export default function GeekStrangleChartPage() {
    * Based on current premium, historical volatility, and days to expiry
    */
   const calculateGreeks = (
-    premium: number,
-    previousPremium: number,
+    cePremium: number,
+    pePremium: number,
     daysToExp: number,
     spotPrice?: number,
     ceStrikeVal?: number,
     peStrikeVal?: number
   ): GreeksData => {
     // Use Black-Scholes calculation via optionsGreeks
-    // Strangle: CE and PE at different strikes
-    // Premium = CE price + PE price, split evenly for simplicity
-    const cePrice = premium / 2;
-    const pePrice = premium / 2;
+    // Strangle: CE and PE at different strikes with ACTUAL individual prices
+    // IMPORTANT: cePremium and pePremium are ACTUAL prices from API, not split
+    const cePrice = cePremium;  // Use actual CE price from API
+    const pePrice = pePremium;  // Use actual PE price from API
 
     const ceInput: OptionsGreeksInput = {
       spotPrice: spotPrice || 25683,
@@ -389,14 +389,19 @@ export default function GeekStrangleChartPage() {
 
         // Calculate Greeks for each candle
         const greeksDataArray = chartDataArray.map((candle, index) => {
-          const previousPrice = index > 0 ? chartDataArray[index - 1].close : candle.close;
+          // Get ACTUAL CE and PE prices from maps (not split)
+          const ccePrice = ceDataMap.get(candle.time) || 0;
+          const ppePrice = peDataMap.get(candle.time) || 0;
+          const previousCePrice = index > 0 ? ceDataMap.get(chartDataArray[index - 1].time) || ccePrice : ccePrice;
+          const previousPePrice = index > 0 ? peDataMap.get(chartDataArray[index - 1].time) || ppePrice : ppePrice;
 
           // Calculate daysToExp for THIS candle's timestamp (decreases over time)
           const candleDate = new Date(candle.time * 1000);
           const expiryDate = parseExpiryDate(expiry);
           const daysToExpCandle = Math.ceil((expiryDate.getTime() - candleDate.getTime()) / (1000 * 60 * 60 * 24));
 
-          const greekData = calculateGreeks(candle.close, previousPrice, daysToExpCandle, apiSpotPrice, ceStrikeValue, peStrikeValue);
+          // Pass ACTUAL CE and PE prices, not combined and split
+          const greekData = calculateGreeks(ccePrice, ppePrice, daysToExpCandle, apiSpotPrice, ceStrikeValue, peStrikeValue);
 
           // Normalize Greeks to 0-100 scale based on REAL Black-Scholes ranges
           // Ranges researched for short-dated NIFTY options (5-14 DTE)
@@ -434,13 +439,7 @@ export default function GeekStrangleChartPage() {
         });
         setGreeksArray(greeksDataArray);
 
-        // Calculate Greeks based on latest premium (for panel display)
-        const latestPremium = chartDataArray[chartDataArray.length - 1].close;
-        const previousPremium = chartDataArray.length > 1 ? chartDataArray[chartDataArray.length - 2].close : latestPremium;
-        const greeksCalc = calculateGreeks(latestPremium, previousPremium, apiDaysToExpiry, apiSpotPrice, ceStrikeValue, peStrikeValue);
-        setGreeks(greeksCalc);
-
-        // Calculate individual Greeks for CE and PE
+        // Calculate Greeks based on latest prices (for panel display)
         const latestCandle = chartDataArray[chartDataArray.length - 1];
         const latestCePrice = ceDataMap.get(latestCandle.time) || 0;
         const latestPePrice = peDataMap.get(latestCandle.time) || 0;
@@ -449,8 +448,13 @@ export default function GeekStrangleChartPage() {
         const previousCePrice = ceDataMap.get(previousCandle.time) || latestCePrice;
         const previousPePrice = peDataMap.get(previousCandle.time) || latestPePrice;
 
-        const ceGreeksCalc = calculateGreeks(latestCePrice, previousCePrice, apiDaysToExpiry, apiSpotPrice, ceStrikeValue, peStrikeValue);
-        const peGreeksCalc = calculateGreeks(latestPePrice, previousPePrice, apiDaysToExpiry, apiSpotPrice, ceStrikeValue, peStrikeValue);
+        // Combined strangle Greeks
+        const greeksCalc = calculateGreeks(latestCePrice, latestPePrice, apiDaysToExpiry, apiSpotPrice, ceStrikeValue, peStrikeValue);
+        setGreeks(greeksCalc);
+
+        // Individual CE and PE Greeks (for detailed breakdown)
+        const ceGreeksCalc = calculateGreeks(latestCePrice, 0, apiDaysToExpiry, apiSpotPrice, ceStrikeValue, ceStrikeValue);
+        const peGreeksCalc = calculateGreeks(0, latestPePrice, apiDaysToExpiry, apiSpotPrice, peStrikeValue, peStrikeValue);
 
         setCeGreeks(ceGreeksCalc);
         setPeGreeks(peGreeksCalc);

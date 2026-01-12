@@ -5,7 +5,7 @@
 
 import { getBrokerConfigCache } from '@/lib/brokerConfigCache';
 import { isAccessTokenExpired, ensureValidAccessToken } from '@/lib/fyersTokenRefresh';
-import { decryptData } from '@/lib/encryptionUtils';
+import { decryptData, encryptData } from '@/lib/encryptionUtils';
 
 /**
  * Get broker config for a user (cached)
@@ -46,7 +46,8 @@ export async function getCachedBrokerConfig(userId: string, broker: string = 'ze
         );
 
         if (newAccessToken) {
-          config.accessToken = newAccessToken;
+          // Store encrypted token in cache (ensureValidAccessToken already saves to Firestore encrypted)
+          config.accessToken = encryptData(newAccessToken);
           console.log('[BROKER-CONFIG] Successfully refreshed access token');
         } else {
           console.warn('[BROKER-CONFIG] Failed to refresh access token');

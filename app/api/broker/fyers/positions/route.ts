@@ -37,14 +37,20 @@ export async function POST(request: NextRequest) {
     let accessToken: string;
     let apiKey: string;
     try {
+      console.log('[POSITIONS-ROUTE] configData.accessToken type:', typeof configData.accessToken, 'length:', (configData.accessToken as string).length);
+      console.log('[POSITIONS-ROUTE] configData.accessToken preview:', (configData.accessToken as string).substring(0, 50) + '...');
+      console.log('[POSITIONS-ROUTE] configData.apiKey type:', typeof configData.apiKey, 'length:', (configData.apiKey as string).length);
+
       accessToken = decryptData(configData.accessToken);
       apiKey = decryptData(configData.apiKey);
 
       console.log('[POSITIONS-ROUTE] Decryption successful');
-      console.log('[POSITIONS-ROUTE] Access token preview:', accessToken.substring(0, 30) + '...');
-      console.log('[POSITIONS-ROUTE] API key (app_id):', apiKey);
+      console.log('[POSITIONS-ROUTE] Decrypted accessToken type:', typeof accessToken, 'length:', accessToken.length);
+      console.log('[POSITIONS-ROUTE] Decrypted accessToken preview:', accessToken.substring(0, 30) + '...');
+      console.log('[POSITIONS-ROUTE] Decrypted apiKey type:', typeof apiKey, 'length:', apiKey.length);
+      console.log('[POSITIONS-ROUTE] Decrypted apiKey:', apiKey);
     } catch (error) {
-      console.error('Failed to decrypt:', error);
+      console.error('[POSITIONS-ROUTE] Decryption failed:', error);
       return NextResponse.json(
         { error: 'Failed to decrypt broker credentials' },
         { status: 400 }
@@ -55,7 +61,23 @@ export async function POST(request: NextRequest) {
     // Get positions
     const result = await getFyersPositions(accessToken, apiKey);
 
-    return NextResponse.json(result, { status: 200 });
+    // Extract positions array from response and map to standard format
+    const rawPositions = result.netPositions || result.dayPositions || [];
+    const positions = rawPositions.map((pos: any) => ({
+      tradingsymbol: pos.symbol || '',
+      exchange: 'NSE', // Fyers returns exchange as code, default to NSE
+      quantity: pos.netQty || pos.qty || 0,
+      average_price: pos.netAvg || pos.buyAvg || 0,
+      last_price: pos.ltp || 0,
+      pnl: pos.pl || 0,
+      pnl_percent: pos.ltp && pos.netAvg ? ((pos.ltp - pos.netAvg) / pos.netAvg * 100) : 0,
+    }));
+    console.log('[POSITIONS-ROUTE] Mapped positions count:', positions.length);
+
+    return NextResponse.json({
+      ...result,
+      positions: positions,
+    }, { status: 200 });
   } catch (error: any) {
     console.error('Error getting Fyers positions:', error);
     return NextResponse.json(

@@ -50,7 +50,7 @@ export async function refreshFyersAccessToken(
       payload.pin = pin;
     }
 
-    const response = await fetch('https://api-t1.fyers.in/validate-refresh-token', {
+    const response = await fetch('https://api-t1.fyers.in/api/v3/validate-refresh-token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

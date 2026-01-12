@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     }
 
     const userId = decodedToken.uid;
-    const { broker, apiKey, apiSecret } = await request.json();
+    const { broker, apiKey, apiSecret, pin } = await request.json();
 
     if (!broker || !apiKey || !apiSecret) {
       return NextResponse.json(
@@ -46,14 +46,21 @@ export async function POST(request: NextRequest) {
     const userRef = adminDb.collection('users').doc(userId);
     const brokerConfigRef = userRef.collection('brokerConfig').doc(broker);
 
-    await brokerConfigRef.set({
+    const configData: any = {
       broker,
       apiKey: encryptData(apiKey),
       apiSecret: encryptData(apiSecret),
       status: 'inactive',
       createdAt: new Date().toISOString(),
       lastUpdated: new Date().toISOString(),
-    });
+    };
+
+    // Add PIN if provided (for Fyers token refresh)
+    if (pin) {
+      configData.pin = encryptData(pin);
+    }
+
+    await brokerConfigRef.set(configData);
 
     invalidateBrokerConfig(userId, broker);
 

@@ -102,6 +102,7 @@ export default function FibonacciTradingChart({
       },
       localization: {
         timeFormatter: (timestamp: number) => {
+          // Note: timestamp is in seconds (Unix timestamp), convert to milliseconds for Date object
           const date = new Date(timestamp * 1000);
 
           // Format: "21 Jan at 04:31 PM" in IST timezone
@@ -186,11 +187,12 @@ export default function FibonacciTradingChart({
     const fetchData = async () => {
       try {
         const today = new Date();
-        const from = new Date(today);
-        from.setDate(today.getDate() - lookbackDays);
-
-        const fromStr = from.toISOString().split('T')[0];
+        // Use UTC dates to avoid timezone issues
         const toStr = today.toISOString().split('T')[0];
+
+        const fromDate = new Date(today);
+        fromDate.setDate(today.getDate() - lookbackDays);
+        const fromStr = fromDate.toISOString().split('T')[0];
 
         const response = await fetch(
           `/api/chart/historical?symbol=${encodeURIComponent(symbol)}&interval=${interval}&userId=${userId}&from=${fromStr}&to=${toStr}`
@@ -443,8 +445,8 @@ export default function FibonacciTradingChart({
     }
 
     console.log('[FIB] Detected Swing Points:', {
-      swingHigh: swingHigh ? { price: swingHigh.price.toFixed(2), index: swingHigh.index, time: new Date(swingHigh.time * 1000).toLocaleString() } : null,
-      swingLow: swingLow ? { price: swingLow.price.toFixed(2), index: swingLow.index, time: new Date(swingLow.time * 1000).toLocaleString() } : null,
+      swingHigh: swingHigh ? { price: swingHigh.price.toFixed(2), index: swingHigh.index, time: new Date(swingHigh.time).toLocaleString() } : null,
+      swingLow: swingLow ? { price: swingLow.price.toFixed(2), index: swingLow.index, time: new Date(swingLow.time).toLocaleString() } : null,
       range: swingHigh && swingLow ? (swingHigh.price - swingLow.price).toFixed(2) : 'N/A'
     });
 

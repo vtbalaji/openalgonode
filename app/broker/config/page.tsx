@@ -14,6 +14,7 @@ export default function BrokerConfigPage() {
   const [apiKey, setApiKey] = useState('');
   const [apiSecret, setApiSecret] = useState('');
   const [requestToken, setRequestToken] = useState('');
+  const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -168,6 +169,7 @@ export default function BrokerConfigPage() {
           broker: selectedBroker,
           apiKey,
           apiSecret,
+          ...(pin && { pin }), // Include PIN if provided
         }),
       });
 
@@ -175,6 +177,7 @@ export default function BrokerConfigPage() {
         setSuccess('Broker configuration saved successfully!');
         setApiKey('');
         setApiSecret('');
+        setPin('');
       } else {
         const data = await response.json();
         setError(data.error || 'Failed to save configuration');
@@ -272,9 +275,16 @@ export default function BrokerConfigPage() {
   const handleRefreshToken = async () => {
     if (!selectedBroker) return;
 
-    setIsLoading(true);
     setError('');
     setSuccess('');
+
+    // For Fyers, check if PIN is provided in the form field
+    if (selectedBroker === 'fyers' && !pin) {
+      setError('⚠️ Please enter your 4-digit Fyers PIN above before refreshing the token.');
+      return;
+    }
+
+    setIsLoading(true);
 
     try {
       const idToken = await user?.getIdToken();
@@ -286,16 +296,19 @@ export default function BrokerConfigPage() {
         },
         body: JSON.stringify({
           broker: selectedBroker,
+          ...(pin && { pin }),
         }),
       });
 
       if (response.ok) {
         const data = await response.json();
         setSuccess(`Token refreshed successfully! Valid till next midnight IST.`);
+        setPin(''); // Clear PIN after successful refresh
         // Refresh config to show updated expiry time
+        // Use 2-second delay to ensure Firestore and cache are updated
         setTimeout(() => {
           fetchBrokerConfig();
-        }, 1000);
+        }, 2000);
       } else {
         const data = await response.json();
         setError(data.error || 'Failed to refresh token');
@@ -348,6 +361,8 @@ export default function BrokerConfigPage() {
               isRefreshingToken={isLoading}
               showDetails={true}
               compact={false}
+              pin={pin}
+              onPinChange={setPin}
             />
           </div>
         )}
@@ -484,6 +499,24 @@ export default function BrokerConfigPage() {
                     required
                   />
                 )}
+              </div>
+            )}
+
+            {selectedBroker === 'fyers' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Fyers PIN (Optional - Required for token refresh)
+                </label>
+                <input
+                  type="password"
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-blue-500 focus:outline-none"
+                  placeholder="Your Fyers 4-digit PIN"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Your PIN is needed to refresh access tokens. It will be encrypted and stored securely.
+                </p>
               </div>
             )}
 

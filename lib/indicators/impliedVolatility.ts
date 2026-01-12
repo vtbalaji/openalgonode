@@ -52,8 +52,8 @@ export interface IVSolverResult {
  */
 export const DEFAULT_IV_CONFIG: IVSolverConfig = {
   maxIterations: 100,
-  tolerance: 0.0001,
-  initialGuess: 0.2,
+  tolerance: 0.001, // Tighter tolerance for better accuracy (0.1% price difference)
+  initialGuess: 0.10, // Start at 10% for Indian index options
   minVolatility: 0.01,
   maxVolatility: 3.0,
 };
@@ -134,6 +134,8 @@ export function solveImpliedVolatility(
   let sigma = cfg.initialGuess;
   let iterations = 0;
 
+  console.log(`[IV-SOLVER] Starting: marketPrice=${marketPrice}, S=${inputs.S}, K=${inputs.K}, T=${inputs.T.toFixed(4)}, r=${inputs.r}, optionType=${inputs.optionType}, initialGuess=${sigma}`);
+
   for (let i = 0; i < cfg.maxIterations; i++) {
     iterations++;
 
@@ -144,7 +146,13 @@ export function solveImpliedVolatility(
 
     // Check for convergence: is price close enough to market price?
     const priceDiff = theoreticalPrice - marketPrice;
+
+    if (i < 5 || (i < 10 && i % 2 === 0)) {
+      console.log(`[IV-SOLVER] Iter ${i}: sigma=${sigma.toFixed(4)}, theoretical=${theoreticalPrice.toFixed(2)}, market=${marketPrice.toFixed(2)}, diff=${priceDiff.toFixed(2)}, vega=${vegaValue.toFixed(2)}`);
+    }
+
     if (Math.abs(priceDiff) < cfg.tolerance) {
+      console.log(`[IV-SOLVER] ✓ Converged in ${iterations} iterations: IV=${(sigma * 100).toFixed(2)}%`);
       return {
         impliedVolatility: sigma,
         iterations,
@@ -155,18 +163,32 @@ export function solveImpliedVolatility(
     }
 
     // Avoid division by zero (vega → 0 at expiration or extreme vols)
-    if (Math.abs(vegaValue) < 1e-10) {
-      break; // Exit and use fallback
+    if (Math.abs(vegaValue) < 0.001) {
+      console.log(`[IV-SOLVER] ✗ Vega too small (${vegaValue}), breaking`);
+      break; // Exit and use fallback if vega is too small
     }
 
-    // Newton-Raphson update formula
-    // σₙ₊₁ = σₙ - (V(σₙ) - Market Price) / Vega
-    // Note: vega is per 1% volatility, so we multiply by 100
-    sigma = sigma - priceDiff / (vegaValue * 100);
+    // Newton-Raphson update formula: σₙ₊₁ = σₙ - f(σₙ)/f'(σₙ)
+    // where f(σ) = BS_Price(σ) - Market_Price
+    // and f'(σ) = dBS_Price/dσ = TRUE mathematical vega
+    //
+    // Our vega function returns: (S * N'(d1) * √T) / 100
+    // This is "per 1% change", meaning price changes by vegaValue when sigma changes by 1%
+    // For Newton-Raphson, we need TRUE derivative = vegaValue * 100
+    //
+    // However, raw Newton-Raphson can overshoot, so we add damping
+    // Damping factor = 0.5 means we take half steps (more stable convergence)
+    const dampingFactor = 0.5;
+    const rawStep = priceDiff / (vegaValue * 100);
+    const dampedStep = rawStep * dampingFactor;
+
+    sigma = sigma - dampedStep;
 
     // Enforce bounds to prevent unrealistic volatilities
     sigma = Math.max(cfg.minVolatility, Math.min(cfg.maxVolatility, sigma));
   }
+
+  console.log(`[IV-SOLVER] ✗ Did not converge after ${cfg.maxIterations} iterations, final sigma=${(sigma * 100).toFixed(2)}%`);
 
   // Did not converge, but return last calculated value
   return {

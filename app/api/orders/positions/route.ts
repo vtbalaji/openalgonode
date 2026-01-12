@@ -78,20 +78,42 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Call Zerodha client directly
-    const { getPositions } = await import('@/lib/zerodhaClient');
+    // Route to broker-specific endpoint
+    const protocol = request.headers.get('x-forwarded-proto') || 'http';
+    const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'localhost:3000';
+    const brokerEndpoint = `${protocol}://${host}/api/broker/${broker}/positions`;
+
+    console.log(`[POSITIONS] Calling endpoint: ${brokerEndpoint}`);
 
     try {
-      const positions = await getPositions(accessToken);
+      const brokerResponse = await fetch(brokerEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ userId }),
+      });
 
-      // Combine both net and day positions if available
-      const allPositions = [...(positions.net || []), ...(positions.day || [])];
+      const result = await brokerResponse.json();
+      if (!brokerResponse.ok) {
+        return NextResponse.json(
+          { error: result.error || `Failed on ${broker}` },
+          { status: brokerResponse.status }
+        );
+      }
+
+      // For Zerodha, combine net and day positions if available
+      let positions = result.positions || result.data || [];
+      if (broker === 'zerodha' && result.net && result.day) {
+        positions = [...result.net, ...result.day];
+      }
 
       return NextResponse.json(
         {
           success: true,
-          positions: allPositions || [],
-          count: allPositions?.length || 0,
+          positions: positions || [],
+          count: positions?.length || 0,
         },
         { status: 200 }
       );

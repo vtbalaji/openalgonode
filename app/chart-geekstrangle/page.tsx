@@ -20,7 +20,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { AdvancedTradingChart, ChartData, IndicatorConfig } from '@/components/AdvancedTradingChart';
 import { useRealtimePrice } from '@/hooks/useRealtimePrice';
-import { calculateStrangleGreeks, type OptionsGreeksInput } from '@/lib/indicators/optionsGreeks';
+import { calculateStrangleGreeks, calculateOptionsGreeks, type OptionsGreeksInput } from '@/lib/indicators/optionsGreeks';
 
 const TIMEFRAMES = [
   { label: '1m', value: 'minute' },
@@ -40,12 +40,14 @@ interface GreeksData {
   delta: number;
   daysToExpiry: number;
   riskLevel: 'safe' | 'caution' | 'danger';
+  ceIV: number | null;
+  peIV: number | null;
 }
 
 export default function GeekStrangleChartPage() {
   const { user } = useAuth();
   const baseSymbol = 'NIFTY'; // Fixed to NIFTY only
-  const [expiry, setExpiry] = useState('13JAN');
+  const [expiry, setExpiry] = useState('JAN');
   const [interval, setInterval] = useState('60minute');
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [loading, setLoading] = useState(false);
@@ -53,19 +55,22 @@ export default function GeekStrangleChartPage() {
   const [chartHeight, setChartHeight] = useState(600);
   const [lookbackDays, setLookbackDays] = useState(25);
   const [spotPrice, setSpotPrice] = useState(25683);
-  const [ceStrike, setCeStrike] = useState<number | null>(null);
-  const [peStrike, setPeStrike] = useState<number | null>(null);
+  const [ceStrike, setCeStrike] = useState<number | null>(25800);
+  const [peStrike, setPeStrike] = useState<number | null>(25800);
   const [greeks, setGreeks] = useState<GreeksData | null>(null);
   const [ceGreeks, setCeGreeks] = useState<GreeksData | null>(null);
   const [peGreeks, setPeGreeks] = useState<GreeksData | null>(null);
   const [greeksArray, setGreeksArray] = useState<Array<{ time: number; theta: number; vega: number; gamma: number; delta: number }>>([]);
+  const [latestCePrice, setLatestCePrice] = useState(0);
+  const [latestPePrice, setLatestPePrice] = useState(0);
+  const [latestPriceTime, setLatestPriceTime] = useState<number | null>(null);
 
   const [indicators, setIndicators] = useState<IndicatorConfig>({
     sma: false,
     smaPeriod: 20,
     ema: false,
     emaPeriod: 12,
-    rsi: false,
+    rsi: true,
     rsiPeriod: 14,
     adx: false,
     adxPeriod: 14,
@@ -84,9 +89,9 @@ export default function GeekStrangleChartPage() {
   });
 
   const [showGreeks, setShowGreeks] = useState({
-    theta: true,
-    vega: true,
-    gamma: true,
+    theta: false,
+    vega: false,
+    gamma: false,
     delta: false,
   });
 
@@ -167,8 +172,8 @@ export default function GeekStrangleChartPage() {
   };
 
   /**
-   * Calculate Greeks for strangle using simplified approach
-   * Based on current premium, historical volatility, and days to expiry
+   * Calculate Greeks for individual option (CE or PE)
+   * IMPORTANT: Pass EITHER cePremium OR pePremium, the other must be 0
    */
   const calculateGreeks = (
     cePremium: number,
@@ -178,43 +183,98 @@ export default function GeekStrangleChartPage() {
     ceStrikeVal?: number,
     peStrikeVal?: number
   ): GreeksData => {
-    // Use Black-Scholes calculation via optionsGreeks
-    // Strangle: CE and PE at different strikes with ACTUAL individual prices
-    // IMPORTANT: cePremium and pePremium are ACTUAL prices from API, not split
-    const cePrice = cePremium;  // Use actual CE price from API
-    const pePrice = pePremium;  // Use actual PE price from API
+    // Validate inputs - should never use fallback values!
+    if (!spotPrice || !ceStrikeVal || !peStrikeVal) {
+      console.error('[GEEK-STRANGLE] ⚠️ WARNING: Using fallback values! spot=' + spotPrice + ', ceStrike=' + ceStrikeVal + ', peStrike=' + peStrikeVal);
+    }
 
-    const ceInput: OptionsGreeksInput = {
-      spotPrice: spotPrice || 25683,
-      strikePrice: ceStrikeVal || 26200,
-      marketPrice: cePrice,
-      optionType: 'call',
-      daysToExpiry: daysToExp,
-      historicalSpotPrices: spotPriceHistory,
-      riskFreeRate: 0.07,
-    };
+    // Determine which leg we're calculating
+    const isCe = cePremium > 0;
+    const isPe = pePremium > 0;
 
-    const peInput: OptionsGreeksInput = {
-      spotPrice: spotPrice || 25683,
-      strikePrice: peStrikeVal || 26000,
-      marketPrice: pePrice,
-      optionType: 'put',
-      daysToExpiry: daysToExp,
-      historicalSpotPrices: spotPriceHistory,
-      riskFreeRate: 0.07,
-    };
+    if (isCe && isPe) {
+      // Both provided - calculate combined strangle
+      const ceInput: OptionsGreeksInput = {
+        spotPrice: spotPrice || 25683,
+        strikePrice: ceStrikeVal || 26200,
+        marketPrice: cePremium,
+        optionType: 'call',
+        daysToExpiry: daysToExp,
+        historicalSpotPrices: spotPriceHistory,
+        riskFreeRate: 0.07,
+      };
 
-    // Calculate combined strangle Greeks
-    const { combined } = calculateStrangleGreeks(ceInput, peInput);
+      const peInput: OptionsGreeksInput = {
+        spotPrice: spotPrice || 25683,
+        strikePrice: peStrikeVal || 26000,
+        marketPrice: pePremium,
+        optionType: 'put',
+        daysToExpiry: daysToExp,
+        historicalSpotPrices: spotPriceHistory,
+        riskFreeRate: 0.07,
+      };
 
-    return {
-      theta: Math.abs(parseFloat(combined.theta.toFixed(2))), // Absolute value for display
-      vega: parseFloat(combined.vega.toFixed(2)),
-      gamma: parseFloat(combined.gamma.toFixed(4)),
-      delta: parseFloat(combined.delta.toFixed(2)),
-      daysToExpiry: daysToExp,
-      riskLevel: combined.riskLevel,
-    };
+      const { combined, ce, pe } = calculateStrangleGreeks(ceInput, peInput);
+
+      return {
+        theta: parseFloat(combined.theta.toFixed(2)),
+        vega: parseFloat(combined.vega.toFixed(2)),
+        gamma: parseFloat(combined.gamma.toFixed(4)),
+        delta: parseFloat(combined.delta.toFixed(2)),
+        daysToExpiry: daysToExp,
+        riskLevel: combined.riskLevel,
+        ceIV: ce.impliedVolatility ? ce.impliedVolatility * 100 : null,
+        peIV: pe.impliedVolatility ? pe.impliedVolatility * 100 : null,
+      };
+    } else if (isCe) {
+      // Only CE provided
+      const ceInput: OptionsGreeksInput = {
+        spotPrice: spotPrice || 25683,
+        strikePrice: ceStrikeVal || 26200,
+        marketPrice: cePremium,
+        optionType: 'call',
+        daysToExpiry: daysToExp,
+        historicalSpotPrices: spotPriceHistory,
+        riskFreeRate: 0.07,
+      };
+
+      const ceGreeks = calculateOptionsGreeks(ceInput);
+
+      return {
+        theta: parseFloat(ceGreeks.theta.toFixed(2)),
+        vega: parseFloat(ceGreeks.vega.toFixed(2)),
+        gamma: parseFloat(ceGreeks.gamma.toFixed(4)),
+        delta: parseFloat(ceGreeks.delta.toFixed(2)),
+        daysToExpiry: daysToExp,
+        riskLevel: ceGreeks.riskLevel,
+        ceIV: ceGreeks.impliedVolatility ? ceGreeks.impliedVolatility * 100 : null,
+        peIV: null,
+      };
+    } else {
+      // Only PE provided
+      const peInput: OptionsGreeksInput = {
+        spotPrice: spotPrice || 25683,
+        strikePrice: peStrikeVal || 26000,
+        marketPrice: pePremium,
+        optionType: 'put',
+        daysToExpiry: daysToExp,
+        historicalSpotPrices: spotPriceHistory,
+        riskFreeRate: 0.07,
+      };
+
+      const peGreeks = calculateOptionsGreeks(peInput);
+
+      return {
+        theta: parseFloat(peGreeks.theta.toFixed(2)),
+        vega: parseFloat(peGreeks.vega.toFixed(2)),
+        gamma: parseFloat(peGreeks.gamma.toFixed(4)),
+        delta: parseFloat(peGreeks.delta.toFixed(2)),
+        daysToExpiry: daysToExp,
+        riskLevel: peGreeks.riskLevel,
+        ceIV: null,
+        peIV: peGreeks.impliedVolatility ? peGreeks.impliedVolatility * 100 : null,
+      };
+    }
   };
 
   // Helper function to parse expiry string and calculate date
@@ -253,18 +313,24 @@ export default function GeekStrangleChartPage() {
     setError(null);
 
     try {
+      // Use UTC dates to avoid timezone issues
       const today = new Date();
-      const from = new Date(today);
-      from.setDate(today.getDate() - lookbackDays);
+      // Convert to UTC date string (YYYY-MM-DD)
+      const todayUTC = today.toISOString().split('T')[0];
+
+      const fromDate = new Date(today);
+      fromDate.setDate(today.getDate() - lookbackDays);
+      const fromUTC = fromDate.toISOString().split('T')[0];
 
       // Calculate days to expiry
       const expiryDate = parseExpiryDate(expiry);
       const daysToExp = Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
       // Determine strikes
+      // For strangle, default to ATM (same as straddle) to ensure data exists
       const atmStrike = Math.round(spotPrice / 100) * 100;
-      const ceStrikeValue = ceStrike || atmStrike + 100;
-      const peStrikeValue = peStrike || atmStrike - 100;
+      const ceStrikeValue = ceStrike || atmStrike;
+      const peStrikeValue = peStrike || atmStrike;
 
       // For strangle, we need to fetch combined data at each strike
       // Then extract individual CE/PE prices
@@ -274,41 +340,56 @@ export default function GeekStrangleChartPage() {
         expiry,
         strike: ceStrikeValue.toString(),
         userId: user.uid,
-        from: from.toISOString().split('T')[0],
-        to: today.toISOString().split('T')[0],
+        from: fromUTC,
+        to: todayUTC,
         interval: interval.replace('minute', ''),
       });
 
       const ceStrikeFetchUrl = '/api/options/historical?' + ceStrikeParams.toString();
       console.log('[GEEK-STRANGLE] Fetching CE strike data:', ceStrikeFetchUrl);
 
-      // Fetch combined data for PE strike (contains both CE and PE at this strike)
-      const peStrikeParams = new URLSearchParams({
-        symbol: baseSymbol,
-        expiry,
-        strike: peStrikeValue.toString(),
-        userId: user.uid,
-        from: from.toISOString().split('T')[0],
-        to: today.toISOString().split('T')[0],
-        interval: interval.replace('minute', ''),
-      });
+      let ceStrikeResult, peStrikeResult;
 
-      const peStrikeFetchUrl = '/api/options/historical?' + peStrikeParams.toString();
-      console.log('[GEEK-STRANGLE] Fetching PE strike data:', peStrikeFetchUrl);
+      // Optimization: If CE and PE strikes are the same, reuse the same API response
+      if (ceStrikeValue === peStrikeValue) {
+        console.log('[GEEK-STRANGLE] CE and PE strikes are same (' + ceStrikeValue + '), reusing single API call');
+        const response = await fetch(ceStrikeFetchUrl);
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(`Strike Data: ${error?.error || 'OK'}`);
+        }
+        const result = await response.json();
+        ceStrikeResult = result;
+        peStrikeResult = result; // Reuse same data
+      } else {
+        // Fetch combined data for PE strike (contains both CE and PE at this strike)
+        const peStrikeParams = new URLSearchParams({
+          symbol: baseSymbol,
+          expiry,
+          strike: peStrikeValue.toString(),
+          userId: user.uid,
+          from: fromUTC,
+          to: todayUTC,
+          interval: interval.replace('minute', ''),
+        });
 
-      const [ceStrikeResponse, peStrikeResponse] = await Promise.all([
-        fetch(ceStrikeFetchUrl),
-        fetch(peStrikeFetchUrl),
-      ]);
+        const peStrikeFetchUrl = '/api/options/historical?' + peStrikeParams.toString();
+        console.log('[GEEK-STRANGLE] Fetching PE strike data:', peStrikeFetchUrl);
 
-      if (!ceStrikeResponse.ok || !peStrikeResponse.ok) {
-        const ceError = ceStrikeResponse.ok ? null : await ceStrikeResponse.json();
-        const peError = peStrikeResponse.ok ? null : await peStrikeResponse.json();
-        throw new Error(`CE Strike Data: ${ceError?.error || 'OK'}, PE Strike Data: ${peError?.error || 'OK'}`);
+        const [ceStrikeResponse, peStrikeResponse] = await Promise.all([
+          fetch(ceStrikeFetchUrl),
+          fetch(peStrikeFetchUrl),
+        ]);
+
+        if (!ceStrikeResponse.ok || !peStrikeResponse.ok) {
+          const ceError = ceStrikeResponse.ok ? null : await ceStrikeResponse.json();
+          const peError = peStrikeResponse.ok ? null : await peStrikeResponse.json();
+          throw new Error(`CE Strike Data: ${ceError?.error || 'OK'}, PE Strike Data: ${peError?.error || 'OK'}`);
+        }
+
+        ceStrikeResult = await ceStrikeResponse.json();
+        peStrikeResult = await peStrikeResponse.json();
       }
-
-      const ceStrikeResult = await ceStrikeResponse.json();
-      const peStrikeResult = await peStrikeResponse.json();
 
       if (ceStrikeResult.success && peStrikeResult.success && ceStrikeResult.data && peStrikeResult.data) {
         // For strangle:
@@ -388,56 +469,57 @@ export default function GeekStrangleChartPage() {
         });
 
         // Calculate Greeks for each candle
-        const greeksDataArray = chartDataArray.map((candle, index) => {
-          // Get ACTUAL CE and PE prices from maps (not split)
-          const ccePrice = ceDataMap.get(candle.time) || 0;
-          const ppePrice = peDataMap.get(candle.time) || 0;
-          const previousCePrice = index > 0 ? ceDataMap.get(chartDataArray[index - 1].time) || ccePrice : ccePrice;
-          const previousPePrice = index > 0 ? peDataMap.get(chartDataArray[index - 1].time) || ppePrice : ppePrice;
-
-          // Calculate daysToExp for THIS candle's timestamp (decreases over time)
-          const candleDate = new Date(candle.time * 1000);
-          const expiryDate = parseExpiryDate(expiry);
-          const daysToExpCandle = Math.ceil((expiryDate.getTime() - candleDate.getTime()) / (1000 * 60 * 60 * 24));
-
-          // Pass ACTUAL CE and PE prices, not combined and split
-          const greekData = calculateGreeks(ccePrice, ppePrice, daysToExpCandle, apiSpotPrice, ceStrikeValue, peStrikeValue);
-
-          // Normalize Greeks to 0-100 scale based on REAL Black-Scholes ranges
-          // Ranges researched for short-dated NIFTY options (5-14 DTE)
-
-          // THETA: Actual range observed for NIFTY options (5-35+ per day)
-          // Short-dated (5 DTE): 5-10/day
-          // Medium (7-10 DTE): 8-15/day
-          // Monthly (20-30 DTE): 15-35+/day
-          // Divide by 40 to get 0-100 scale: 5 → 12, 10 → 25, 20 → 50, 35 → 87
-          const thetaNormalized = Math.min(100, Math.max(0, (Math.abs(greekData.theta) / 40.0) * 100));
-
-          // VEGA: Range 0.5 to 15 per 1% IV change
-          // At 14 DTE: 5-10, At 7 DTE: 2-4, At 5 DTE: 1-2, At 1 DTE: <0.5
-          // Divide by 15 to get 0-100 scale: 1.0 → 7, 5.0 → 33, 10.0 → 67, 15.0 → 100
-          const vegaNormalized = Math.min(100, Math.max(0, (greekData.vega / 15.0) * 100));
-
-          // GAMMA: Range 0.0005 to 0.015 per point move
-          // At 14 DTE: 0.001, At 7 DTE: 0.002, At 5 DTE: 0.005, At 1 DTE: 0.015
-          // Divide by 0.015 to get 0-100 scale: 0.005 → 33, 0.01 → 67, 0.015 → 100
-          // Danger zone: >0.008 (>53 on scale), Safe: <0.004 (<27 on scale)
-          const gammaNormalized = Math.min(100, Math.max(0, (greekData.gamma / 0.015) * 100));
-
-          // DELTA: Range -1 to +1 (ATM straddle/strangle should be ±0.5 = neutral)
-          // -1.0 → 0, 0.0 → 50 (neutral), +1.0 → 100
-          // For straddle: delta close to 50 is ideal (balanced long/short)
-          const deltaNormalized = Math.min(100, Math.max(0, ((greekData.delta + 1) / 2) * 100));
-
-          return {
-            time: candle.time,
-            theta: thetaNormalized,
-            vega: vegaNormalized,
-            gamma: gammaNormalized,
-            delta: deltaNormalized,
-          };
-        });
-        setGreeksArray(greeksDataArray);
+        // TODO: COMMENTED OUT - Testing if chart works without Greeks
+        // const greeksDataArray = chartDataArray.map((candle, index) => {
+        //   // Get ACTUAL CE and PE prices from maps (not split)
+        //   const ccePrice = ceDataMap.get(candle.time) || 0;
+        //   const ppePrice = peDataMap.get(candle.time) || 0;
+        //   const previousCePrice = index > 0 ? ceDataMap.get(chartDataArray[index - 1].time) || ccePrice : ccePrice;
+        //   const previousPePrice = index > 0 ? peDataMap.get(chartDataArray[index - 1].time) || ppePrice : ppePrice;
+        //
+        //   // Calculate daysToExp for THIS candle's timestamp (decreases over time)
+        //   const candleDate = new Date(candle.time * 1000);
+        //   const expiryDate = parseExpiryDate(expiry);
+        //   const daysToExpCandle = Math.ceil((expiryDate.getTime() - candleDate.getTime()) / (1000 * 60 * 60 * 24));
+        //
+        //   // Pass ACTUAL CE and PE prices, not combined and split
+        //   const greekData = calculateGreeks(ccePrice, ppePrice, daysToExpCandle, apiSpotPrice, ceStrikeValue, peStrikeValue);
+        //
+        //   // Normalize Greeks to 0-100 scale based on REAL Black-Scholes ranges
+        //   // Ranges researched for short-dated NIFTY options (5-14 DTE)
+        //
+        //   // THETA: Actual range observed for NIFTY options (5-35+ per day)
+        //   // Short-dated (5 DTE): 5-10/day
+        //   // Medium (7-10 DTE): 8-15/day
+        //   // Monthly (20-30 DTE): 15-35+/day
+        //   // Divide by 40 to get 0-100 scale: 5 → 12, 10 → 25, 20 → 50, 35 → 87
+        //   const thetaNormalized = Math.min(100, Math.max(0, (Math.abs(greekData.theta) / 40.0) * 100));
+        //
+        //   // VEGA: Range 0.5 to 15 per 1% IV change
+        //   // At 14 DTE: 5-10, At 7 DTE: 2-4, At 5 DTE: 1-2, At 1 DTE: <0.5
+        //   // Divide by 15 to get 0-100 scale: 1.0 → 7, 5.0 → 33, 10.0 → 67, 15.0 → 100
+        //   const vegaNormalized = Math.min(100, Math.max(0, (greekData.vega / 15.0) * 100));
+        //
+        //   // GAMMA: Range 0.0005 to 0.015 per point move
+        //   // At 14 DTE: 0.001, At 7 DTE: 0.002, At 5 DTE: 0.005, At 1 DTE: 0.015
+        //   // Divide by 0.015 to get 0-100 scale: 0.005 → 33, 0.01 → 67, 0.015 → 100
+        //   // Danger zone: >0.008 (>53 on scale), Safe: <0.004 (<27 on scale)
+        //   const gammaNormalized = Math.min(100, Math.max(0, (greekData.gamma / 0.015) * 100));
+        //
+        //   // DELTA: Range -1 to +1 (ATM straddle/strangle should be ±0.5 = neutral)
+        //   // -1.0 → 0, 0.0 → 50 (neutral), +1.0 → 100
+        //   // For straddle: delta close to 50 is ideal (balanced long/short)
+        //   const deltaNormalized = Math.min(100, Math.max(0, ((greekData.delta + 1) / 2) * 100));
+        //
+        //   return {
+        //     time: candle.time,
+        //     theta: thetaNormalized,
+        //     vega: vegaNormalized,
+        //     gamma: gammaNormalized,
+        //     delta: deltaNormalized,
+        //   };
+        // });
+        setGreeksArray([]);
 
         // Calculate Greeks based on latest prices (for panel display)
         const latestCandle = chartDataArray[chartDataArray.length - 1];
@@ -448,16 +530,64 @@ export default function GeekStrangleChartPage() {
         const previousCePrice = ceDataMap.get(previousCandle.time) || latestCePrice;
         const previousPePrice = peDataMap.get(previousCandle.time) || latestPePrice;
 
-        // Combined strangle Greeks
-        const greeksCalc = calculateGreeks(latestCePrice, latestPePrice, apiDaysToExpiry, apiSpotPrice, ceStrikeValue, peStrikeValue);
-        setGreeks(greeksCalc);
+        // Store CE and PE prices in state for display
+        setLatestCePrice(latestCePrice);
+        setLatestPePrice(latestPePrice);
+        setLatestPriceTime(latestCandle.time);
 
         // Individual CE and PE Greeks (for detailed breakdown)
+        console.log(`[GEEK-STRANGLE] Greeks inputs: CE=${latestCePrice}, PE=${latestPePrice}, DTE=${apiDaysToExpiry}, Spot=${apiSpotPrice}, CE_Strike=${ceStrikeValue}, PE_Strike=${peStrikeValue}`);
         const ceGreeksCalc = calculateGreeks(latestCePrice, 0, apiDaysToExpiry, apiSpotPrice, ceStrikeValue, ceStrikeValue);
         const peGreeksCalc = calculateGreeks(0, latestPePrice, apiDaysToExpiry, apiSpotPrice, peStrikeValue, peStrikeValue);
+        console.log(`[GEEK-STRANGLE] CE Greeks: theta=${ceGreeksCalc.theta.toFixed(2)}, gamma=${ceGreeksCalc.gamma.toFixed(4)}, vega=${ceGreeksCalc.vega.toFixed(2)}, IV=${ceGreeksCalc.ceIV}%`);
+        console.log(`[GEEK-STRANGLE] PE Greeks: theta=${peGreeksCalc.theta.toFixed(2)}, gamma=${peGreeksCalc.gamma.toFixed(4)}, vega=${peGreeksCalc.vega.toFixed(2)}, IV=${peGreeksCalc.peIV}%`);
 
-        setCeGreeks(ceGreeksCalc);
-        setPeGreeks(peGreeksCalc);
+        // Combined strangle Greeks = CE + PE (sum of individual Greeks)
+        const combinedTheta = ceGreeksCalc.theta + peGreeksCalc.theta;
+        const combinedGamma = ceGreeksCalc.gamma + peGreeksCalc.gamma;
+        const combinedVega = ceGreeksCalc.vega + peGreeksCalc.vega;
+        const combinedDelta = ceGreeksCalc.delta + peGreeksCalc.delta;
+        const combinedCeIV = ceGreeksCalc.ceIV;
+        const combinedPeIV = peGreeksCalc.peIV;
+        const combinedRiskLevel = ceGreeksCalc.riskLevel === 'danger' || peGreeksCalc.riskLevel === 'danger'
+          ? 'danger'
+          : ceGreeksCalc.riskLevel === 'caution' || peGreeksCalc.riskLevel === 'caution'
+            ? 'caution'
+            : 'safe';
+
+        // Negate theta because we're SELLING (short) the strangle
+        // Black-Scholes gives negative theta for long positions
+        // For short positions, negate to show positive theta (seller profit from decay)
+        setGreeks({
+          theta: -combinedTheta,
+          vega: combinedVega,
+          gamma: combinedGamma,
+          delta: combinedDelta,
+          daysToExpiry: apiDaysToExpiry,
+          riskLevel: combinedRiskLevel,
+          ceIV: combinedCeIV,
+          peIV: combinedPeIV,
+        });
+        setCeGreeks({
+          theta: -ceGreeksCalc.theta,
+          vega: ceGreeksCalc.vega,
+          gamma: ceGreeksCalc.gamma,
+          delta: ceGreeksCalc.delta,
+          daysToExpiry: apiDaysToExpiry,
+          riskLevel: ceGreeksCalc.riskLevel,
+          ceIV: ceGreeksCalc.ceIV,
+          peIV: ceGreeksCalc.peIV,
+        });
+        setPeGreeks({
+          theta: -peGreeksCalc.theta,
+          vega: peGreeksCalc.vega,
+          gamma: peGreeksCalc.gamma,
+          delta: peGreeksCalc.delta,
+          daysToExpiry: apiDaysToExpiry,
+          riskLevel: peGreeksCalc.riskLevel,
+          ceIV: peGreeksCalc.ceIV,
+          peIV: peGreeksCalc.peIV,
+        });
       } else {
         throw new Error('Failed to fetch option data');
       }
@@ -469,13 +599,13 @@ export default function GeekStrangleChartPage() {
     }
   };
 
-  // Load data on symbol or interval change
+  // Load data on symbol or interval change (NOT on spotPrice - avoid constant refreshes)
   useEffect(() => {
-    if (user && expiry) {
-      console.log('[GEEK-STRANGLE] useEffect triggered - fetching chart data');
-      fetchChartData();
-    }
-  }, [user, expiry, interval, lookbackDays, spotPrice, ceStrike, peStrike]);
+    if (!user || !expiry) return;
+
+    console.log('[GEEK-STRANGLE] useEffect triggered - fetching chart data');
+    fetchChartData();
+  }, [user, expiry, interval, lookbackDays, ceStrike, peStrike]);
 
   const toggleIndicator = (indicator: keyof IndicatorConfig) => {
     setIndicators((prev) => ({
@@ -742,7 +872,7 @@ export default function GeekStrangleChartPage() {
         {/* Greeks Panel */}
         {greeks && !loading && (
           <div className={`rounded-lg border p-4 mb-4 ${getRiskColor(greeks.riskLevel)}`}>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
               {/* Theta Box with Checkbox */}
               <div className="bg-white rounded p-3 border border-gray-200">
                 <div className="flex items-center gap-2 mb-2">
@@ -845,13 +975,106 @@ export default function GeekStrangleChartPage() {
                 <p className="text-lg font-bold text-purple-600">{greeks.daysToExpiry}</p>
                 <p className="text-xs text-gray-500 mt-1">Gamma Risk</p>
               </div>
+
+              {/* Strangle Premium Card */}
+              {chartData.length > 0 && (
+                <div className="bg-white rounded p-3 border border-blue-300">
+                  <p className="text-xs text-gray-600 font-semibold">Strangle Premium</p>
+                  <p className="text-lg font-bold text-blue-600">{(latestCePrice + latestPePrice).toFixed(2)}</p>
+                  <p className="text-xs text-gray-600 mt-1">(CE: {latestCePrice.toFixed(2)}, PE: {latestPePrice.toFixed(2)})</p>
+                  {latestPriceTime && (
+                    <p className="text-xs text-gray-500 mt-1">{new Date(latestPriceTime * 1000).toLocaleString()}</p>
+                  )}
+                  <p className="text-xs text-gray-500 mt-1">Spot: {spotPrice.toFixed(2)}</p>
+                </div>
+              )}
+
+              {/* Implied Volatility (IV) Card */}
+              {greeks && chartData.length > 0 && (
+                <div className="bg-white rounded p-3 border border-green-300">
+                  <p className="text-xs text-gray-600 font-semibold">Implied Volatility (IV)</p>
+                  <p className="text-xs text-gray-600 mt-2">
+                    CE: <span className="font-bold text-green-600">{greeks.ceIV !== null ? greeks.ceIV.toFixed(2) : 'N/A'}%</span>
+                  </p>
+                  <p className="text-xs text-gray-600 mt-1">
+                    PE: <span className="font-bold text-green-600">{greeks.peIV !== null ? greeks.peIV.toFixed(2) : 'N/A'}%</span>
+                  </p>
+                </div>
+              )}
             </div>
 
-            <div className="mt-4 p-3 bg-white rounded border border-gray-200 text-xs text-gray-700">
-              <strong>Strategy Hint:</strong>
-              {greeks.riskLevel === 'safe' ? ' ✅ Good to sell - Theta strong, manageable risk. Target 50% profit.' : ''}
-              {greeks.riskLevel === 'caution' ? ' ⚠️ Caution - Gamma rising. Close position in next 2-3 days.' : ''}
-              {greeks.riskLevel === 'danger' ? ' 🔴 Danger - Close immediately! Gamma explosion risk near expiry.' : ''}
+            {/* Strategy Hint - Professional Sell Signal Formula */}
+            <div className="mt-4 p-4 bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg border-2 border-blue-300 shadow-sm">
+              <p className="text-sm font-bold text-gray-800 mb-3">📊 Professional Sell Signal Formula</p>
+
+              {/* Formula */}
+              <div className="bg-white rounded p-3 mb-3 border border-gray-300 font-mono text-xs">
+                <p className="text-gray-700 mb-2">SELL SIGNAL = (IV &gt; 15%) × (Theta/Premium &gt; 2%) × (Gamma &lt; 0.005) × (DTE 14-30)</p>
+              </div>
+
+              {/* Current Values Evaluation */}
+              {(() => {
+                const avgIV = greeks.ceIV && greeks.peIV ? (greeks.ceIV + greeks.peIV) / 2 : 0;
+                const premium = latestCePrice + latestPePrice;
+                const thetaPremiumRatio = premium > 0 ? (greeks.theta / premium) * 100 : 0;
+                const totalTheta = greeks.theta * greeks.daysToExpiry;
+                const maxVegaLoss = greeks.vega * (18 - avgIV); // Worst case: IV spikes to 18%
+                const riskRewardRatio = maxVegaLoss > 0 ? totalTheta / maxVegaLoss : 0;
+
+                const check1 = avgIV > 15;
+                const check2 = thetaPremiumRatio > 2;
+                const check3 = greeks.gamma < 0.005;
+                const check4 = greeks.daysToExpiry >= 14 && greeks.daysToExpiry <= 30;
+                const passedChecks = [check1, check2, check3, check4].filter(Boolean).length;
+
+                return (
+                  <>
+                    <div className="bg-white rounded p-3 mb-3 border border-gray-300 font-mono text-xs space-y-1">
+                      <p className="text-gray-700">
+                        = ({avgIV.toFixed(1)} &gt; 15?) × ({thetaPremiumRatio.toFixed(1)}% &gt; 2%) × ({greeks.gamma.toFixed(4)} &lt; 0.005) × ({greeks.daysToExpiry} ∈ [14,30])
+                      </p>
+                      <p className="text-gray-700">
+                        = <span className={check1 ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>{check1 ? 'TRUE' : 'FALSE'}</span> × <span className={check2 ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>{check2 ? 'TRUE' : 'FALSE'}</span> × <span className={check3 ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>{check3 ? 'TRUE' : 'FALSE'}</span> × <span className={check4 ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>{check4 ? 'TRUE' : 'FALSE'}</span>
+                      </p>
+                      <p className="text-gray-700">
+                        Risk/Reward: <span className={riskRewardRatio > 1.5 ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>{riskRewardRatio.toFixed(2)}</span> {riskRewardRatio > 1.5 ? '✓' : '✗'} (need &gt; 1.5)
+                      </p>
+                    </div>
+
+                    {/* Recommendation */}
+                    <div className={`p-3 rounded-lg border-2 ${
+                      passedChecks >= 4 && riskRewardRatio > 1.5
+                        ? 'bg-green-100 border-green-500'
+                        : passedChecks >= 3
+                        ? 'bg-yellow-100 border-yellow-500'
+                        : 'bg-red-100 border-red-500'
+                    }`}>
+                      <p className={`text-sm font-bold mb-1 ${
+                        passedChecks >= 4 && riskRewardRatio > 1.5
+                          ? 'text-green-800'
+                          : passedChecks >= 3
+                          ? 'text-yellow-900'
+                          : 'text-red-800'
+                      }`}>
+                        {passedChecks >= 4 && riskRewardRatio > 1.5 ? '✅ STRONG SELL SIGNAL' : passedChecks >= 3 ? '⚠️ WAIT FOR BETTER ENTRY' : '❌ DO NOT SELL'}
+                      </p>
+                      <p className={`text-xs ${
+                        passedChecks >= 4 && riskRewardRatio > 1.5
+                          ? 'text-green-800'
+                          : passedChecks >= 3
+                          ? 'text-yellow-900'
+                          : 'text-red-800'
+                      }`}>
+                        {passedChecks >= 4 && riskRewardRatio > 1.5
+                          ? `All checks passed (${passedChecks}/4). Good risk/reward ratio. Ideal conditions for selling.`
+                          : passedChecks >= 3
+                          ? `Passed ${passedChecks}/4 checks. ${!check1 ? 'IV too low (wait for spike to 15%+). ' : ''}${riskRewardRatio <= 1.5 ? 'Risk/reward unfavorable. ' : ''}`
+                          : `Only ${passedChecks}/4 checks passed. ${!check1 ? 'IV too low. ' : ''}${!check2 ? 'Theta/Premium too low. ' : ''}${!check3 ? 'Gamma too high. ' : ''}${!check4 ? 'DTE outside range. ' : ''}`}
+                      </p>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </div>
         )}

@@ -172,6 +172,7 @@ export function AdvancedTradingChart({
       localization: {
         timeFormatter: (timestamp: number) => {
           // Convert Unix timestamp to IST (UTC+5:30)
+          // Note: timestamp is in seconds (Unix timestamp), convert to milliseconds for Date object
           const date = new Date(timestamp * 1000);
 
           // Format: "21 Jan at 04:31 PM" in IST timezone
@@ -309,6 +310,7 @@ export function AdvancedTradingChart({
         localization: {
           timeFormatter: (timestamp: number) => {
             // Convert Unix timestamp to IST (UTC+5:30)
+            // Note: timestamp is in seconds (Unix timestamp), convert to milliseconds for Date object
             const date = new Date(timestamp * 1000);
 
             // Format: "21 Jan at 04:31 PM" in IST timezone
@@ -853,7 +855,7 @@ export function AdvancedTradingChart({
                 (priceAboveBothEMAs && !prevPriceAboveBothEMAs) ? 'Price above EMAs' :
                 'EMA crossover';
 
-              console.log(`[BUY SIGNAL] Triggered by: ${triggerReason} at ${new Date(candle.time * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} | Price: ${currClose.toFixed(2)} | POC: ${overallPOC.toFixed(2)} | Fast: ${currFast.toFixed(2)} | Slow: ${currSlow.toFixed(2)}`);
+              console.log(`[BUY SIGNAL] Triggered by: ${triggerReason} at ${new Date(candle.time).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} | Price: ${currClose.toFixed(2)} | POC: ${overallPOC.toFixed(2)} | Fast: ${currFast.toFixed(2)} | Slow: ${currSlow.toFixed(2)}`);
 
               buySignals.push({
                 time: candle.time as any,
@@ -892,10 +894,10 @@ export function AdvancedTradingChart({
           console.log(`[FILTER] ADX > ${indicators.adxThreshold} - Strong trend filter enabled`);
         }
         if (buySignals.length > 0) {
-          console.log('[BUY SIGNALS]', buySignals.map(s => new Date(s.time * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })));
+          console.log('[BUY SIGNALS]', buySignals.map(s => new Date(s.time).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })));
         }
         if (sellSignals.length > 0) {
-          console.log('[SELL SIGNALS]', sellSignals.map(s => new Date(s.time * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })));
+          console.log('[SELL SIGNALS]', sellSignals.map(s => new Date(s.time).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })));
         }
       }
     } else {
@@ -1181,7 +1183,9 @@ export function AdvancedTradingChart({
       }
     } else if (!indicators.volumeProfileVisible) {
       // Remove visible range volume profile when disabled
-      setVolumeProfileVisibleData(null);
+      if (volumeProfileVisibleData !== null) {
+        setVolumeProfileVisibleData(null);
+      }
 
       if (pocLineVisibleRef.current && candlestickSeriesRef.current) {
         try {
@@ -1247,8 +1251,11 @@ export function AdvancedTradingChart({
         candlestickSeriesRef.current.setMarkers(allMarkers);
       }
     } else {
-      setConsolidationBoxes([]);
-      setBreakoutSignals([]);
+      // Consolidation disabled - only clear state if we had data before
+      if (consolidationBoxes.length > 0 || breakoutSignals.length > 0) {
+        setConsolidationBoxes([]);
+        setBreakoutSignals([]);
+      }
 
       // If consolidation disabled but EMA signals exist, set them
       if (candlestickSeriesRef.current && emaSignalsRef.current.length > 0) {
@@ -1260,7 +1267,7 @@ export function AdvancedTradingChart({
     if (mainChartInstanceRef.current) {
       mainChartInstanceRef.current.timeScale().fitContent();
     }
-  }, [data, indicators, visibleRange, greeksData, showGreeks]);
+  }, [data, indicators.showSignals, indicators.fastEma, indicators.slowEma, indicators.showConsolidation, indicators.volumeProfileVisible, volumeProfileVisibleData, consolidationBoxes, breakoutSignals, visibleRange, greeksData, showGreeks]);
 
   return (
     <div className="w-full">

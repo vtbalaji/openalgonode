@@ -19,6 +19,8 @@ interface BrokerAuthStatusProps {
   isRefreshingToken?: boolean;
   showDetails?: boolean;
   compact?: boolean;
+  pin?: string;
+  onPinChange?: (pin: string) => void;
 }
 
 export function BrokerAuthStatus({
@@ -29,6 +31,8 @@ export function BrokerAuthStatus({
   isRefreshingToken = false,
   showDetails = true,
   compact = false,
+  pin = '',
+  onPinChange,
 }: BrokerAuthStatusProps) {
   const [authStatus, setAuthStatus] = useState<IBrokerAuthStatus | null>(null);
   const [, setUpdateTrigger] = useState(0);
@@ -113,38 +117,56 @@ export function BrokerAuthStatus({
             </div>
           )}
         </div>
+      </div>
 
-        <div className="ml-6 flex flex-col gap-2 flex-shrink-0">
-          {(authStatus.status === 'expiring' || authStatus.status === 'expired') && onReAuth && (
-            <button
-              onClick={onReAuth}
-              className={`px-4 py-2 rounded font-medium transition-colors ${buttonClass}`}
-            >
-              {authStatus.status === 'expired' ? 'Authenticate' : 'Re-authenticate'}
-            </button>
-          )}
-
-          {authStatus.status === 'valid' && onReAuth && (
-            <button
-              onClick={onReAuth}
-              className={`px-4 py-2 rounded font-medium transition-colors ${buttonClass} opacity-75 hover:opacity-100`}
-            >
-              Refresh (Auth)
-            </button>
-          )}
-
-          {authStatus.status === 'valid' && onRefreshToken && (
-            <button
-              onClick={onRefreshToken}
-              disabled={isRefreshingToken}
-              className={`px-4 py-2 rounded font-medium transition-colors ${buttonClass} ${
-                isRefreshingToken ? 'opacity-50 cursor-not-allowed' : 'opacity-75 hover:opacity-100'
-              }`}
-            >
-              {isRefreshingToken ? '⏳ Refreshing Token...' : 'Refresh (Token)'}
-            </button>
-          )}
+      {/* PIN input for Fyers token refresh */}
+      {broker === 'fyers' && onRefreshToken && (
+        <div className="mt-4 mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Fyers PIN (4-digit)
+          </label>
+          <input
+            type="password"
+            value={pin}
+            onChange={(e) => onPinChange?.(e.target.value)}
+            placeholder="Enter 4-digit PIN"
+            maxLength={4}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
         </div>
+      )}
+
+      {/* Buttons section */}
+      <div className="mt-4 flex flex-col gap-2">
+        {(authStatus.status === 'expiring' || authStatus.status === 'expired') && onReAuth && (
+          <button
+            onClick={onReAuth}
+            className={`px-4 py-2 rounded font-medium transition-colors ${buttonClass}`}
+          >
+            {authStatus.status === 'expired' ? 'Authenticate' : 'Re-authenticate'}
+          </button>
+        )}
+
+        {authStatus.status === 'valid' && onReAuth && (
+          <button
+            onClick={onReAuth}
+            className={`px-4 py-2 rounded font-medium transition-colors ${buttonClass} opacity-75 hover:opacity-100`}
+          >
+            Refresh (Auth)
+          </button>
+        )}
+
+        {onRefreshToken && (
+          <button
+            onClick={onRefreshToken}
+            disabled={isRefreshingToken}
+            className={`px-4 py-2 rounded font-medium transition-colors bg-green-600 hover:bg-green-700 text-white ${
+              isRefreshingToken ? 'opacity-50 cursor-not-allowed' : 'opacity-75 hover:opacity-100'
+            }`}
+          >
+            {isRefreshingToken ? '⏳ Refreshing Token...' : 'Refresh (Token)'}
+          </button>
+        )}
       </div>
 
       {/* Status indicator dot */}

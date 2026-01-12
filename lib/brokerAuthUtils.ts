@@ -75,6 +75,7 @@ export function calculateBrokerAuthStatus(lastAuthenticatedAt: Date | null): Bro
 
   let status: 'valid' | 'expiring' | 'expired';
 
+  // Check if token is still valid based on time remaining
   if (totalMinutesRemaining < 0) {
     status = 'expired';
   } else if (totalMinutesRemaining < EXPIRY_THRESHOLD_MINUTES) {

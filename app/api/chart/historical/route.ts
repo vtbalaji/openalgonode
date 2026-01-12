@@ -40,6 +40,7 @@ export async function GET(request: NextRequest) {
     const from = searchParams.get('from');
     const to = searchParams.get('to');
     const userId = searchParams.get('userId');
+    const includeToday = searchParams.get('includeToday') === 'true'; // Include today's incomplete candles
 
     if (!symbol || !userId) {
       return NextResponse.json(
@@ -94,8 +95,20 @@ export async function GET(request: NextRequest) {
     console.log('[CHART-HISTORICAL] Converted symbol:', brokerSymbol);
 
     // Decrypt credentials
-    const encryptedAccessToken = decryptData(configData.accessToken);
-    const decryptedApiKey = decryptData(configData.apiKey);
+    const accessToken = decryptData(configData.accessToken);
+
+    // Get app_id (Fyers Client ID) - try appId first, fallback to decrypting apiKey
+    let appId: string;
+    if (configData.appId) {
+      appId = configData.appId;
+    } else if (configData.apiKey) {
+      appId = decryptData(configData.apiKey);
+    } else {
+      return NextResponse.json(
+        { error: 'Missing appId or apiKey configuration' },
+        { status: 400 }
+      );
+    }
 
     console.log('[CHART-HISTORICAL] Broker:', broker);
 
@@ -110,16 +123,11 @@ export async function GET(request: NextRequest) {
 
     if (broker === 'zerodha') {
       // ===== ZERODHA FLOW =====
-      // Extract access token from combined format (apiKey:accessToken)
-      const accessToken = encryptedAccessToken.includes(':')
-        ? encryptedAccessToken.split(':')[1]
-        : encryptedAccessToken;
-
       // Ensure symbol cache is loaded
       const symbolCache = getSymbolCache();
       if (!symbolCache.isReady()) {
         console.log('[CHART-HISTORICAL] Symbol cache not loaded, loading now...');
-        await symbolCache.load(decryptedApiKey, accessToken);
+        await symbolCache.load(appId, accessToken);
       }
 
       // Get instrument token for Zerodha
@@ -149,7 +157,7 @@ export async function GET(request: NextRequest) {
       // Fetch from Zerodha
       const response = await fetch(url, {
         headers: {
-          'Authorization': 'token ' + decryptedApiKey + ':' + accessToken,
+          'Authorization': 'token ' + appId + ':' + accessToken,
           'X-Kite-Version': '3',
         },
       });
@@ -167,17 +175,21 @@ export async function GET(request: NextRequest) {
 
       // Transform Zerodha data: {data: {candles: [[timestamp, open, high, low, close, volume], ...]}}
       const candles = data.data?.candles || [];
-      chartData = candles.map((candle: any[]) => ({
-        time: Math.floor(new Date(candle[0]).getTime() / 1000), // Unix timestamp in seconds
-        open: candle[1],
-        high: candle[2],
-        low: candle[3],
-        close: candle[4],
-        volume: candle[5] || 0,
-      }));
+      chartData = candles.map((candle: any[]) => {
+        // Zerodha returns timestamp as Date string, convert to Unix timestamp in seconds
+        const dateObj = new Date(candle[0]);
+        const timeInSeconds = Math.floor(dateObj.getTime() / 1000);
+        return {
+          time: timeInSeconds, // TradingView Lightweight Charts expects seconds
+          open: candle[1],
+          high: candle[2],
+          low: candle[3],
+          close: candle[4],
+          volume: candle[5] || 0,
+        };
+      });
     } else if (broker === 'fyers') {
       // ===== FYERS FLOW =====
-      const accessToken = encryptedAccessToken;
 
       // Fyers API expects specific parameter format
       const fyersResolution = convertIntervalToFyersFormat(interval);
@@ -201,12 +213,18 @@ export async function GET(request: NextRequest) {
       }
 
       // For range_to: subtract 1 day to avoid partial candles (per Fyers docs)
+      // UNLESS includeToday=true (for live polling where we want current day's data)
       if (to) {
         const toDate = new Date(to);
-        toDate.setDate(toDate.getDate() - 1);
-        const adjustedTo = toDate.toISOString().split('T')[0];
-        params.append('range_to', adjustedTo);
-        console.log('[CHART-HISTORICAL] Adjusted range_to:', to, '→', adjustedTo, '(to avoid partial candles)');
+        if (!includeToday) {
+          toDate.setDate(toDate.getDate() - 1);
+          const adjustedTo = toDate.toISOString().split('T')[0];
+          params.append('range_to', adjustedTo);
+          console.log('[CHART-HISTORICAL] Adjusted range_to:', to, '→', adjustedTo, '(to avoid partial candles)');
+        } else {
+          params.append('range_to', to);
+          console.log('[CHART-HISTORICAL] Using today\'s data (includeToday=true):', to);
+        }
       }
 
       // Add cont_flag=1 for futures/continuous data
@@ -221,7 +239,7 @@ export async function GET(request: NextRequest) {
       const response = await fetch(url, {
         method: 'GET',
         headers: {
-          'Authorization': `${decryptedApiKey}:${accessToken}`,
+          'Authorization': `${appId}:${accessToken}`,
           'Content-Type': 'application/json; charset=UTF-8',
         },
       });
@@ -240,14 +258,24 @@ export async function GET(request: NextRequest) {
       // Transform Fyers data - check response structure
       if (data.s === 'ok' && data.candles) {
         // Fyers format: {s: "ok", candles: [[timestamp, open, high, low, close, volume], ...]}
-        chartData = data.candles.map((candle: any[]) => ({
-          time: Math.floor(candle[0] / 1000), // Fyers returns milliseconds, convert to seconds
-          open: candle[1],
-          high: candle[2],
-          low: candle[3],
-          close: candle[4],
-          volume: candle[5] || 0,
-        }));
+        console.log('[CHART-HISTORICAL-DEBUG] Raw Fyers first candle timestamp:', data.candles[0]?.[0]);
+        console.log('[CHART-HISTORICAL-DEBUG] Current time in seconds:', Math.floor(Date.now() / 1000));
+
+        chartData = data.candles.map((candle: any[]) => {
+          // Fyers returns timestamps in seconds
+          const timestamp = typeof candle[0] === 'number' ? candle[0] : parseInt(candle[0]);
+
+          // TradingView Lightweight Charts expects Unix timestamp in seconds
+          // Fyers already returns seconds, so use as-is
+          return {
+            time: timestamp,
+            open: candle[1],
+            high: candle[2],
+            low: candle[3],
+            close: candle[4],
+            volume: candle[5] || 0,
+          };
+        });
         console.log('[CHART-HISTORICAL] Fyers returned', chartData.length, 'candles');
       } else {
         console.error('[CHART-HISTORICAL] Fyers API response:', JSON.stringify(data));

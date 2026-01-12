@@ -161,31 +161,91 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // FYERS: Return informational response
-  // Fyers doesn't have a public WebSocket API for real-time market data
+  // FYERS: Poll latest data every 10 seconds
+  // Fyers doesn't have a public WebSocket API, so we poll the chart data endpoint
   if (broker === 'fyers') {
-    console.log('[STREAM-PRICES] Fyers user detected - real-time streaming via WebSocket not available');
+    console.log('[STREAM-PRICES] Fyers user detected - using polling for live data updates');
 
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
-      start(controller) {
+      async start(controller) {
         console.log(`[STREAM-PRICES] Fyers SSE client connected for symbols: ${symbols.join(', ')}`);
 
-        // Send connection message indicating Fyers uses polling instead
+        // Send connection message indicating Fyers uses polling
         const connectMessage = `data: ${JSON.stringify({
           type: 'connected',
           symbols,
           broker: 'fyers',
-          note: 'Fyers does not support WebSocket streaming. Use chart polling (updates every 1 min) or use Zerodha for real-time prices.',
+          note: 'Fyers using polling (updates every 10 seconds)',
         })}\n\n`;
         controller.enqueue(encoder.encode(connectMessage));
 
-        // Send heartbeat only (no ticks available)
+        // Store last close price for each symbol to detect changes
+        const lastPrices: Record<string, number> = {};
+
+        // Poll Fyers chart data every 10 seconds for latest candle
+        const pollInterval = setInterval(async () => {
+          try {
+            // For each symbol, fetch the latest data
+            for (const symbol of symbols) {
+              const today = new Date();
+              const fromDate = new Date(today);
+              fromDate.setDate(fromDate.getDate() - 2); // Go back 2 days to account for Fyers range adjustment
+
+              const fromStr = fromDate.toISOString().split('T')[0];
+              const toStr = today.toISOString().split('T')[0];
+
+              const url = `/api/chart/historical?symbol=${encodeURIComponent(symbol)}&interval=1minute&userId=${encodeURIComponent(userId)}&from=${fromStr}&to=${toStr}&includeToday=true`;
+
+              const response = await fetch(`${request.nextUrl.origin}${url}`, {
+                method: 'GET',
+                cache: 'no-store',
+              });
+
+              if (response.ok) {
+                const chartData = await response.json();
+                const data = chartData.data || [];
+
+                if (data.length > 0) {
+                  // Get the latest candle
+                  const latestCandle = data[data.length - 1];
+                  const close = latestCandle.close;
+
+                  // Only send tick if price changed
+                  if (!lastPrices[symbol] || lastPrices[symbol] !== close) {
+                    lastPrices[symbol] = close;
+
+                    const tickMessage = `data: ${JSON.stringify({
+                      type: 'tick',
+                      symbol,
+                      data: {
+                        last_price: close,
+                        change: 0, // Fyers data doesn't include change in this format
+                        volume: latestCandle.volume || 0,
+                        ohlc: {
+                          open: latestCandle.open,
+                          high: latestCandle.high,
+                          low: latestCandle.low,
+                          close: latestCandle.close,
+                        },
+                        timestamp: new Date(latestCandle.time).toISOString(),
+                      },
+                    })}\n\n`;
+                    controller.enqueue(encoder.encode(tickMessage));
+                  }
+                }
+              }
+            }
+          } catch (err) {
+            console.error('[STREAM-PRICES] Fyers polling error:', err);
+          }
+        }, 10000); // Poll every 10 seconds
+
+        // Send heartbeat every 30 seconds
         const heartbeatInterval = setInterval(() => {
           const heartbeat = `data: ${JSON.stringify({
             type: 'heartbeat',
             timestamp: new Date().toISOString(),
-            note: 'Fyers real-time streaming not available',
           })}\n\n`;
           controller.enqueue(encoder.encode(heartbeat));
         }, 30000);
@@ -193,6 +253,7 @@ export async function GET(request: NextRequest) {
         // Cleanup on disconnect
         request.signal.addEventListener('abort', () => {
           console.log('[STREAM-PRICES] Fyers client disconnected');
+          clearInterval(pollInterval);
           clearInterval(heartbeatInterval);
           controller.close();
         });

@@ -226,10 +226,11 @@ async function fetchFyersOptionHistory(
   appId: string,
   from: string,
   to: string,
-  interval: string
+  interval: string,
+  retryCount: number = 0
 ): Promise<any[] | null> {
   try {
-    console.log(`[OPTIONS-HISTORICAL] Fetching ${symbol} from ${from} to ${to}, interval: ${interval}`);
+    console.log(`[OPTIONS-HISTORICAL] Fetching ${symbol} from ${from} to ${to}, interval: ${interval}${retryCount > 0 ? ` (retry ${retryCount})` : ''}`);
 
     // Convert interval to Fyers format (D for day, otherwise just the number)
     let fyersInterval = interval;
@@ -260,6 +261,14 @@ async function fetchFyersOptionHistory(
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`[OPTIONS-HISTORICAL] Fyers API error (${response.status}):`, errorText);
+
+      // Retry once on 429 (rate limit) with a 2-second delay
+      if (response.status === 429 && retryCount < 1) {
+        console.log(`[OPTIONS-HISTORICAL] Rate limited, retrying after 2 seconds...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        return fetchFyersOptionHistory(symbol, accessToken, appId, from, to, interval, retryCount + 1);
+      }
+
       return null;
     }
 

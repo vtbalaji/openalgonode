@@ -295,20 +295,6 @@ export default function Home() {
             <p className="text-gray-600">ATM options premium analysis (CE + PE combined)</p>
           </Link>
 
-          {/* Geek Straddle Chart */}
-          <Link
-            href="/chart-geekstraddle"
-            className="block rounded-lg bg-white p-6 shadow transition hover:shadow-lg border-2 border-violet-200"
-          >
-            <div className="mb-4 inline-block rounded-lg bg-violet-100 p-3">
-              <svg className="h-6 w-6 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-              </svg>
-            </div>
-            <h3 className="mb-2 text-lg font-semibold text-gray-900">Geek Straddle (with Greeks)</h3>
-            <p className="text-gray-600">Theta, Vega, Gamma analysis for option selling decisions</p>
-          </Link>
-
           {/* Geek Strangle Chart */}
           <Link
             href="/chart-geekstrangle"

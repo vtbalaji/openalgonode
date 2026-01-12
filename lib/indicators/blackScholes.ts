@@ -234,24 +234,24 @@ export function theta(inputs: BlackScholesInputs): number {
   const d1 = calculateD1(S, K, T, r, sigma);
   const d2 = calculateD2(d1, sigma, T);
 
-  // Decay component (same for both calls and puts)
-  const decayTerm = -(S * normalPDF(d1) * sigma) / (2 * Math.sqrt(T));
+  // Black-Scholes theta formula for daily values
+  // Use 252 trading days per year (standard in options markets)
+  // Decay term: -(S * φ(d1) * σ) / (2 * √T * 252)
+  const decayTerm = -(S * normalPDF(d1) * sigma) / (2 * Math.sqrt(T) * 252);
 
   // Interest rate component (different for calls and puts)
+  // Already in rupees, convert from annual to daily using 252 trading days
   const discountFactor = Math.exp(-r * T);
 
-  let thetaAnnual: number;
+  let thetaDaily: number;
 
   if (optionType === 'call') {
-    const rateTerm = -r * K * discountFactor * normalCDF(d2);
-    thetaAnnual = decayTerm + rateTerm;
+    const rateTerm = (-r * K * discountFactor * normalCDF(d2)) / 252.0;
+    thetaDaily = decayTerm + rateTerm;
   } else {
-    const rateTerm = r * K * discountFactor * normalCDF(-d2);
-    thetaAnnual = decayTerm + rateTerm;
+    const rateTerm = (r * K * discountFactor * normalCDF(-d2)) / 252.0;
+    thetaDaily = decayTerm + rateTerm;
   }
-
-  // Convert from per-year to per-day
-  const thetaDaily = thetaAnnual / 365.0;
 
   return thetaDaily;
 }
@@ -398,17 +398,16 @@ export function calculateAllGreeks(
   // Calculate gamma (same for both calls and puts)
   const gammaValue = normalPDF(d1) / (S * sigma * Math.sqrt(T));
 
-  // Calculate theta
-  const decayTerm = -(S * normalPDF(d1) * sigma) / (2 * Math.sqrt(T));
+  // Calculate theta for daily values using 252 trading days
+  const decayTerm = -(S * normalPDF(d1) * sigma) / (2 * Math.sqrt(T) * 252);
   let thetaValue: number;
   if (optionType === 'call') {
-    thetaValue =
-      decayTerm - r * K * discountFactor * normalCDF(d2);
+    const rateTerm = (-r * K * discountFactor * normalCDF(d2)) / 252.0;
+    thetaValue = decayTerm + rateTerm;
   } else {
-    thetaValue =
-      decayTerm + r * K * discountFactor * normalCDF(-d2);
+    const rateTerm = (r * K * discountFactor * normalCDF(-d2)) / 252.0;
+    thetaValue = decayTerm + rateTerm;
   }
-  thetaValue = thetaValue / 365.0; // Per day
 
   // Calculate vega (same for both calls and puts)
   const vegaValue = (S * normalPDF(d1) * Math.sqrt(T)) / 100.0;

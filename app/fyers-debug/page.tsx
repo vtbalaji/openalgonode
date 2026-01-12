@@ -8,12 +8,13 @@ export default function FyersDebugPage() {
   const [loading, setLoading] = useState<string | null>(null);
   const [results, setResults] = useState<any>(null);
   const [logs, setLogs] = useState<string[]>([]);
+  const [idToken, setIdToken] = useState<string | null>(null);
 
   const addLog = (message: string) => {
     setLogs((prev) => [...prev, `[${new Date().toLocaleTimeString()}] ${message}`]);
   };
 
-  const runTest = async (testName: string, endpoint: string) => {
+  const runTest = async (testName: string, endpoint: string, payload?: any, needsAuth?: boolean) => {
     if (!user) {
       addLog('ERROR: Not logged in');
       return;
@@ -22,15 +23,42 @@ export default function FyersDebugPage() {
     setLoading(testName);
     addLog(`Starting: ${testName}`);
 
+    // Get ID token if needed
+    let token = idToken;
+    if (needsAuth && !token) {
+      try {
+        token = await user.getIdToken();
+        setIdToken(token);
+        addLog('Obtained Firebase ID token');
+      } catch (error: any) {
+        addLog(`ERROR: Failed to get ID token: ${error.message}`);
+        setLoading(null);
+        return;
+      }
+    }
+
+    // Default payload for endpoints that need userId
+    const defaultPayload = {
+      userId: user.uid,
+    };
+
+    // Merge with custom payload if provided
+    const finalPayload = { ...defaultPayload, ...payload };
+
     try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+
+      // Add authorization header if token is available
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const response = await fetch(endpoint, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userId: user.uid,
-        }),
+        headers,
+        body: JSON.stringify(finalPayload),
       });
 
       addLog(`Response status: ${response.status}`);
@@ -159,6 +187,32 @@ export default function FyersDebugPage() {
             >
               {loading === 'AppId Debug' ? 'Testing...' : 'Test AppId Formats'}
             </button>
+
+            <hr className="my-4" />
+
+            <h3 className="font-bold text-lg mb-3">Order Placement Testing</h3>
+            <button
+              onClick={() => runTest('Place Order (INFY)', '/api/ui/dashboard/place', {
+                broker: 'fyers',
+                symbol: 'INFY',
+                action: 'BUY',
+                quantity: 1,
+                product: 'CNC',
+                pricetype: 'MARKET',
+                price: 0,
+              }, true)}
+              disabled={loading === 'Place Order (INFY)'}
+              className="w-full px-4 py-2 bg-red-600 text-white rounded disabled:bg-gray-400 font-bold"
+            >
+              {loading === 'Place Order (INFY)' ? 'Placing...' : '📤 Place Order (INFY BUY 1)'}
+            </button>
+            <p className="text-xs text-gray-600 mt-2">
+              ✓ Hardcoded: Symbol=INFY, Qty=1, Type=MARKET, Side=BUY, Product=CNC
+              <br />
+              ✓ Tests full order placement flow
+              <br />
+              ✓ Check server logs for [FYERS-PLACEORDER] entries
+            </p>
 
             <hr className="my-4" />
 

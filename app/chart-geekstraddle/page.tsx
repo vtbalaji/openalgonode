@@ -40,12 +40,14 @@ interface GreeksData {
   delta: number;
   daysToExpiry: number;
   riskLevel: 'safe' | 'caution' | 'danger';
+  ceIV: number | null;
+  peIV: number | null;
 }
 
 export default function GeekStraddleChartPage() {
   const { user } = useAuth();
   const baseSymbol = 'NIFTY'; // Fixed to NIFTY only
-  const [expiry, setExpiry] = useState('13JAN');
+  const [expiry, setExpiry] = useState('JAN');
   const [interval, setInterval] = useState('60minute');
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [loading, setLoading] = useState(false);
@@ -53,16 +55,19 @@ export default function GeekStraddleChartPage() {
   const [chartHeight, setChartHeight] = useState(600);
   const [lookbackDays, setLookbackDays] = useState(25);
   const [spotPrice, setSpotPrice] = useState(25683);
-  const [manualStrike, setManualStrike] = useState<number | null>(null);
+  const [manualStrike, setManualStrike] = useState<number | null>(25800);
   const [greeks, setGreeks] = useState<GreeksData | null>(null);
   const [greeksArray, setGreeksArray] = useState<Array<{ time: number; theta: number; vega: number; gamma: number; delta: number }>>([]);
+  const [latestCePrice, setLatestCePrice] = useState(0);
+  const [latestPePrice, setLatestPePrice] = useState(0);
+  const [latestPriceTime, setLatestPriceTime] = useState<number | null>(null);
 
   const [indicators, setIndicators] = useState<IndicatorConfig>({
     sma: false,
     smaPeriod: 20,
     ema: false,
     emaPeriod: 12,
-    rsi: false,
+    rsi: true,
     rsiPeriod: 14,
     volumeProfile: true,
     volumeProfileVisible: false,
@@ -81,9 +86,9 @@ export default function GeekStraddleChartPage() {
   });
 
   const [showGreeks, setShowGreeks] = useState({
-    theta: true,
-    vega: true,
-    gamma: true,
+    theta: false,
+    vega: false,
+    gamma: false,
     delta: false,
   });
 
@@ -201,15 +206,17 @@ export default function GeekStraddleChartPage() {
     };
 
     // Calculate combined straddle Greeks
-    const { combined } = calculateStraddleGreeks(ceInput, peInput);
+    const { combined, ce, pe } = calculateStraddleGreeks(ceInput, peInput);
 
     return {
-      theta: Math.abs(parseFloat(combined.theta.toFixed(2))), // Absolute value for display
+      theta: parseFloat(combined.theta.toFixed(2)), // Keep sign - negative for buyers, positive for sellers
       vega: parseFloat(combined.vega.toFixed(2)),
       gamma: parseFloat(combined.gamma.toFixed(4)),
       delta: parseFloat(combined.delta.toFixed(2)),
       daysToExpiry: daysToExp,
       riskLevel: combined.riskLevel,
+      ceIV: ce.impliedVolatility ? ce.impliedVolatility * 100 : null, // Convert to percentage
+      peIV: pe.impliedVolatility ? pe.impliedVolatility * 100 : null, // Convert to percentage
     };
   };
 
@@ -250,8 +257,12 @@ export default function GeekStraddleChartPage() {
 
     try {
       const today = new Date();
-      const from = new Date(today);
-      from.setDate(today.getDate() - lookbackDays);
+      // Use UTC dates to avoid timezone issues
+      const todayUTC = today.toISOString().split('T')[0];
+
+      const fromDate = new Date(today);
+      fromDate.setDate(today.getDate() - lookbackDays);
+      const fromUTC = fromDate.toISOString().split('T')[0];
 
       // Calculate days to expiry
       const expiryDate = parseExpiryDate(expiry);
@@ -261,8 +272,8 @@ export default function GeekStraddleChartPage() {
         symbol: baseSymbol,
         expiry,
         userId: user.uid,
-        from: from.toISOString().split('T')[0],
-        to: today.toISOString().split('T')[0],
+        from: fromUTC,
+        to: todayUTC,
         interval: interval.replace('minute', ''),
       });
 
@@ -312,60 +323,82 @@ export default function GeekStraddleChartPage() {
         setSpotPriceHistory(spotHistory);
 
         // Calculate Greeks for each candle
-        const greeksDataArray = chartDataArray.map((candle, index) => {
-          // Calculate daysToExp for THIS candle's timestamp (decreases over time)
-          const candleDate = new Date(candle.time * 1000);
-          const expiryDate = parseExpiryDate(expiry);
-          const daysToExpCandle = Math.ceil((expiryDate.getTime() - candleDate.getTime()) / (1000 * 60 * 60 * 24));
-
-          // Use actual individual CE and PE prices from API response
-          const ccePrice = (candle as any).cePrice || candle.close / 2;
-          const ppePrice = (candle as any).pePrice || candle.close / 2;
-
-          const greekData = calculateGreeks(ccePrice, ppePrice, daysToExpCandle, apiSpotPrice, atmStrike);
-
-          // Normalize Greeks to 0-100 scale based on REAL Black-Scholes ranges
-          // Ranges researched for short-dated NIFTY options (5-14 DTE)
-
-          // THETA: Actual range observed for NIFTY options (5-35+ per day)
-          // Short-dated (5 DTE): 5-10/day
-          // Medium (7-10 DTE): 8-15/day
-          // Monthly (20-30 DTE): 15-35+/day
-          // Divide by 40 to get 0-100 scale: 5 → 12, 10 → 25, 20 → 50, 35 → 87
-          const thetaNormalized = Math.min(100, Math.max(0, (Math.abs(greekData.theta) / 40.0) * 100));
-
-          // VEGA: Range 0.5 to 15 per 1% IV change
-          // At 14 DTE: 5-10, At 7 DTE: 2-4, At 5 DTE: 1-2, At 1 DTE: <0.5
-          // Divide by 15 to get 0-100 scale: 1.0 → 7, 5.0 → 33, 10.0 → 67, 15.0 → 100
-          const vegaNormalized = Math.min(100, Math.max(0, (greekData.vega / 15.0) * 100));
-
-          // GAMMA: Range 0.0005 to 0.015 per point move
-          // At 14 DTE: 0.001, At 7 DTE: 0.002, At 5 DTE: 0.005, At 1 DTE: 0.015
-          // Divide by 0.015 to get 0-100 scale: 0.005 → 33, 0.01 → 67, 0.015 → 100
-          // Danger zone: >0.008 (>53 on scale), Safe: <0.004 (<27 on scale)
-          const gammaNormalized = Math.min(100, Math.max(0, (greekData.gamma / 0.015) * 100));
-
-          // DELTA: Range -1 to +1 (ATM straddle should be ±0.5 = neutral)
-          // -1.0 → 0, 0.0 → 50 (neutral), +1.0 → 100
-          // For straddle: delta close to 50 is ideal (balanced long/short)
-          const deltaNormalized = Math.min(100, Math.max(0, ((greekData.delta + 1) / 2) * 100));
-
-          return {
-            time: candle.time,
-            theta: thetaNormalized,
-            vega: vegaNormalized,
-            gamma: gammaNormalized,
-            delta: deltaNormalized,
-          };
-        });
-        setGreeksArray(greeksDataArray);
+        // TODO: COMMENTED OUT - Testing if chart works without Greeks
+        // const greeksDataArray = chartDataArray.map((candle, index) => {
+        //   // Calculate daysToExp for THIS candle's timestamp (decreases over time)
+        //   // const candleDate = new Date(candle.time * 1000);
+        //   // const expiryDate = parseExpiryDate(expiry);
+        //   // const daysToExpCandle = Math.ceil((expiryDate.getTime() - candleDate.getTime()) / (1000 * 60 * 60 * 24));
+        //
+        //   // Use actual individual CE and PE prices from API response
+        //   // const ccePrice = (candle as any).cePrice || candle.close / 2;
+        //   // const ppePrice = (candle as any).pePrice || candle.close / 2;
+        //
+        //   // const greekData = calculateGreeks(ccePrice, ppePrice, daysToExpCandle, apiSpotPrice, atmStrike);
+        //
+        //   // Normalize Greeks to 0-100 scale based on REAL Black-Scholes ranges
+        //   // Ranges researched for short-dated NIFTY options (5-14 DTE)
+        //
+        //   // THETA: Actual range observed for NIFTY options (5-35+ per day)
+        //   // Short-dated (5 DTE): 5-10/day
+        //   // Medium (7-10 DTE): 8-15/day
+        //   // Monthly (20-30 DTE): 15-35+/day
+        //   // Divide by 40 to get 0-100 scale: 5 → 12, 10 → 25, 20 → 50, 35 → 87
+        //   const thetaNormalized = Math.min(100, Math.max(0, (Math.abs(greekData.theta) / 40.0) * 100));
+        //
+        //   // VEGA: Range 0.5 to 15 per 1% IV change
+        //   // At 14 DTE: 5-10, At 7 DTE: 2-4, At 5 DTE: 1-2, At 1 DTE: <0.5
+        //   // Divide by 15 to get 0-100 scale: 1.0 → 7, 5.0 → 33, 10.0 → 67, 15.0 → 100
+        //   const vegaNormalized = Math.min(100, Math.max(0, (greekData.vega / 15.0) * 100));
+        //
+        //   // GAMMA: Range 0.0005 to 0.015 per point move
+        //   // At 14 DTE: 0.001, At 7 DTE: 0.002, At 5 DTE: 0.005, At 1 DTE: 0.015
+        //   // Divide by 0.015 to get 0-100 scale: 0.005 → 33, 0.01 → 67, 0.015 → 100
+        //   // Danger zone: >0.008 (>53 on scale), Safe: <0.004 (<27 on scale)
+        //   const gammaNormalized = Math.min(100, Math.max(0, (greekData.gamma / 0.015) * 100));
+        //
+        //   // DELTA: Range -1 to +1 (ATM straddle should be ±0.5 = neutral)
+        //   // -1.0 → 0, 0.0 → 50 (neutral), +1.0 → 100
+        //   // For straddle: delta close to 50 is ideal (balanced long/short)
+        //   const deltaNormalized = Math.min(100, Math.max(0, ((greekData.delta + 1) / 2) * 100));
+        //
+        //   return {
+        //     time: candle.time,
+        //     theta: thetaNormalized,
+        //     vega: vegaNormalized,
+        //     gamma: gammaNormalized,
+        //     delta: deltaNormalized,
+        //   };
+        // });
+        setGreeksArray([]);
 
         // Calculate Greeks based on latest individual prices (for panel display)
         const latestCandle = chartDataArray[chartDataArray.length - 1];
-        const latestCePrice = (latestCandle as any).cePrice || latestCandle.close / 2;
-        const latestPePrice = (latestCandle as any).pePrice || latestCandle.close / 2;
-        const greeksCalc = calculateGreeks(latestCePrice, latestPePrice, apiDaysToExpiry, apiSpotPrice, atmStrike);
-        setGreeks(greeksCalc);
+        // For straddle, close is CE + PE combined
+        // Assume 50-50 split for Greeks calculation (since we don't have individual prices)
+        const stradlePremium = latestCandle.close;
+        const cePriceValue = stradlePremium / 2;
+        const pePriceValue = stradlePremium / 2;
+        const greeksCalc = calculateGreeks(cePriceValue, pePriceValue, apiDaysToExpiry, apiSpotPrice, atmStrike);
+
+        // Store combined premium and split prices in state for display
+        setLatestCePrice(stradlePremium); // Use total premium as display value
+        setLatestPePrice(0); // Show only combined value, not split
+        setLatestPriceTime(latestCandle.time);
+
+        // Negate theta because we're SELLING (short) the straddle
+        // Black-Scholes gives negative theta for long positions
+        // For short positions, negate to show positive theta (seller profit from decay)
+        setGreeks({
+          theta: -greeksCalc.theta,
+          vega: greeksCalc.vega,
+          gamma: greeksCalc.gamma,
+          delta: greeksCalc.delta,
+          daysToExpiry: apiDaysToExpiry,
+          riskLevel: greeksCalc.riskLevel,
+          ceIV: greeksCalc.ceIV,
+          peIV: greeksCalc.peIV,
+        });
       } else {
         throw new Error(result.error || 'No data returned');
       }
@@ -377,13 +410,13 @@ export default function GeekStraddleChartPage() {
     }
   };
 
-  // Load data on symbol or interval change
+  // Load data on symbol or interval change (NOT on spotPrice - avoid constant refreshes)
   useEffect(() => {
-    if (user && expiry) {
-      console.log('[GEEK-STRADDLE] useEffect triggered - fetching chart data');
-      fetchChartData();
-    }
-  }, [user, expiry, interval, lookbackDays, spotPrice, manualStrike]);
+    if (!user || !expiry) return;
+
+    console.log('[GEEK-STRADDLE] useEffect triggered - fetching chart data');
+    fetchChartData();
+  }, [user, expiry, interval, lookbackDays, manualStrike]);
 
   const toggleIndicator = (indicator: keyof IndicatorConfig) => {
     setIndicators((prev) => ({
@@ -629,13 +662,12 @@ export default function GeekStraddleChartPage() {
             </div>
           </div>
 
-
         </div>
 
         {/* Greeks Panel */}
         {greeks && !loading && (
           <div className={`rounded-lg border p-4 mb-4 ${getRiskColor(greeks.riskLevel)}`}>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
               {/* Theta Box with Checkbox */}
               <div className="bg-white rounded p-3 border border-gray-200">
                 <div className="flex items-center gap-2 mb-2">
@@ -718,6 +750,32 @@ export default function GeekStraddleChartPage() {
                 <p className="text-lg font-bold text-purple-600">{greeks.daysToExpiry}</p>
                 <p className="text-xs text-gray-500 mt-1">Gamma Risk</p>
               </div>
+
+              {/* Straddle Premium Card */}
+              {chartData.length > 0 && (
+                <div className="bg-white rounded p-3 border border-blue-300">
+                  <p className="text-xs text-gray-600 font-semibold">Straddle Premium</p>
+                  <p className="text-lg font-bold text-blue-600">{latestCePrice.toFixed(2)}</p>
+                  <p className="text-xs text-gray-600 mt-1">(CE: {(latestCePrice / 2).toFixed(2)}, PE: {(latestCePrice / 2).toFixed(2)})</p>
+                  {latestPriceTime && (
+                    <p className="text-xs text-gray-500 mt-1">{new Date(latestPriceTime * 1000).toLocaleString()}</p>
+                  )}
+                  <p className="text-xs text-gray-500 mt-1">Spot: {spotPrice.toFixed(2)}</p>
+                </div>
+              )}
+
+              {/* Implied Volatility (IV) Card */}
+              {greeks && chartData.length > 0 && (
+                <div className="bg-white rounded p-3 border border-green-300">
+                  <p className="text-xs text-gray-600 font-semibold">Implied Volatility (IV)</p>
+                  <p className="text-xs text-gray-600 mt-2">
+                    CE: <span className="font-bold text-green-600">{greeks.ceIV !== null ? greeks.ceIV.toFixed(2) : 'N/A'}%</span>
+                  </p>
+                  <p className="text-xs text-gray-600 mt-1">
+                    PE: <span className="font-bold text-green-600">{greeks.peIV !== null ? greeks.peIV.toFixed(2) : 'N/A'}%</span>
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="mt-4 p-3 bg-white rounded border border-gray-200 text-xs text-gray-700">

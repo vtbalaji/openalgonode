@@ -66,7 +66,61 @@ export async function POST(request: NextRequest) {
     // Get orderbook
     const result = await getFyersOrderbook(accessToken, apiKey);
 
-    return NextResponse.json(result, { status: 200 });
+    // Map Fyers status codes to standard status
+    // Fyers API v3 order status codes (from official documentation):
+    // 1 = CANCELLED
+    // 2 = TRADED/FILLED (COMPLETE)
+    // 3 = Not used currently
+    // 4 = TRANSIT (in progress)
+    // 5 = REJECTED
+    // 6 = PENDING
+    // 7 = EXPIRED
+    const statusMap: { [key: number]: string } = {
+      1: 'CANCELLED',
+      2: 'COMPLETE',
+      3: 'OPEN',
+      4: 'OPEN',
+      5: 'REJECTED',
+      6: 'OPEN',
+      7: 'EXPIRED',
+    };
+
+    // Map Fyers order type codes to BUY/SELL
+    // Fyers: 1 = SELL, 2 = BUY
+    const typeMap: { [key: number]: string } = {
+      1: 'SELL',
+      2: 'BUY',
+    };
+
+    // Extract and map orders array
+    const rawOrders = result.orderBook || [];
+    const orders = rawOrders.map((order: any) => {
+      // Extract symbol from the symbol field (e.g., "NSE:KAYNES-EQ" -> "KAYNES-EQ")
+      const parts = (order.symbol || '').split(':');
+      const tradingsymbol = parts[1] || parts[0] || '';
+      const exchange = parts[0] || 'NSE';
+
+      return {
+        order_id: order.id || '',
+        orderid: order.id || '',
+        tradingsymbol: tradingsymbol,
+        exchange: exchange,
+        transaction_type: typeMap[order.type] || 'BUY',
+        quantity: order.qty || 0,
+        filled_quantity: order.executedQty || order.filledQty || 0,
+        price: order.limitPrice || order.stopPrice || 0,
+        average_price: order.executedPrice || 0,
+        status: statusMap[order.status] || 'OPEN',
+        order_timestamp: order.orderDateTime || new Date().toISOString(),
+        created_at: order.orderDateTime || new Date().toISOString(),
+      };
+    });
+    console.log('[ORDERBOOK-ROUTE] Mapped orders count:', orders.length);
+
+    return NextResponse.json({
+      ...result,
+      orders: orders,
+    }, { status: 200 });
   } catch (error: any) {
     console.error('Error getting Fyers orderbook:', error);
     return NextResponse.json(

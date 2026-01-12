@@ -59,15 +59,19 @@ export default function VidyaTradingChart({
         setError(null);
 
         const to = new Date();
+        // Use UTC dates to avoid timezone issues
+        const toUTC = to.toISOString().split('T')[0];
+
         const from = new Date(to);
         from.setDate(from.getDate() - lookbackDays);
+        const fromUTC = from.toISOString().split('T')[0];
 
         const params = new URLSearchParams({
           symbol,
           interval,
           userId,
-          from: from.toISOString().split('T')[0],
-          to: to.toISOString().split('T')[0],
+          from: fromUTC,
+          to: toUTC,
         });
 
         const response = await fetch(`/api/chart/historical?${params.toString()}`);
@@ -166,7 +170,8 @@ export default function VidyaTradingChart({
           rightOffset: 10, // Space on right side
           tickMarkFormatter: (time: any) => {
             // Format horizontal axis labels in IST
-            const date = new Date(time * 1000);
+            // Note: time is already in milliseconds from broker API
+            const date = new Date(time);
             const timeStr = date.toLocaleTimeString('en-IN', {
               timeZone: 'Asia/Kolkata',
               hour: '2-digit',
@@ -184,7 +189,7 @@ export default function VidyaTradingChart({
         rightPriceScale: { autoScale: true },
         localization: {
           timeFormatter: (time: any) => {
-            // Convert Unix timestamp to IST (UTC+5:30)
+            // Note: time is in seconds (Unix timestamp), convert to milliseconds for Date object
             const date = new Date(time * 1000);
 
             // Format: "21 Jan at 04:31 PM" in IST timezone
@@ -757,7 +762,7 @@ export default function VidyaTradingChart({
             {/* Time */}
             <div className="flex items-center justify-between gap-4 text-[10px] text-gray-500 pt-1 mt-1 border-t border-gray-200">
               <span>Time:</span>
-              <span>{new Date(tooltipData.time * 1000).toLocaleString()}</span>
+              <span>{new Date(tooltipData.time).toLocaleString()}</span>
             </div>
           </div>
         </div>

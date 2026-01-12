@@ -5,7 +5,13 @@
 
 import crypto from 'crypto';
 
+// Fyers has multiple API endpoints:
+// - https://api.fyers.in/api/v2/orders - ORDER PLACEMENT (v2 API, different host!)
+// - https://api-t1.fyers.in/api/v3 - for v3 REST API (orders, positions, etc.)
+// - https://api-t1.fyers.in/data - for data API (historical data)
 const FYERS_API_URL = 'https://api-t1.fyers.in/api/v3';
+const FYERS_ORDER_PLACEMENT_URL = 'https://api.fyers.in/api/v2/orders'; // Order placement uses different host and v2!
+const FYERS_DATA_URL = 'https://api-t1.fyers.in/data';
 
 interface FyersAuthResponse {
   accessToken: string;
@@ -93,15 +99,18 @@ export async function authenticateFyers(
 /**
  * Refresh Fyers access token using refresh token
  * Exchanges refresh token for new access token
+ * Optionally requires PIN if available
  */
 export async function refreshFyersToken(
   refreshToken: string,
   clientId: string,
-  clientSecret: string
+  clientSecret: string,
+  pin?: string
 ): Promise<FyersAuthResponse> {
   try {
     console.log('[FYERS-REFRESH] Refreshing access token...');
     console.log('[FYERS-REFRESH] Client ID:', clientId.substring(0, 5) + '...');
+    console.log('[FYERS-REFRESH] PIN provided:', !!pin);
 
     // Generate appIdHash: sha256(clientId:clientSecret)
     const checksumInput = `${clientId}:${clientSecret}`;
@@ -112,11 +121,16 @@ export async function refreshFyersToken(
 
     console.log('[FYERS-REFRESH] Generated appIdHash from clientId:clientSecret');
 
-    const payload = {
+    const payload: any = {
       grant_type: 'refresh_token',
       appIdHash: appIdHash,
       refresh_token: refreshToken,
     };
+
+    // Add PIN if available
+    if (pin) {
+      payload.pin = pin;
+    }
 
     console.log('[FYERS-REFRESH] Request payload:', {
       grant_type: payload.grant_type,
@@ -125,7 +139,8 @@ export async function refreshFyersToken(
     });
 
     // Fyers APIv3 token refresh endpoint
-    const tokenResponse = await fetch(`${FYERS_API_URL}/validate-authcode`, {
+    // Use same base URL pattern as validate-authcode
+    const tokenResponse = await fetch(`${FYERS_API_URL}/validate-refresh-token`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -133,7 +148,23 @@ export async function refreshFyersToken(
       body: JSON.stringify(payload),
     });
 
-    const tokenData = await tokenResponse.json();
+    // Get response text first to debug
+    const responseText = await tokenResponse.text();
+    console.log('[FYERS-REFRESH] Raw response:', {
+      httpStatus: tokenResponse.status,
+      responseLength: responseText.length,
+      responseText: responseText.substring(0, 200),
+    });
+
+    // Parse JSON if we have a response
+    let tokenData;
+    try {
+      tokenData = responseText ? JSON.parse(responseText) : {};
+    } catch (parseError) {
+      console.error('[FYERS-REFRESH] Failed to parse JSON response:', parseError);
+      throw new Error(`Invalid JSON response from Fyers: ${responseText.substring(0, 100)}`);
+    }
+
     console.log('[FYERS-REFRESH] Token response:', {
       status: tokenData.s,
       httpStatus: tokenResponse.status,
@@ -217,33 +248,103 @@ export async function placeFyersOrder(
 ): Promise<any> {
   try {
     console.log('[FYERS-PLACEORDER] Placing order:', orderData);
+    console.log('[FYERS-PLACEORDER] Received appId:', appId);
+    console.log('[FYERS-PLACEORDER] AccessToken preview:', accessToken.substring(0, 50) + '...');
 
     // CRITICAL: Fyers API requires Authorization header in format: appId:accessToken
     const authHeader = appId ? `${appId}:${accessToken}` : accessToken;
     console.log('[FYERS-PLACEORDER] Authorization header format: {appId}:{token}');
+    console.log('[FYERS-PLACEORDER] Auth header preview:', authHeader.substring(0, 50) + '...');
 
-    const response = await fetch(`${FYERS_API_URL}/orders/sync`, {
+    // Convert string order type to numeric value
+    // MARKET=2, LIMIT=1, SL_MARKET=3, SL_LIMIT=4
+    const typeMap: { [key: string]: number } = {
+      'MARKET': 2,
+      'LIMIT': 1,
+      'SL_MARKET': 3,
+      'SL_LIMIT': 4,
+    };
+    const numericType = typeMap[orderData.type] || 2;
+
+    // Convert string side to numeric value
+    // BUY=1, SELL=-1
+    const sideMap: { [key: string]: number } = {
+      'BUY': 1,
+      'SELL': -1,
+    };
+    const numericSide = sideMap[orderData.side] || 1;
+
+    // Build payload with all required fields per Fyers API v2 spec
+    // Reference: https://github.com/nodef/extra-fyers
+    const orderPayload: any = {
+      symbol: orderData.symbol,
+      qty: orderData.qty,
+      type: numericType,  // Numeric: 1=LIMIT, 2=MARKET, 3=SL_MARKET, 4=SL_LIMIT
+      side: numericSide,  // Numeric: 1=BUY, -1=SELL
+      productType: orderData.productType,
+      validity: 'DAY',  // Required: order validity (DAY, IOC, etc)
+      disclosedQty: 0,  // Required: disclosed quantity
+      offlineOrder: false,  // Required: offline order flag
+      limitPrice: 0,  // REQUIRED: even for MARKET orders, set to 0
+      stopPrice: 0,  // Required: stop price (0 if not applicable)
+    };
+
+    console.log('[FYERS-PLACEORDER] Type conversion: ' + orderData.type + ' -> ' + numericType);
+    console.log('[FYERS-PLACEORDER] Side conversion: ' + orderData.side + ' -> ' + numericSide);
+
+    // Override limitPrice if a specific price is provided (for LIMIT orders)
+    if (orderData.price !== undefined && orderData.price > 0) {
+      orderPayload.limitPrice = orderData.price;
+    }
+
+    // Override stopPrice if provided (for STOP orders)
+    if (orderData.stopPrice !== undefined && orderData.stopPrice > 0) {
+      orderPayload.stopPrice = orderData.stopPrice;
+    }
+
+    console.log('[FYERS-PLACEORDER] Request payload:', JSON.stringify(orderPayload));
+    console.log('[FYERS-PLACEORDER] Auth header format: appId:token');
+
+    // CRITICAL: Order placement uses a DIFFERENT host and v2 API!
+    // Reference: https://github.com/nodef/extra-fyers/blob/main/src/http.ts
+    const endpointTried = FYERS_ORDER_PLACEMENT_URL;
+    console.log('[FYERS-PLACEORDER] Using correct endpoint: ' + endpointTried);
+
+    const response = await fetch(endpointTried, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json; charset=UTF-8',
         Authorization: authHeader,
       },
-      body: JSON.stringify({
-        symbol: orderData.symbol,
-        qty: orderData.qty,
-        type: orderData.type,
-        side: orderData.side,
-        productType: orderData.productType,
-        price: orderData.price || 0,
-        stopPrice: orderData.stopPrice || 0,
-        timeInForce: 'DAY',
-      }),
+      body: JSON.stringify(orderPayload),
     });
 
-    const result = await response.json();
+    console.log('[FYERS-PLACEORDER] About to read response text...');
+    const responseText = await response.text();
+    console.log('[FYERS-PLACEORDER] Response status:', response.status, response.statusText);
+    console.log('[FYERS-PLACEORDER] Response text length:', responseText.length);
+    console.log('[FYERS-PLACEORDER] Response text (first 200 chars):', responseText.substring(0, 200));
+
+    let result;
+    try {
+      result = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('[FYERS-PLACEORDER] Failed to parse JSON response:', parseError);
+      console.error('[FYERS-PLACEORDER] Raw response (full):', responseText);
+      console.error('[FYERS-PLACEORDER] Raw response length:', responseText.length);
+
+      // If it's 404, the endpoint doesn't exist
+      if (response.status === 404) {
+        throw new Error(`Fyers API endpoint not found (404). Tried: ${endpointTried}. Response: ${responseText.substring(0, 300)}`);
+      }
+
+      throw new Error(`Fyers API returned invalid JSON: ${responseText.substring(0, 200)}`);
+    }
+
+    console.log('[FYERS-PLACEORDER] Parsed response:', JSON.stringify(result));
 
     if (!response.ok) {
-      throw new Error(`Failed to place order: ${result.message || response.statusText}`);
+      throw new Error(`Failed to place order: ${result.message || result.error || response.statusText}`);
     }
 
     console.log('[FYERS-PLACEORDER] Order placed successfully:', result);
@@ -323,11 +424,7 @@ export async function getFyersOrderbook(accessToken: string, appId?: string): Pr
 
     const responseData = await response.json();
 
-    console.log('[FYERS-ORDERBOOK] Response data:', {
-      s: responseData.s,
-      message: responseData.message,
-      code: responseData.code,
-    });
+    console.log('[FYERS-ORDERBOOK] Full response data:', JSON.stringify(responseData, null, 2).substring(0, 500) + '...');
 
     if (!response.ok) {
       console.error('[FYERS-ORDERBOOK] Error response (full):', responseData);
@@ -368,11 +465,7 @@ export async function getFyersPositions(accessToken: string, appId?: string): Pr
 
     const responseData = await response.json();
 
-    console.log('[FYERS-POSITIONS] Response data:', {
-      s: responseData.s,
-      message: responseData.message,
-      code: responseData.code,
-    });
+    console.log('[FYERS-POSITIONS] Full response data:', JSON.stringify(responseData, null, 2));
 
     if (!response.ok) {
       console.error('[FYERS-POSITIONS] Error response:', responseData);

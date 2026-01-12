@@ -341,16 +341,17 @@ export async function placeFyersOrder(
       throw new Error(`Fyers API returned invalid JSON: ${responseText.substring(0, 200)}`);
     }
 
-    console.log('[FYERS-PLACEORDER] Parsed response:', JSON.stringify(result));
+    console.log('[FYERS-PLACEORDER] Parsed response for symbol', orderData.symbol + ':', JSON.stringify(result));
 
     if (!response.ok) {
-      throw new Error(`Failed to place order: ${result.message || result.error || response.statusText}`);
+      console.error(`[FYERS-PLACEORDER] Order failed for symbol ${orderData.symbol}: ${result.message || result.error || response.statusText}`);
+      throw new Error(`Failed to place order for ${orderData.symbol}: ${result.message || result.error || response.statusText}`);
     }
 
-    console.log('[FYERS-PLACEORDER] Order placed successfully:', result);
+    console.log('[FYERS-PLACEORDER] Order placed successfully for symbol', orderData.symbol + ':', result);
     return result;
   } catch (error: any) {
-    console.error('[FYERS-PLACEORDER] Place order error:', error.message);
+    console.error('[FYERS-PLACEORDER] Place order error for symbol', orderData.symbol + ':', error.message);
     throw error;
   }
 }

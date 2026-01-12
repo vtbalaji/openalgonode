@@ -207,11 +207,47 @@ export default function FyersDebugPage() {
               {loading === 'Place Order (INFY)' ? 'Placing...' : '📤 Place Order (INFY BUY 1)'}
             </button>
             <p className="text-xs text-gray-600 mt-2">
-              ✓ Hardcoded: Symbol=INFY, Qty=1, Type=MARKET, Side=BUY, Product=CNC
+              ✓ Symbol: INFY (no suffix)
               <br />
               ✓ Tests full order placement flow
-              <br />
-              ✓ Check server logs for [FYERS-PLACEORDER] entries
+            </p>
+
+            <button
+              onClick={() => runTest('Place Order (TCS)', '/api/ui/dashboard/place', {
+                broker: 'fyers',
+                symbol: 'TCS',
+                action: 'BUY',
+                quantity: 1,
+                product: 'CNC',
+                pricetype: 'MARKET',
+                price: 0,
+              }, true)}
+              disabled={loading === 'Place Order (TCS)'}
+              className="w-full px-4 py-2 bg-red-600 text-white rounded disabled:bg-gray-400 font-bold"
+            >
+              {loading === 'Place Order (TCS)' ? 'Placing...' : '📤 Place Order (TCS BUY 1)'}
+            </button>
+            <p className="text-xs text-gray-600 mt-2">
+              ✓ Symbol: TCS (no suffix)
+            </p>
+
+            <button
+              onClick={() => runTest('Place Order (TCS-EQ)', '/api/ui/dashboard/place', {
+                broker: 'fyers',
+                symbol: 'TCS-EQ',
+                action: 'BUY',
+                quantity: 1,
+                product: 'CNC',
+                pricetype: 'MARKET',
+                price: 0,
+              }, true)}
+              disabled={loading === 'Place Order (TCS-EQ)'}
+              className="w-full px-4 py-2 bg-orange-600 text-white rounded disabled:bg-gray-400 font-bold"
+            >
+              {loading === 'Place Order (TCS-EQ)' ? 'Placing...' : '📤 Place Order (TCS-EQ BUY 1)'}
+            </button>
+            <p className="text-xs text-gray-600 mt-2">
+              ✓ Symbol: TCS-EQ (with -EQ suffix)
             </p>
 
             <hr className="my-4" />

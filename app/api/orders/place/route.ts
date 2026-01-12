@@ -88,12 +88,35 @@ export async function POST(request: NextRequest) {
     // Route to broker-specific endpoint
     console.log(`[ORDERS-PLACE] Routing order to ${broker} broker`);
 
+    // Transform fields for broker-specific format
+    let brokerPayload: any = {
+      userId,
+      ...order,
+    };
+
+    // Fyers uses different field names: side (not action), qty (not quantity), type (not pricetype), productType (not product)
+    if (broker === 'fyers') {
+      brokerPayload = {
+        userId,
+        symbol: order.symbol,
+        side: order.action,  // BUY/SELL
+        qty: order.quantity,
+        type: order.pricetype,  // MARKET/LIMIT
+        productType: order.product === 'MIS' ? 'INTRADAY' : order.product,  // Convert MIS to INTRADAY for Fyers
+        price: order.price,
+        stopPrice: order.trigger_price,
+        // Remove exchange and disclosed_quantity as Fyers doesn't use them
+      };
+    }
+    // else: Zerodha uses the same field names as the form
+
     // Build the broker-specific endpoint URL
     const protocol = request.headers.get('x-forwarded-proto') || 'http';
     const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'localhost:3000';
     const brokerEndpoint = `${protocol}://${host}/api/broker/${broker}/place-order`;
 
     console.log(`[ORDERS-PLACE] Calling endpoint: ${brokerEndpoint}`);
+    console.log(`[ORDERS-PLACE] Payload for ${broker}:`, JSON.stringify(brokerPayload, null, 2));
 
     // Call broker-specific endpoint internally
     try {
@@ -103,10 +126,7 @@ export async function POST(request: NextRequest) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${idToken}`,
         },
-        body: JSON.stringify({
-          userId,
-          ...order,
-        }),
+        body: JSON.stringify(brokerPayload),
       });
 
       const result = await brokerResponse.json();

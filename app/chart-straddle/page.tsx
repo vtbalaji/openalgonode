@@ -43,6 +43,9 @@ export default function StraddleChartPage() {
   const [spotPrice, setSpotPrice] = useState(25683);
   const [ceStrike, setCeStrike] = useState<number | null>(null);
   const [peStrike, setPeStrike] = useState<number | null>(null);
+  const [latestCePrice, setLatestCePrice] = useState(0);
+  const [latestPePrice, setLatestPePrice] = useState(0);
+  const [latestPriceTime, setLatestPriceTime] = useState<number | null>(null);
 
   const [indicators, setIndicators] = useState<IndicatorConfig>({
     sma: false,
@@ -141,6 +144,19 @@ export default function StraddleChartPage() {
           volume: candle.volume,
         }));
         setChartData(chartDataArray);
+
+        // Extract latest CE and PE prices from the last candle
+        const latestCandle = result.data[result.data.length - 1];
+        if (latestCandle.cePrice !== undefined && latestCandle.pePrice !== undefined) {
+          setLatestCePrice(latestCandle.cePrice);
+          setLatestPePrice(latestCandle.pePrice);
+          setLatestPriceTime(latestCandle.time);
+        }
+
+        // Update spot price from API if provided
+        if (result.spotPrice) {
+          setSpotPrice(result.spotPrice);
+        }
       } else {
         throw new Error(result.error || 'No data returned');
       }
@@ -179,6 +195,39 @@ export default function StraddleChartPage() {
       ...prev,
       [indicator]: value,
     }));
+  };
+
+  // Helper function to parse expiry and calculate days
+  const parseExpiryDate = (expiryStr: string): Date => {
+    const monthMap: { [key: string]: number } = {
+      'JAN': 0, 'FEB': 1, 'MAR': 2, 'APR': 3,
+      'MAY': 4, 'JUN': 5, 'JUL': 6, 'AUG': 7,
+      'SEP': 8, 'OCT': 9, 'NOV': 10, 'DEC': 11
+    };
+
+    // Try weekly format: "13JAN" (day + month)
+    const weeklyMatch = expiryStr.match(/^(\d{1,2})([A-Z]{3})$/);
+    if (weeklyMatch) {
+      const day = parseInt(weeklyMatch[1]);
+      const month = monthMap[weeklyMatch[2]];
+      return new Date(2026, month, day);
+    }
+
+    // Try monthly format: "JAN" (month only) - use last day of month
+    const monthlyMatch = expiryStr.match(/^([A-Z]{3})$/);
+    if (monthlyMatch) {
+      const month = monthMap[monthlyMatch[1]];
+      const lastDay = new Date(2026, month + 1, 0).getDate();
+      return new Date(2026, month, lastDay);
+    }
+
+    return new Date(); // Fallback
+  };
+
+  const calculateDaysToExpiry = (): number => {
+    const today = new Date();
+    const expiryDate = parseExpiryDate(expiry);
+    return Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
   };
 
   const calculateAtmStrike = () => Math.round(spotPrice / 100) * 100;
@@ -476,6 +525,18 @@ export default function StraddleChartPage() {
 
         {!loading && !error && chartData.length > 0 && (
           <div className="bg-white rounded-lg shadow-md p-3 sm:p-4 md:p-6">
+            {/* Info Line: DTE + Premium + Spot */}
+            <div className="bg-gray-50 rounded px-3 py-2 border border-gray-200 text-xs font-mono mb-3">
+              <p className="text-gray-700">
+                <span className="font-bold">DTE:</span> <span className="text-purple-600 font-bold">{calculateDaysToExpiry()}</span>
+                <span className="mx-3">|</span>
+                <span className="font-bold">Premium:</span> <span className="text-blue-600 font-bold">{(latestCePrice + latestPePrice).toFixed(0)}</span>
+                <span className="text-gray-500"> (C:{latestCePrice.toFixed(0)} P:{latestPePrice.toFixed(0)})</span>
+                <span className="mx-3">|</span>
+                <span className="font-bold">Spot:</span> <span className="text-orange-600 font-bold">{spotPrice.toFixed(0)}</span>
+              </p>
+            </div>
+
             <div className="mb-3 md:mb-4">
               <h2 className="text-xl md:text-2xl font-bold text-gray-900">{displaySymbol} Straddle</h2>
               <p className="text-xs sm:text-sm text-gray-600">

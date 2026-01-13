@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result, { status: 200 });
   } catch (error: any) {
-    console.error('[FYERS-PLACE-ORDER] Error placing order for symbol:', symbol, {
+    console.error('[FYERS-PLACE-ORDER] Error placing order:', {
       message: error.message,
       stack: error.stack,
       error: error.toString(),

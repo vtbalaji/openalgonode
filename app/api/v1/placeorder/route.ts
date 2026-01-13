@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Route to broker-specific internal endpoint
-    if (broker === 'zerodha' || broker === 'angel' || broker === 'fyers') {
+    if (broker === 'zerodha' || broker === 'angel') {
       const { data, status } = await callInternalBrokerEndpoint(broker, 'place-order', {
         userId,
         symbol: body.symbol,
@@ -53,6 +53,20 @@ export async function POST(request: NextRequest) {
         disclosed_quantity: body.disclosed_quantity || 0,
         symboltoken: body.token, // Map OpenAlgo 'token' to broker 'symboltoken'
         strategy: body.strategy,
+      });
+
+      return NextResponse.json(data, { status });
+    } else if (broker === 'fyers') {
+      // Fyers uses different field names - map OpenAlgo fields to Fyers format
+      const { data, status } = await callInternalBrokerEndpoint(broker, 'place-order', {
+        userId,
+        symbol: body.symbol,
+        qty: body.quantity,
+        side: body.action, // OpenAlgo 'action' (BUY/SELL) maps to Fyers 'side'
+        type: body.pricetype || 'MARKET', // OpenAlgo 'pricetype' maps to Fyers 'type'
+        productType: body.product || 'MIS', // OpenAlgo 'product' maps to Fyers 'productType'
+        price: body.price || 0,
+        stopPrice: body.trigger_price || 0,
       });
 
       return NextResponse.json(data, { status });

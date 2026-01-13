@@ -35,14 +35,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Call internal broker endpoint
-    // Note: Map 'product' to 'producttype' for Angel (OpenAlgo uses 'product')
-    const { data, status } = await callInternalBrokerEndpoint(broker, 'close-position', {
+    // Call internal broker endpoint with broker-specific field mapping
+    let brokerPayload: any = {
       userId,
       symbol: body.symbol,
       exchange: body.exchange,
-      producttype: body.product, // Map OpenAlgo 'product' to broker-specific 'producttype'
-    });
+      producttype: body.product, // Default for Zerodha/Angel
+    };
+
+    // Fyers uses 'productType' instead of 'producttype'
+    if (broker === 'fyers') {
+      brokerPayload = {
+        userId,
+        symbol: body.symbol,
+        productType: body.product,
+      };
+    }
+
+    const { data, status } = await callInternalBrokerEndpoint(broker, 'close-position', brokerPayload);
 
     return NextResponse.json(data, { status });
   } catch (error) {

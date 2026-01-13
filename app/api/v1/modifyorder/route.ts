@@ -38,8 +38,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Call internal broker endpoint
-    const { data, status } = await callInternalBrokerEndpoint(broker, 'modify-order', {
+    // Call internal broker endpoint with broker-specific field mapping
+    let brokerPayload: any = {
       userId,
       orderid: body.orderid,
       symbol: body.symbol,
@@ -52,7 +52,24 @@ export async function POST(request: NextRequest) {
       trigger_price: body.trigger_price,
       disclosed_quantity: body.disclosed_quantity,
       symboltoken: body.token, // Map OpenAlgo 'token' to broker 'symboltoken'
-    });
+    };
+
+    // Fyers uses different field names - map OpenAlgo fields to Fyers format
+    if (broker === 'fyers') {
+      brokerPayload = {
+        userId,
+        orderid: body.orderid,
+        symbol: body.symbol,
+        qty: body.quantity,
+        side: body.action, // OpenAlgo 'action' (BUY/SELL) maps to Fyers 'side'
+        type: body.pricetype || 'MARKET', // OpenAlgo 'pricetype' maps to Fyers 'type'
+        productType: body.product, // OpenAlgo 'product' maps to Fyers 'productType'
+        price: body.price,
+        stopPrice: body.trigger_price,
+      };
+    }
+
+    const { data, status } = await callInternalBrokerEndpoint(broker, 'modify-order', brokerPayload);
 
     return NextResponse.json(data, { status });
   } catch (error) {

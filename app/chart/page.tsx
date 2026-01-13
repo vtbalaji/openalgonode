@@ -103,6 +103,7 @@ export default function ChartPage() {
         userId: user.uid,
         from: from.toISOString().split('T')[0],
         to: today.toISOString().split('T')[0],
+        includeToday: 'true', // Include today's incomplete candles
       });
 
       const response = await fetch('/api/chart/historical?' + params.toString());

@@ -14,7 +14,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { AdvancedTradingChart, ChartData, IndicatorConfig } from '@/components/AdvancedTradingChart';
 import { useRealtimePrice } from '@/hooks/useRealtimePrice';
@@ -90,36 +90,51 @@ export default function StraddleChartPage() {
   });
 
   // Convert ticks to candles based on interval
-  const intervalMinutes = parseInt(interval.replace('minute', '').replace('60', '60').replace('day', '1440') || '60');
-  const { currentCandle: latestTickCandle } = useTickToCandle(
-    optionTicks.map((tick) => ({
-      price: tick.cePrice + tick.pePrice, // Straddle premium = CE + PE
-      time: tick.time,
-    })),
-    {
-      intervalMinutes,
-      onCandleUpdate: (updatingCandle) => {
-        // Update the chart with the current incomplete candle
-        setChartData((prev) => {
-          if (prev.length === 0) return [updatingCandle as ChartData];
-
-          const updated = [...prev];
-          const lastIndex = updated.length - 1;
-
-          // Check if we should update the last candle or add a new one
-          if (updated[lastIndex].time === updatingCandle.time) {
-            // Same time period - update the last candle
-            updated[lastIndex] = updatingCandle as ChartData;
-          } else {
-            // New time period - add new candle
-            updated.push(updatingCandle as ChartData);
-          }
-
-          return updated;
-        });
-      },
+  let intervalMinutes = 60;
+  if (interval === 'minute') {
+    intervalMinutes = 1;
+  } else if (interval === 'day') {
+    intervalMinutes = 1440;
+  } else {
+    const match = interval.match(/^(\d+)minute$/);
+    if (match) {
+      intervalMinutes = parseInt(match[1]);
     }
+  }
+
+  // Memoize the transformed ticks to avoid unnecessary re-renders
+  const transformedTicks = useMemo(
+    () =>
+      optionTicks.map((tick) => ({
+        price: tick.cePrice + tick.pePrice, // Straddle premium = CE + PE
+        time: tick.time,
+      })),
+    [optionTicks]
   );
+
+  const { currentCandle: latestTickCandle } = useTickToCandle(transformedTicks, {
+    intervalMinutes,
+    onCandleUpdate: (updatingCandle) => {
+      // Update the chart with the current incomplete candle
+      setChartData((prev) => {
+        if (prev.length === 0) return [updatingCandle as ChartData];
+
+        const updated = [...prev];
+        const lastIndex = updated.length - 1;
+
+        // Check if we should update the last candle or add a new one
+        if (updated[lastIndex].time === updatingCandle.time) {
+          // Same time period - update the last candle
+          updated[lastIndex] = updatingCandle as ChartData;
+        } else {
+          // New time period - add new candle
+          updated.push(updatingCandle as ChartData);
+        }
+
+        return updated;
+      });
+    },
+  });
 
   // Set responsive chart height
   useEffect(() => {

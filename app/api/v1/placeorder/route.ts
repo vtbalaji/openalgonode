@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Route to broker-specific internal endpoint
-    if (broker === 'zerodha' || broker === 'angel') {
+    if (broker === 'zerodha' || broker === 'angel' || broker === 'fyers') {
       const { data, status } = await callInternalBrokerEndpoint(broker, 'place-order', {
         userId,
         symbol: body.symbol,

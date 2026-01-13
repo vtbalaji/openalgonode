@@ -32,6 +32,19 @@ function convertIntervalToFyersFormat(interval: string): string {
   return numberPart || '1';
 }
 
+/**
+ * Convert interval to seconds for candle gap filling
+ * UI: "minute" (1m), "3minute" (3m), "15minute" (15m), "60minute" (1h), "day" (1d)
+ */
+function getIntervalSeconds(interval: string): number {
+  if (interval === 'day' || interval === '1D') return 86400;
+  if (interval === 'minute') return 60;
+
+  // Extract number from "Xminute" format
+  const match = interval.match(/(\d+)minute/);
+  return match ? parseInt(match[1]) * 60 : 60;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -284,6 +297,44 @@ export async function GET(request: NextRequest) {
           { status: 400 }
         );
       }
+    }
+
+    // Fill missing candles (gaps where no trading occurred)
+    if (chartData.length > 0) {
+      const intervalSeconds = getIntervalSeconds(interval);
+      const filledChartData: any[] = [];
+
+      for (let i = 0; i < chartData.length; i++) {
+        const currentCandle = chartData[i];
+
+        // Add any missing candles since the last candle
+        if (i > 0) {
+          const prevCandle = chartData[i - 1];
+          const timeDiff = currentCandle.time - prevCandle.time;
+          const expectedCandleCount = timeDiff / intervalSeconds;
+
+          // If there's a gap, fill it with candles using the previous close price
+          if (expectedCandleCount > 1) {
+            for (let gap = 1; gap < expectedCandleCount; gap++) {
+              const gapCandleTime = prevCandle.time + gap * intervalSeconds;
+              filledChartData.push({
+                time: gapCandleTime,
+                open: prevCandle.close,
+                high: prevCandle.close,
+                low: prevCandle.close,
+                close: prevCandle.close,
+                volume: 0, // No trading in this candle
+              });
+            }
+          }
+        }
+
+        // Add the actual candle
+        filledChartData.push(currentCandle);
+      }
+
+      chartData = filledChartData;
+      console.log('[CHART-HISTORICAL] After filling gaps: ' + chartData.length + ' candles');
     }
 
     console.log('[CHART-HISTORICAL] Returning ' + chartData.length + ' candles');

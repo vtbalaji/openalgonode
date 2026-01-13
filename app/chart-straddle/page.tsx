@@ -173,7 +173,7 @@ export default function StraddleChartPage() {
     if (user && baseSymbol && expiry) {
       fetchChartData();
     }
-  }, [user, baseSymbol, expiry, interval, lookbackDays, spotPrice]);
+  }, [user, baseSymbol, expiry, interval, lookbackDays]);
 
   const handleSymbolSubmit = (e: React.FormEvent) => {
     e.preventDefault();

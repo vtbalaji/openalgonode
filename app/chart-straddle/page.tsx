@@ -18,6 +18,8 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { AdvancedTradingChart, ChartData, IndicatorConfig } from '@/components/AdvancedTradingChart';
 import { useRealtimePrice } from '@/hooks/useRealtimePrice';
+import { useOptionTickStream } from '@/hooks/useOptionTickStream';
+import { useTickToCandle } from '@/hooks/useTickToCandle';
 
 const TIMEFRAMES = [
   { label: '1m', value: 'minute' },
@@ -75,6 +77,50 @@ export default function StraddleChartPage() {
     symbols: [baseSymbol + '26JANFUT'], // Use futures to get spot price
   });
 
+  // Helper function to calculate ATM strike
+  const calculateAtmStrike = () => Math.round(spotPrice / 100) * 100;
+
+  // Stream option ticks for CE and PE
+  const { ticks: optionTicks, isConnected: tickStreamConnected } = useOptionTickStream({
+    symbol: baseSymbol,
+    expiry,
+    ceStrike: ceStrike || calculateAtmStrike(),
+    peStrike: peStrike || calculateAtmStrike(),
+    enabled: true,
+  });
+
+  // Convert ticks to candles based on interval
+  const intervalMinutes = parseInt(interval.replace('minute', '').replace('60', '60').replace('day', '1440') || '60');
+  const { currentCandle: latestTickCandle } = useTickToCandle(
+    optionTicks.map((tick) => ({
+      price: tick.cePrice + tick.pePrice, // Straddle premium = CE + PE
+      time: tick.time,
+    })),
+    {
+      intervalMinutes,
+      onCandleUpdate: (updatingCandle) => {
+        // Update the chart with the current incomplete candle
+        setChartData((prev) => {
+          if (prev.length === 0) return [updatingCandle as ChartData];
+
+          const updated = [...prev];
+          const lastIndex = updated.length - 1;
+
+          // Check if we should update the last candle or add a new one
+          if (updated[lastIndex].time === updatingCandle.time) {
+            // Same time period - update the last candle
+            updated[lastIndex] = updatingCandle as ChartData;
+          } else {
+            // New time period - add new candle
+            updated.push(updatingCandle as ChartData);
+          }
+
+          return updated;
+        });
+      },
+    }
+  );
+
   // Set responsive chart height
   useEffect(() => {
     const updateChartHeight = () => {
@@ -102,6 +148,16 @@ export default function StraddleChartPage() {
       setSpotPrice(prices[futuresSymbol].last_price);
     }
   }, [prices, baseSymbol]);
+
+  // Update latest CE/PE prices from option ticks
+  useEffect(() => {
+    if (!optionTicks || optionTicks.length === 0) return;
+
+    const latestTick = optionTicks[optionTicks.length - 1];
+    setLatestCePrice(latestTick.cePrice);
+    setLatestPePrice(latestTick.pePrice);
+    setLatestPriceTime(latestTick.time);
+  }, [optionTicks]);
 
   // Fetch historical data for straddle (CE + PE combined)
   const fetchChartData = async () => {
@@ -230,7 +286,6 @@ export default function StraddleChartPage() {
     return Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
   };
 
-  const calculateAtmStrike = () => Math.round(spotPrice / 100) * 100;
   const displayCeStrike = ceStrike || calculateAtmStrike();
   const displayPeStrike = peStrike || calculateAtmStrike();
   const displaySymbol = `${baseSymbol}${expiry}(${displayCeStrike}CE/${displayPeStrike}PE)`;

@@ -52,9 +52,39 @@ export function useOptionTickStream({
       eventSourceRef.current.close();
     }
 
-    // Build CE and PE symbol names (e.g., "NIFTY25900CE", "NIFTY25800PE")
-    const ceSymbol = `${symbol}${expiry}${ceStrike}CE`;
-    const peSymbol = `${symbol}${expiry}${peStrike}PE`;
+    // Convert expiry format: "JAN" -> "26113", "13JAN" -> "26113"
+    const convertExpiryToNumeric = (exp: string): string => {
+      const monthMap: Record<string, string> = {
+        'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04',
+        'MAY': '05', 'JUN': '06', 'JUL': '07', 'AUG': '08',
+        'SEP': '09', 'OCT': '10', 'NOV': '11', 'DEC': '12'
+      };
+
+      // Try weekly format: "13JAN" (day + month)
+      const weeklyMatch = exp.match(/^(\d{1,2})([A-Z]{3})$/);
+      if (weeklyMatch) {
+        const day = weeklyMatch[1].padStart(2, '0');
+        const month = monthMap[weeklyMatch[2]] || '01';
+        return `26${month}${day}`; // e.g., "26113" for 13 JAN 2026
+      }
+
+      // Try monthly format: "JAN" (month only) - use last day of month
+      const monthlyMatch = exp.match(/^([A-Z]{3})$/);
+      if (monthlyMatch) {
+        const month = monthMap[monthlyMatch[1]] || '01';
+        const year = 2026;
+        const lastDay = new Date(year, parseInt(month), 0).getDate();
+        const dayStr = lastDay.toString().padStart(2, '0');
+        return `26${month}${dayStr}`; // e.g., "26131" for last day of JAN
+      }
+
+      return exp; // Fallback to original if not recognized
+    };
+
+    // Build CE and PE symbol names with Fyers-compatible format
+    const numericExpiry = convertExpiryToNumeric(expiry);
+    const ceSymbol = `${symbol}${numericExpiry}${ceStrike}CE`;
+    const peSymbol = `${symbol}${numericExpiry}${peStrike}PE`;
     const symbolsParam = [ceSymbol, peSymbol].join(',');
 
     const url = `/api/stream/prices?symbols=${encodeURIComponent(symbolsParam)}&userId=${encodeURIComponent(user.uid)}`;

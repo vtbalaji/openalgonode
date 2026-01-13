@@ -195,7 +195,70 @@ export async function GET(request: NextRequest) {
               const fromStr = fromDate.toISOString().split('T')[0];
               const toStr = today.toISOString().split('T')[0];
 
-              const url = `/api/chart/historical?symbol=${encodeURIComponent(symbol)}&interval=1minute&userId=${encodeURIComponent(userId)}&from=${fromStr}&to=${toStr}&includeToday=true`;
+              // Check if this is an option symbol (contains CE or PE)
+              const isOption = symbol.includes('CE') || symbol.includes('PE');
+
+              let url: string;
+              if (isOption) {
+                // For options, we need to extract base symbol, expiry, and strike from the symbol
+                // Symbol formats:
+                // - Weekly: NSE:NIFTY26011325700CE (YYMMdd + strike + CE/PE)
+                // - Monthly: NSE:NIFTY26JAN25700CE (YYMM[M] + strike + CE/PE)
+                console.log(`[STREAM-PRICES] Detected option symbol: ${symbol}`);
+
+                // Try parsing weekly format first: NSE:BASE(5digits)(5digits)CE/PE
+                let match = symbol.match(/NSE:([A-Z]+)(\d{6})(\d{5})(CE|PE)/);
+                let textExpiry: string = '';
+                let baseSymbol: string = '';
+                let strike: string = '';
+
+                if (match) {
+                  // Weekly format: 260113 → 13JAN
+                  baseSymbol = match[1];
+                  const numericExpiry = match[2]; // 260113
+                  strike = match[3];
+                  const optionType = match[4];
+
+                  // Parse YYMMdd: 260113 → YY=26, MM=01, dd=13
+                  const yearPart = numericExpiry.substring(0, 2); // 26
+                  const monthPart = numericExpiry.substring(2, 4); // 01
+                  const dayPart = numericExpiry.substring(4, 6); // 13
+
+                  const monthMap: { [key: string]: string } = {
+                    '01': 'JAN', '02': 'FEB', '03': 'MAR', '04': 'APR',
+                    '05': 'MAY', '06': 'JUN', '07': 'JUL', '08': 'AUG',
+                    '09': 'SEP', '10': 'OCT', '11': 'NOV', '12': 'DEC'
+                  };
+
+                  const monthName = monthMap[monthPart] || 'JAN';
+                  textExpiry = `${parseInt(dayPart)}${monthName}`; // 13JAN
+
+                  console.log(`[STREAM-PRICES] Parsed weekly option: base=${baseSymbol}, expiry=${textExpiry}, strike=${strike}`);
+                } else {
+                  // Try monthly format: NSE:NIFTY26JAN25700CE
+                  match = symbol.match(/NSE:([A-Z]+)(26[A-Z]{3})(\d{5})(CE|PE)/);
+                  if (match) {
+                    baseSymbol = match[1];
+                    const textExpiryPart = match[2]; // 26JAN
+                    strike = match[3];
+                    const optionType = match[4];
+
+                    // Extract just the month name: 26JAN → JAN
+                    textExpiry = textExpiryPart.substring(2); // JAN
+
+                    console.log(`[STREAM-PRICES] Parsed monthly option: base=${baseSymbol}, expiry=${textExpiry}, strike=${strike}`);
+                  } else {
+                    console.warn(`[STREAM-PRICES] Could not parse option symbol: ${symbol}`);
+                    continue;
+                  }
+                }
+
+                url = `/api/options/historical?symbol=${baseSymbol}&expiry=${textExpiry}&strike=${strike}&spotPrice=25700&userId=${encodeURIComponent(userId)}&from=${fromStr}&to=${toStr}&interval=1`;
+                console.log(`[STREAM-PRICES] Option URL: ${url}`);
+              } else {
+                // Regular equity/futures symbol
+                url = `/api/chart/historical?symbol=${encodeURIComponent(symbol)}&interval=1minute&userId=${encodeURIComponent(userId)}&from=${fromStr}&to=${toStr}&includeToday=true`;
+              }
 
               const response = await fetch(`${request.nextUrl.origin}${url}`, {
                 method: 'GET',
@@ -234,6 +297,8 @@ export async function GET(request: NextRequest) {
                     controller.enqueue(encoder.encode(tickMessage));
                   }
                 }
+              } else {
+                console.warn(`[STREAM-PRICES] Failed to fetch ${symbol}: ${response.status}`);
               }
             }
           } catch (err) {

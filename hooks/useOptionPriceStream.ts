@@ -64,8 +64,10 @@ export function useOptionPriceStream({
       eventSourceRef.current.close();
     }
 
-    // Convert expiry format: "JAN" -> "26JAN", "13JAN" -> "26113"
-    const convertExpiryToNumeric = (exp: string): string => {
+    // Convert expiry format for symbol building
+    // "13JAN" -> numeric "260113" (YYMMdd), symbol: NSE:NIFTY260113...
+    // "JAN" -> text "26JAN", symbol: NSE:NIFTY26JAN...
+    const convertExpiryFormat = (exp: string): { numeric: string; text: string } => {
       const monthMap: Record<string, string> = {
         'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04',
         'MAY': '05', 'JUN': '06', 'JUL': '07', 'AUG': '08',
@@ -77,23 +79,29 @@ export function useOptionPriceStream({
       if (weeklyMatch) {
         const day = weeklyMatch[1].padStart(2, '0');
         const month = monthMap[weeklyMatch[2]] || '01';
-        return `26${month}${day}`; // e.g., "260113" for 13 JAN 2026
+        return {
+          numeric: `26${month}${day}`, // e.g., "260113" for 13 JAN 2026
+          text: exp, // e.g., "13JAN"
+        };
       }
 
       // Try monthly format: "JAN" (month only)
       const monthlyMatch = exp.match(/^([A-Z]{3})$/);
       if (monthlyMatch) {
         const month = monthMap[monthlyMatch[1]] || '01';
-        return `26${month}`; // e.g., "26JAN" for January 2026
+        return {
+          numeric: `26${month}`, // e.g., "26JAN" - actually text, kept for compatibility
+          text: monthlyMatch[1], // e.g., "JAN"
+        };
       }
 
-      return exp; // Fallback to original if not recognized
+      return { numeric: exp, text: exp }; // Fallback
     };
 
     // Build CE and PE symbols with Fyers-compatible format
-    const numericExpiry = convertExpiryToNumeric(expiry);
-    const ceSymbol = `NSE:${symbol}${numericExpiry}${ceStrike}CE`;
-    const peSymbol = `NSE:${symbol}${numericExpiry}${peStrike}PE`;
+    const expiryFormats = convertExpiryFormat(expiry);
+    const ceSymbol = `NSE:${symbol}${expiryFormats.numeric}${ceStrike}CE`;
+    const peSymbol = `NSE:${symbol}${expiryFormats.numeric}${peStrike}PE`;
     const symbolsParam = [ceSymbol, peSymbol].join(',');
 
     console.log('[OPTION-PRICE-STREAM] Connecting to CE/PE prices:', { ceSymbol, peSymbol });

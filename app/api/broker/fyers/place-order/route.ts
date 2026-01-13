@@ -72,9 +72,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // For order placement in Fyers API v2, just use the symbol as-is (e.g., "TCS")
-    // Don't add NSE: prefix - v2 API expects just the symbol
-    let fyersSymbol = symbol;
+    // Convert symbol to Fyers format (e.g., "LMW" -> "NSE:LMW-EQ")
+    const fyersSymbol = convertToBrokerSymbol(symbol, 'fyers');
     console.log('[FYERS-PLACE-ORDER] Placing order for user:', userId, 'symbol:', symbol, '-> Fyers:', fyersSymbol);
 
     // Place the order

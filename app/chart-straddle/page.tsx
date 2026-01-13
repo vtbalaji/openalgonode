@@ -14,10 +14,11 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { AdvancedTradingChart, ChartData, IndicatorConfig } from '@/components/AdvancedTradingChart';
 import { useRealtimePrice } from '@/hooks/useRealtimePrice';
+import { useOptionPriceStream } from '@/hooks/useOptionPriceStream';
 
 const TIMEFRAMES = [
   { label: '1m', value: 'minute' },
@@ -43,9 +44,9 @@ export default function StraddleChartPage() {
   const [spotPrice, setSpotPrice] = useState(25683);
   const [ceStrike, setCeStrike] = useState<number | null>(null);
   const [peStrike, setPeStrike] = useState<number | null>(null);
-  const [latestCePrice, setLatestCePrice] = useState(0);
-  const [latestPePrice, setLatestPePrice] = useState(0);
-  const [latestPriceTime, setLatestPriceTime] = useState<number | null>(null);
+  // Note: latestCePrice and latestPePrice are now provided by useOptionPriceStream
+  // which updates in real-time from /api/stream/prices
+  // Historical cePrice/pePrice from fetchChartData are kept for reference only
 
   const [indicators, setIndicators] = useState<IndicatorConfig>({
     sma: false,
@@ -70,27 +71,93 @@ export default function StraddleChartPage() {
     consolidationMaxDuration: 100,
   });
 
+  // Helper function to calculate ATM strike
+  const calculateAtmStrike = () => Math.round(spotPrice / 100) * 100;
+
   // Real-time price updates - for spot price display
   const { prices, isConnected } = useRealtimePrice({
     symbols: [baseSymbol + '26JANFUT'], // Use futures to get spot price
   });
 
-  // Helper function to calculate ATM strike
-  const calculateAtmStrike = () => Math.round(spotPrice / 100) * 100;
+  // Real-time option price updates - for premium (CE + PE)
+  const atmStrike = calculateAtmStrike();
+  const { cePrice: streamCePrice, pePrice: streamPePrice, premium: streamPremium, isConnected: optionStreamConnected } = useOptionPriceStream({
+    symbol: baseSymbol,
+    expiry,
+    ceStrike: ceStrike || atmStrike,
+    peStrike: peStrike || atmStrike,
+    enabled: true,
+  });
 
-  // Note: Option tick streaming is not available for straddle charts on Fyers (no separate CE/PE quotes)
-  // The chart uses historical data polling instead for real-time updates
+  // Fetch historical data for straddle (CE + PE combined)
+  const fetchChartData = useCallback(async () => {
+    if (!user || !interval) return;
 
-  // Periodically refresh chart data (every 10 seconds for Fyers polling interval)
-  useEffect(() => {
-    if (!user || !chartData || chartData.length === 0) return;
+    setLoading(true);
+    setError(null);
 
-    const refreshInterval = setInterval(() => {
-      fetchChartData();
-    }, 10000); // Refresh every 10 seconds to match Fyers polling
+    try {
+      const today = new Date();
+      const from = new Date(today);
+      from.setDate(today.getDate() - lookbackDays);
 
-    return () => clearInterval(refreshInterval);
-  }, [user, chartData, interval, baseSymbol, expiry, lookbackDays]);
+      // Safely handle interval parameter conversion
+      let intervalParam = interval;
+      if (interval && interval.includes('minute')) {
+        intervalParam = interval.replace('minute', '');
+        if (!intervalParam) intervalParam = '1'; // Default to 1 for single 'minute'
+      }
+
+      const params = new URLSearchParams({
+        symbol: baseSymbol,
+        expiry,
+        spotPrice: spotPrice.toString(),
+        userId: user.uid,
+        from: from.toISOString().split('T')[0],
+        to: today.toISOString().split('T')[0],
+        interval: intervalParam,
+      });
+
+      const response = await fetch('/api/options/historical?' + params.toString());
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to fetch data: ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      if (result.success && result.data && result.data.length > 0) {
+        const chartDataArray: ChartData[] = result.data.map((candle: any) => ({
+          time: candle.time,
+          open: candle.open,
+          high: candle.high,
+          low: candle.low,
+          close: candle.close,
+          volume: candle.volume,
+        }));
+        setChartData(chartDataArray);
+
+        // Update spot price from API if provided
+        if (result.spotPrice) {
+          setSpotPrice(result.spotPrice);
+        }
+
+        // Note: CE/PE prices are now updated via useOptionPriceStream real-time feed
+        // No need to extract from historical candles anymore
+      } else {
+        throw new Error(result.error || 'No data returned');
+      }
+    } catch (err: any) {
+      setError(err.message);
+      console.error('Straddle chart data fetch error:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [user, baseSymbol, expiry, spotPrice, lookbackDays, interval]);
+
+  // Note: Real-time CE/PE prices are now streamed via useOptionPriceStream hook
+  // Historical candle data is loaded once on symbol/interval change for chart display
 
   // Set responsive chart height
   useEffect(() => {
@@ -120,87 +187,13 @@ export default function StraddleChartPage() {
     }
   }, [prices, baseSymbol]);
 
-  // Update latest CE/PE prices from option ticks
-  useEffect(() => {
-    if (!optionTicks || optionTicks.length === 0) return;
-
-    const latestTick = optionTicks[optionTicks.length - 1];
-    setLatestCePrice(latestTick.cePrice);
-    setLatestPePrice(latestTick.pePrice);
-    setLatestPriceTime(latestTick.time);
-  }, [optionTicks]);
-
-  // Fetch historical data for straddle (CE + PE combined)
-  const fetchChartData = async () => {
-    if (!user) return;
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const today = new Date();
-      const from = new Date(today);
-      from.setDate(today.getDate() - lookbackDays);
-
-      const params = new URLSearchParams({
-        symbol: baseSymbol,
-        expiry,
-        spotPrice: spotPrice.toString(),
-        userId: user.uid,
-        from: from.toISOString().split('T')[0],
-        to: today.toISOString().split('T')[0],
-        interval: interval.replace('minute', ''),
-      });
-
-      const response = await fetch('/api/options/historical?' + params.toString());
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Failed to fetch data: ${response.status}`);
-      }
-
-      const result = await response.json();
-
-      if (result.success && result.data && result.data.length > 0) {
-        const chartDataArray: ChartData[] = result.data.map((candle: any) => ({
-          time: candle.time,
-          open: candle.open,
-          high: candle.high,
-          low: candle.low,
-          close: candle.close,
-          volume: candle.volume,
-        }));
-        setChartData(chartDataArray);
-
-        // Extract latest CE and PE prices from the last candle
-        const latestCandle = result.data[result.data.length - 1];
-        if (latestCandle.cePrice !== undefined && latestCandle.pePrice !== undefined) {
-          setLatestCePrice(latestCandle.cePrice);
-          setLatestPePrice(latestCandle.pePrice);
-          setLatestPriceTime(latestCandle.time);
-        }
-
-        // Update spot price from API if provided
-        if (result.spotPrice) {
-          setSpotPrice(result.spotPrice);
-        }
-      } else {
-        throw new Error(result.error || 'No data returned');
-      }
-    } catch (err: any) {
-      setError(err.message);
-      console.error('Straddle chart data fetch error:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   // Load data on symbol or interval change
   useEffect(() => {
     if (user && baseSymbol && expiry) {
       fetchChartData();
     }
-  }, [user, baseSymbol, expiry, interval, lookbackDays]);
+  }, [user, baseSymbol, expiry, interval, lookbackDays, fetchChartData]);
 
   const handleSymbolSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -556,8 +549,9 @@ export default function StraddleChartPage() {
               <p className="text-gray-700">
                 <span className="font-bold">DTE:</span> <span className="text-purple-600 font-bold">{calculateDaysToExpiry()}</span>
                 <span className="mx-3">|</span>
-                <span className="font-bold">Premium:</span> <span className="text-blue-600 font-bold">{(latestCePrice + latestPePrice).toFixed(0)}</span>
-                <span className="text-gray-500"> (C:{latestCePrice.toFixed(0)} P:{latestPePrice.toFixed(0)})</span>
+                <span className="font-bold">Premium:</span> <span className="text-blue-600 font-bold">{streamPremium.toFixed(0)}</span>
+                <span className="text-gray-500"> (C:{streamCePrice.toFixed(0)} P:{streamPePrice.toFixed(0)})</span>
+                {optionStreamConnected && <span className="ml-2 text-green-600 text-xs font-bold">● LIVE</span>}
                 <span className="mx-3">|</span>
                 <span className="font-bold">Spot:</span> <span className="text-orange-600 font-bold">{spotPrice.toFixed(0)}</span>
               </p>

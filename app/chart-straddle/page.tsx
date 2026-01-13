@@ -18,7 +18,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { AdvancedTradingChart, ChartData, IndicatorConfig } from '@/components/AdvancedTradingChart';
 import { useRealtimePrice } from '@/hooks/useRealtimePrice';
-import { useOptionPriceStream } from '@/hooks/useOptionPriceStream';
 
 const TIMEFRAMES = [
   { label: '1m', value: 'minute' },
@@ -79,15 +78,9 @@ export default function StraddleChartPage() {
     symbols: [baseSymbol + '26JANFUT'], // Use futures to get spot price
   });
 
-  // Real-time option price updates - for premium (CE + PE)
-  const atmStrike = calculateAtmStrike();
-  const { cePrice: streamCePrice, pePrice: streamPePrice, premium: streamPremium, isConnected: optionStreamConnected } = useOptionPriceStream({
-    symbol: baseSymbol,
-    expiry,
-    ceStrike: ceStrike || atmStrike,
-    peStrike: peStrike || atmStrike,
-    enabled: true,
-  });
+  // Store latest CE/PE prices from chart data
+  const [latestCePrice, setLatestCePrice] = useState(0);
+  const [latestPePrice, setLatestPePrice] = useState(0);
 
   // Fetch historical data for straddle (CE + PE combined)
   const fetchChartData = useCallback(async () => {
@@ -143,8 +136,12 @@ export default function StraddleChartPage() {
           setSpotPrice(result.spotPrice);
         }
 
-        // Note: CE/PE prices are now updated via useOptionPriceStream real-time feed
-        // No need to extract from historical candles anymore
+        // Extract latest CE and PE prices from the last candle
+        const latestCandle = result.data[result.data.length - 1];
+        if (latestCandle.cePrice !== undefined && latestCandle.pePrice !== undefined) {
+          setLatestCePrice(latestCandle.cePrice);
+          setLatestPePrice(latestCandle.pePrice);
+        }
       } else {
         throw new Error(result.error || 'No data returned');
       }
@@ -156,8 +153,8 @@ export default function StraddleChartPage() {
     }
   }, [user, baseSymbol, expiry, spotPrice, lookbackDays, interval]);
 
-  // Note: Real-time CE/PE prices are now streamed via useOptionPriceStream hook
-  // Historical candle data is loaded once on symbol/interval change for chart display
+  // Note: Premium shows CE + PE close prices from the latest candle
+  // Updates when chart data is loaded on symbol/interval change
 
   // Set responsive chart height
   useEffect(() => {
@@ -549,9 +546,8 @@ export default function StraddleChartPage() {
               <p className="text-gray-700">
                 <span className="font-bold">DTE:</span> <span className="text-purple-600 font-bold">{calculateDaysToExpiry()}</span>
                 <span className="mx-3">|</span>
-                <span className="font-bold">Premium:</span> <span className="text-blue-600 font-bold">{streamPremium.toFixed(0)}</span>
-                <span className="text-gray-500"> (C:{streamCePrice.toFixed(0)} P:{streamPePrice.toFixed(0)})</span>
-                {optionStreamConnected && <span className="ml-2 text-green-600 text-xs font-bold">● LIVE</span>}
+                <span className="font-bold">Premium:</span> <span className="text-blue-600 font-bold">{(latestCePrice + latestPePrice).toFixed(0)}</span>
+                <span className="text-gray-500"> (C:{latestCePrice.toFixed(0)} P:{latestPePrice.toFixed(0)})</span>
                 <span className="mx-3">|</span>
                 <span className="font-bold">Spot:</span> <span className="text-orange-600 font-bold">{spotPrice.toFixed(0)}</span>
               </p>

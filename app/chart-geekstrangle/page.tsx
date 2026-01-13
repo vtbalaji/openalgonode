@@ -20,6 +20,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { AdvancedTradingChart, ChartData, IndicatorConfig } from '@/components/AdvancedTradingChart';
 import { useRealtimePrice } from '@/hooks/useRealtimePrice';
+import { useOptionTickStream, type OptionTick } from '@/hooks/useOptionTickStream';
+import { useTickToCandle, type Candle } from '@/hooks/useTickToCandle';
 import { calculateStrangleGreeks, calculateOptionsGreeks, type OptionsGreeksInput } from '@/lib/indicators/optionsGreeks';
 
 const TIMEFRAMES = [
@@ -96,11 +98,67 @@ export default function GeekStrangleChartPage() {
   });
 
   const [spotPriceHistory, setSpotPriceHistory] = useState<number[]>([]);
+  const [showCE, setShowCE] = useState(true);
+  const [showPE, setShowPE] = useState(true);
+  const [rawChartData, setRawChartData] = useState<ChartData[]>([]);
+  const [ceOhlcMap, setCeOhlcMap] = useState<Map<number, ChartData>>(new Map());
+  const [peOhlcMap, setPeOhlcMap] = useState<Map<number, ChartData>>(new Map());
+  const [ceDataMap, setCeDataMap] = useState<Map<number, number>>(new Map());
+  const [peDataMap, setPeDataMap] = useState<Map<number, number>>(new Map());
 
   // Real-time price updates - for spot price display
   const { prices, isConnected } = useRealtimePrice({
     symbols: [baseSymbol + '26JANFUT'], // Use futures to get spot price
   });
+
+  // Stream option ticks for both CE and PE
+  const { ticks: optionTicks, isConnected: tickStreamConnected } = useOptionTickStream({
+    symbol: baseSymbol,
+    expiry,
+    ceStrike: ceStrike || Math.round(spotPrice / 100) * 100 + 100,
+    peStrike: peStrike || Math.round(spotPrice / 100) * 100 - 100,
+    enabled: true,
+  });
+
+  // Convert ticks to candles based on interval
+  const intervalMinutes = parseInt(interval.replace('minute', '').replace('60', '60').replace('day', '1440') || '1');
+  const { currentCandle: latestTickCandle, lastCompletedTime } = useTickToCandle(
+    optionTicks.map((tick) => ({
+      price: tick.cePrice + tick.pePrice, // Strangle premium = CE + PE
+      time: tick.time,
+    })),
+    {
+      intervalMinutes,
+      onCandleComplete: (completedCandle) => {
+        console.log('[GEEK-STRANGLE] Completed candle from ticks:', completedCandle);
+        // Update the chart with the completed candle
+        setRawChartData((prev) => {
+          const updated = [...prev];
+          const existingIndex = updated.findIndex((c) => c.time === completedCandle.time);
+          if (existingIndex >= 0) {
+            updated[existingIndex] = completedCandle as ChartData;
+          } else {
+            updated.push(completedCandle as ChartData);
+          }
+          return updated;
+        });
+      },
+      onCandleUpdate: (updatingCandle) => {
+        // Update the chart with the current incomplete candle
+        setChartData((prev) => {
+          const updated = [...prev];
+          const lastIndex = updated.length - 1;
+          if (lastIndex >= 0 && updated[lastIndex].time === updatingCandle.time) {
+            updated[lastIndex] = updatingCandle as ChartData;
+          } else if (lastIndex >= 0) {
+            // If time changed, add as new candle
+            updated.push(updatingCandle as ChartData);
+          }
+          return updated;
+        });
+      },
+    }
+  );
 
   // Set responsive chart height
   useEffect(() => {
@@ -129,6 +187,74 @@ export default function GeekStrangleChartPage() {
       setSpotPrice(prices[futuresSymbol].last_price);
     }
   }, [prices, baseSymbol]);
+
+  // Filter chart data based on CE/PE visibility
+  const filteredChartData = useMemo(() => {
+    if (!rawChartData || rawChartData.length === 0) return [];
+    if (!showCE && !showPE) return rawChartData; // Show strangle if both hidden
+    if (showCE && showPE) return rawChartData; // Show strangle if both visible
+
+    // If maps are empty, return raw data as fallback
+    if (ceOhlcMap.size === 0 || peOhlcMap.size === 0) {
+      return rawChartData;
+    }
+
+    // Show only CE or PE with full OHLC - keep all candles for continuous indicator calculations
+    // Use last valid price for missing data to avoid gaps in indicator lines
+    let lastCePrice = 0;
+    let lastPePrice = 0;
+
+    return rawChartData.map((candle) => {
+      if (showCE && !showPE) {
+        // Show only CE with proper OHLC
+        const ceOhlc = ceOhlcMap.get(candle.time);
+        if (ceOhlc && ceOhlc.close > 0) {
+          lastCePrice = ceOhlc.close;
+          return {
+            time: candle.time,
+            open: ceOhlc.open,
+            high: ceOhlc.high,
+            low: ceOhlc.low,
+            close: ceOhlc.close,
+            volume: ceOhlc.volume,
+          };
+        }
+        // Use last valid price for missing data (hold previous price)
+        return {
+          time: candle.time,
+          open: lastCePrice,
+          high: lastCePrice,
+          low: lastCePrice,
+          close: lastCePrice,
+          volume: 0,
+        };
+      } else if (showPE && !showCE) {
+        // Show only PE with proper OHLC
+        const peOhlc = peOhlcMap.get(candle.time);
+        if (peOhlc && peOhlc.close > 0) {
+          lastPePrice = peOhlc.close;
+          return {
+            time: candle.time,
+            open: peOhlc.open,
+            high: peOhlc.high,
+            low: peOhlc.low,
+            close: peOhlc.close,
+            volume: peOhlc.volume,
+          };
+        }
+        // Use last valid price for missing data (hold previous price)
+        return {
+          time: candle.time,
+          open: lastPePrice,
+          high: lastPePrice,
+          low: lastPePrice,
+          close: lastPePrice,
+          volume: 0,
+        };
+      }
+      return candle;
+    });
+  }, [rawChartData, showCE, showPE, ceOhlcMap, peOhlcMap]);
 
   /**
    * Get color based on Greek value signal (Buy/Hold/Sell)
@@ -404,6 +530,9 @@ export default function GeekStrangleChartPage() {
 
         // Combine strangle data: CE from higher strike + PE from lower strike
         const chartDataArray: ChartData[] = [];
+        const ceOhlcMapTemp = new Map();
+        const peOhlcMapTemp = new Map();
+
         ceStrikeResult.data.forEach((ceStrikeCandle: any) => {
           const peStrikeCandle = peStrikeMap.get(ceStrikeCandle.time);
           if (peStrikeCandle) {
@@ -429,6 +558,26 @@ export default function GeekStrangleChartPage() {
             const peHigh = peStrikeCandle.high * peRatio;
             const peLow = peStrikeCandle.low * peRatio;
 
+            // Store individual CE OHLC in map
+            ceOhlcMapTemp.set(ceStrikeCandle.time, {
+              time: ceStrikeCandle.time,
+              open: ceOpen,
+              high: ceHigh,
+              low: ceLow,
+              close: ceClose,
+              volume: ceStrikeCandle.ceVolume || 0,
+            });
+
+            // Store individual PE OHLC in map
+            peOhlcMapTemp.set(ceStrikeCandle.time, {
+              time: ceStrikeCandle.time,
+              open: peOpen,
+              high: peHigh,
+              low: peLow,
+              close: peClose,
+              volume: peStrikeCandle.peVolume || 0,
+            });
+
             // Combine for strangle
             chartDataArray.push({
               time: ceStrikeCandle.time,
@@ -441,7 +590,7 @@ export default function GeekStrangleChartPage() {
           }
         });
 
-        setChartData(chartDataArray);
+        setRawChartData(chartDataArray);
 
         // Extract spot price and days to expiry from API responses
         const apiSpotPrice = ceStrikeResult.spotPrice || peStrikeResult.spotPrice || spotPrice;
@@ -467,6 +616,12 @@ export default function GeekStrangleChartPage() {
         peStrikeResult.data.forEach((peStrikeCandle: any) => {
           peDataMap.set(peStrikeCandle.time, peStrikeCandle.pePrice || 0);
         });
+
+        // Store maps in state for filtering
+        setCeOhlcMap(ceOhlcMapTemp);
+        setPeOhlcMap(peOhlcMapTemp);
+        setCeDataMap(ceDataMap);
+        setPeDataMap(peDataMap);
 
         // Calculate Greeks for each candle
         // TODO: COMMENTED OUT - Testing if chart works without Greeks
@@ -607,6 +762,77 @@ export default function GeekStrangleChartPage() {
     fetchChartData();
   }, [user, expiry, interval, lookbackDays, ceStrike, peStrike]);
 
+  // Real-time candle update effect: Update Greeks when ticks arrive
+  useEffect(() => {
+    if (!optionTicks || optionTicks.length === 0 || !greeks) return;
+
+    // Get the latest tick data
+    const latestTick = optionTicks[optionTicks.length - 1];
+    const newCePrice = latestTick.cePrice;
+    const newPePrice = latestTick.pePrice;
+
+    // Update the latest prices
+    setLatestCePrice(newCePrice);
+    setLatestPePrice(newPePrice);
+    setLatestPriceTime(latestTick.time);
+
+    // Recalculate Greeks with new prices
+    const atmStrike = Math.round(spotPrice / 100) * 100;
+    const ceStrikeValue = ceStrike || atmStrike + 100;
+    const peStrikeValue = peStrike || atmStrike - 100;
+
+    const ceGreeksCalc = calculateGreeks(newCePrice, 0, greeks.daysToExpiry, spotPrice, ceStrikeValue, ceStrikeValue);
+    const peGreeksCalc = calculateGreeks(0, newPePrice, greeks.daysToExpiry, spotPrice, peStrikeValue, peStrikeValue);
+
+    const combinedTheta = ceGreeksCalc.theta + peGreeksCalc.theta;
+    const combinedGamma = ceGreeksCalc.gamma + peGreeksCalc.gamma;
+    const combinedVega = ceGreeksCalc.vega + peGreeksCalc.vega;
+    const combinedDelta = ceGreeksCalc.delta + peGreeksCalc.delta;
+
+    const combinedRiskLevel =
+      ceGreeksCalc.riskLevel === 'danger' || peGreeksCalc.riskLevel === 'danger'
+        ? 'danger'
+        : ceGreeksCalc.riskLevel === 'caution' || peGreeksCalc.riskLevel === 'caution'
+          ? 'caution'
+          : 'safe';
+
+    // Update Greeks with new calculations
+    setGreeks({
+      theta: -combinedTheta, // Negate because we're selling (short)
+      vega: combinedVega,
+      gamma: combinedGamma,
+      delta: combinedDelta,
+      daysToExpiry: greeks.daysToExpiry,
+      riskLevel: combinedRiskLevel,
+      ceIV: ceGreeksCalc.ceIV,
+      peIV: peGreeksCalc.peIV,
+    });
+
+    setCeGreeks({
+      theta: -ceGreeksCalc.theta,
+      vega: ceGreeksCalc.vega,
+      gamma: ceGreeksCalc.gamma,
+      delta: ceGreeksCalc.delta,
+      daysToExpiry: greeks.daysToExpiry,
+      riskLevel: ceGreeksCalc.riskLevel,
+      ceIV: ceGreeksCalc.ceIV,
+      peIV: ceGreeksCalc.peIV,
+    });
+
+    setPeGreeks({
+      theta: -peGreeksCalc.theta,
+      vega: peGreeksCalc.vega,
+      gamma: peGreeksCalc.gamma,
+      delta: peGreeksCalc.delta,
+      daysToExpiry: greeks.daysToExpiry,
+      riskLevel: peGreeksCalc.riskLevel,
+      ceIV: peGreeksCalc.ceIV,
+      peIV: peGreeksCalc.peIV,
+    });
+
+    console.log('[GEEK-STRANGLE] Real-time Greeks updated from ticks:', { theta: -combinedTheta, gamma: combinedGamma, vega: combinedVega });
+  }, [optionTicks]);
+
   const toggleIndicator = (indicator: keyof IndicatorConfig) => {
     setIndicators((prev) => ({
       ...prev,
@@ -660,15 +886,28 @@ export default function GeekStrangleChartPage() {
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
             Geek Strangle (CE + PE with Greeks)
           </h1>
-          {/* Real-time Status */}
-          <div className={'flex items-center gap-2 px-3 py-1 rounded-lg ' +
-            (isConnected ? 'bg-green-50' : 'bg-red-50')}>
-            <div className={'w-2 h-2 rounded-full ' +
-              (isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500')}></div>
-            <span className={'text-sm font-medium ' +
-              (isConnected ? 'text-green-700' : 'text-red-700')}>
-              {isConnected ? 'Live' : 'Disconnected'}
-            </span>
+          {/* Real-time Status - Show both spot and option tick streams */}
+          <div className="flex items-center gap-3">
+            {/* Spot Price Stream */}
+            <div className={'flex items-center gap-2 px-3 py-1 rounded-lg ' +
+              (isConnected ? 'bg-blue-50' : 'bg-gray-50')}>
+              <div className={'w-2 h-2 rounded-full ' +
+                (isConnected ? 'bg-blue-500 animate-pulse' : 'bg-gray-500')}></div>
+              <span className={'text-xs font-medium ' +
+                (isConnected ? 'text-blue-700' : 'text-gray-700')}>
+                Spot {isConnected ? '●' : '○'}
+              </span>
+            </div>
+            {/* Option Ticks Stream */}
+            <div className={'flex items-center gap-2 px-3 py-1 rounded-lg ' +
+              (tickStreamConnected ? 'bg-green-50' : 'bg-orange-50')}>
+              <div className={'w-2 h-2 rounded-full ' +
+                (tickStreamConnected ? 'bg-green-500 animate-pulse' : 'bg-orange-500')}></div>
+              <span className={'text-xs font-medium ' +
+                (tickStreamConnected ? 'text-green-700' : 'text-orange-700')}>
+                Ticks {tickStreamConnected ? 'LIVE' : (optionTicks.length > 0 ? 'buffering' : 'waiting')}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -789,6 +1028,28 @@ export default function GeekStrangleChartPage() {
               />
               <span className="text-xs text-gray-500">days</span>
             </div>
+
+            {/* CE/PE Filter */}
+            <div className="flex-shrink-0 flex items-center gap-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showCE}
+                  onChange={(e) => setShowCE(e.target.checked)}
+                  className="w-4 h-4 text-green-600 rounded focus:ring-2"
+                />
+                <span className="text-xs font-semibold text-gray-700">Show CE</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showPE}
+                  onChange={(e) => setShowPE(e.target.checked)}
+                  className="w-4 h-4 text-red-600 rounded focus:ring-2"
+                />
+                <span className="text-xs font-semibold text-gray-700">Show PE</span>
+              </label>
+            </div>
           </div>
 
           {/* Indicators Section */}
@@ -888,7 +1149,6 @@ export default function GeekStrangleChartPage() {
                   </label>
                 </div>
                 <p className="text-lg font-bold" style={{ color: getGreekValueColor('theta', greeks.theta) }}>+{greeks.theta.toFixed(2)}/day</p>
-                <p className="text-xs text-gray-600 mt-1">(expected &gt; 1.5)</p>
                 {ceGreeks && peGreeks && (
                   <p className="text-xs text-gray-500 mt-1">
                     (CE: {ceGreeks.theta.toFixed(2)}, PE: {peGreeks.theta.toFixed(2)})
@@ -912,7 +1172,6 @@ export default function GeekStrangleChartPage() {
                   </label>
                 </div>
                 <p className="text-lg font-bold" style={{ color: getGreekValueColor('vega', greeks.vega) }}>{greeks.vega.toFixed(2)}/point</p>
-                <p className="text-xs text-gray-600 mt-1">(expected &lt; -2.0)</p>
                 {ceGreeks && peGreeks && (
                   <p className="text-xs text-gray-500 mt-1">
                     (CE: {ceGreeks.vega.toFixed(2)}, PE: {peGreeks.vega.toFixed(2)})
@@ -936,7 +1195,6 @@ export default function GeekStrangleChartPage() {
                   </label>
                 </div>
                 <p className="text-lg font-bold" style={{ color: getGreekValueColor('gamma', greeks.gamma) }}>+{greeks.gamma.toFixed(4)}</p>
-                <p className="text-xs text-gray-600 mt-1">(expected &lt; 0.005)</p>
                 {ceGreeks && peGreeks && (
                   <p className="text-xs text-gray-500 mt-1">
                     (CE: {ceGreeks.gamma.toFixed(4)}, PE: {peGreeks.gamma.toFixed(4)})
@@ -960,7 +1218,6 @@ export default function GeekStrangleChartPage() {
                   </label>
                 </div>
                 <p className="text-lg font-bold" style={{ color: getGreekValueColor('delta', greeks.delta) }}>{greeks.delta > 0 ? '+' : ''}{greeks.delta.toFixed(2)}</p>
-                <p className="text-xs text-gray-600 mt-1">(expected ±0.2)</p>
                 {ceGreeks && peGreeks && (
                   <p className="text-xs text-gray-500 mt-1">
                     (CE: {ceGreeks.delta > 0 ? '+' : ''}{ceGreeks.delta.toFixed(2)}, PE: {peGreeks.delta > 0 ? '+' : ''}{peGreeks.delta.toFixed(2)})
@@ -969,113 +1226,64 @@ export default function GeekStrangleChartPage() {
                 <p className="text-xs text-gray-500 mt-1">Neutral (~0)</p>
               </div>
 
-              {/* Days to Expiry (no checkbox) */}
-              <div className="bg-white rounded p-3 border border-gray-200">
-                <p className="text-xs text-gray-600 font-semibold">Days to Expiry</p>
-                <p className="text-lg font-bold text-purple-600">{greeks.daysToExpiry}</p>
-                <p className="text-xs text-gray-500 mt-1">Gamma Risk</p>
-              </div>
-
-              {/* Strangle Premium Card */}
-              {chartData.length > 0 && (
-                <div className="bg-white rounded p-3 border border-blue-300">
-                  <p className="text-xs text-gray-600 font-semibold">Strangle Premium</p>
-                  <p className="text-lg font-bold text-blue-600">{(latestCePrice + latestPePrice).toFixed(2)}</p>
-                  <p className="text-xs text-gray-600 mt-1">(CE: {latestCePrice.toFixed(2)}, PE: {latestPePrice.toFixed(2)})</p>
-                  {latestPriceTime && (
-                    <p className="text-xs text-gray-500 mt-1">{new Date(latestPriceTime * 1000).toLocaleString()}</p>
-                  )}
-                  <p className="text-xs text-gray-500 mt-1">Spot: {spotPrice.toFixed(2)}</p>
-                </div>
-              )}
-
-              {/* Implied Volatility (IV) Card */}
-              {greeks && chartData.length > 0 && (
-                <div className="bg-white rounded p-3 border border-green-300">
-                  <p className="text-xs text-gray-600 font-semibold">Implied Volatility (IV)</p>
-                  <p className="text-xs text-gray-600 mt-2">
-                    CE: <span className="font-bold text-green-600">{greeks.ceIV !== null ? greeks.ceIV.toFixed(2) : 'N/A'}%</span>
-                  </p>
-                  <p className="text-xs text-gray-600 mt-1">
-                    PE: <span className="font-bold text-green-600">{greeks.peIV !== null ? greeks.peIV.toFixed(2) : 'N/A'}%</span>
-                  </p>
-                </div>
-              )}
             </div>
 
-            {/* Strategy Hint - Professional Sell Signal Formula */}
-            <div className="mt-4 p-4 bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg border-2 border-blue-300 shadow-sm">
-              <p className="text-sm font-bold text-gray-800 mb-3">📊 Professional Sell Signal Formula</p>
+            {/* Strategy Hint - Professional Sell Signal Formula (Compact) */}
+            {(() => {
+              const avgIV = greeks.ceIV && greeks.peIV ? (greeks.ceIV + greeks.peIV) / 2 : 0;
+              const premium = latestCePrice + latestPePrice;
+              const thetaPremiumRatio = premium > 0 ? (greeks.theta / premium) * 100 : 0;
+              const totalTheta = greeks.theta * greeks.daysToExpiry;
+              const maxVegaLoss = greeks.vega * (18 - avgIV);
+              const riskRewardRatio = maxVegaLoss > 0 ? totalTheta / maxVegaLoss : 0;
 
-              {/* Formula */}
-              <div className="bg-white rounded p-3 mb-3 border border-gray-300 font-mono text-xs">
-                <p className="text-gray-700 mb-2">SELL SIGNAL = (IV &gt; 15%) × (Theta/Premium &gt; 2%) × (Gamma &lt; 0.005) × (DTE 14-30)</p>
-              </div>
+              const check1 = avgIV > 15;
+              const check2 = thetaPremiumRatio > 2;
+              const check3 = greeks.gamma < 0.005;
+              const check4 = greeks.daysToExpiry >= 14 && greeks.daysToExpiry <= 30;
+              const passedChecks = [check1, check2, check3, check4].filter(Boolean).length;
 
-              {/* Current Values Evaluation */}
-              {(() => {
-                const avgIV = greeks.ceIV && greeks.peIV ? (greeks.ceIV + greeks.peIV) / 2 : 0;
-                const premium = latestCePrice + latestPePrice;
-                const thetaPremiumRatio = premium > 0 ? (greeks.theta / premium) * 100 : 0;
-                const totalTheta = greeks.theta * greeks.daysToExpiry;
-                const maxVegaLoss = greeks.vega * (18 - avgIV); // Worst case: IV spikes to 18%
-                const riskRewardRatio = maxVegaLoss > 0 ? totalTheta / maxVegaLoss : 0;
+              return (
+                <div className={`mt-4 p-4 rounded-lg border-2 ${
+                  passedChecks >= 4 && riskRewardRatio > 1.5
+                    ? 'bg-green-50 border-green-300'
+                    : passedChecks >= 3
+                    ? 'bg-yellow-50 border-yellow-300'
+                    : 'bg-red-50 border-red-300'
+                }`}>
+                  <p className={`text-sm font-bold mb-2 ${
+                    passedChecks >= 4 && riskRewardRatio > 1.5
+                      ? 'text-green-800'
+                      : passedChecks >= 3
+                      ? 'text-yellow-900'
+                      : 'text-red-800'
+                  }`}>
+                    {passedChecks >= 4 && riskRewardRatio > 1.5 ? '✅ STRONG SELL' : passedChecks >= 3 ? '⚠️ CAUTION' : '❌ DO NOT SELL'}
+                  </p>
 
-                const check1 = avgIV > 15;
-                const check2 = thetaPremiumRatio > 2;
-                const check3 = greeks.gamma < 0.005;
-                const check4 = greeks.daysToExpiry >= 14 && greeks.daysToExpiry <= 30;
-                const passedChecks = [check1, check2, check3, check4].filter(Boolean).length;
+                  <div className="font-mono text-xs text-gray-700 space-y-1 mb-2">
+                    <p>SELL = (IV&gt;15%) × (θ/P&gt;2%) × (γ&lt;0.005) × (DTE∈[14,30])</p>
+                    <p>= ({avgIV.toFixed(0)} &gt; 15?) × ({thetaPremiumRatio.toFixed(0)}% &gt; 2%) × ({greeks.gamma.toFixed(4)} &lt; 0.005) × ({greeks.daysToExpiry}∈[14,30])</p>
+                    <p>= <span className={check1 ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>{check1 ? 'Y' : 'N'}</span> × <span className={check2 ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>{check2 ? 'Y' : 'N'}</span> × <span className={check3 ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>{check3 ? 'Y' : 'N'}</span> × <span className={check4 ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>{check4 ? 'Y' : 'N'}</span> | R:R = {riskRewardRatio.toFixed(2)} {riskRewardRatio > 1.5 ? '✓' : '✗'} ({passedChecks}/4)</p>
+                  </div>
 
-                return (
-                  <>
-                    <div className="bg-white rounded p-3 mb-3 border border-gray-300 font-mono text-xs space-y-1">
-                      <p className="text-gray-700">
-                        = ({avgIV.toFixed(1)} &gt; 15?) × ({thetaPremiumRatio.toFixed(1)}% &gt; 2%) × ({greeks.gamma.toFixed(4)} &lt; 0.005) × ({greeks.daysToExpiry} ∈ [14,30])
-                      </p>
-                      <p className="text-gray-700">
-                        = <span className={check1 ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>{check1 ? 'TRUE' : 'FALSE'}</span> × <span className={check2 ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>{check2 ? 'TRUE' : 'FALSE'}</span> × <span className={check3 ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>{check3 ? 'TRUE' : 'FALSE'}</span> × <span className={check4 ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>{check4 ? 'TRUE' : 'FALSE'}</span>
-                      </p>
-                      <p className="text-gray-700">
-                        Risk/Reward: <span className={riskRewardRatio > 1.5 ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>{riskRewardRatio.toFixed(2)}</span> {riskRewardRatio > 1.5 ? '✓' : '✗'} (need &gt; 1.5)
-                      </p>
-                    </div>
+                  <p className={`text-xs ${
+                    passedChecks >= 4 && riskRewardRatio > 1.5
+                      ? 'text-green-800'
+                      : passedChecks >= 3
+                      ? 'text-yellow-900'
+                      : 'text-red-800'
+                  }`}>
+                    {passedChecks >= 4 && riskRewardRatio > 1.5
+                      ? 'All checks ✓ • Good R:R • Ready to sell'
+                      : passedChecks >= 3
+                      ? `${!check1 ? 'IV low • ' : ''}${riskRewardRatio <= 1.5 ? 'R:R weak • ' : ''}Wait for improvement`
+                      : `${!check1 ? 'IV low • ' : ''}${!check2 ? 'θ/P low • ' : ''}${!check3 ? 'γ high • ' : ''}${!check4 ? 'DTE bad • ' : ''}Poor conditions`}
+                  </p>
+                </div>
+              );
+            })()}
 
-                    {/* Recommendation */}
-                    <div className={`p-3 rounded-lg border-2 ${
-                      passedChecks >= 4 && riskRewardRatio > 1.5
-                        ? 'bg-green-100 border-green-500'
-                        : passedChecks >= 3
-                        ? 'bg-yellow-100 border-yellow-500'
-                        : 'bg-red-100 border-red-500'
-                    }`}>
-                      <p className={`text-sm font-bold mb-1 ${
-                        passedChecks >= 4 && riskRewardRatio > 1.5
-                          ? 'text-green-800'
-                          : passedChecks >= 3
-                          ? 'text-yellow-900'
-                          : 'text-red-800'
-                      }`}>
-                        {passedChecks >= 4 && riskRewardRatio > 1.5 ? '✅ STRONG SELL SIGNAL' : passedChecks >= 3 ? '⚠️ WAIT FOR BETTER ENTRY' : '❌ DO NOT SELL'}
-                      </p>
-                      <p className={`text-xs ${
-                        passedChecks >= 4 && riskRewardRatio > 1.5
-                          ? 'text-green-800'
-                          : passedChecks >= 3
-                          ? 'text-yellow-900'
-                          : 'text-red-800'
-                      }`}>
-                        {passedChecks >= 4 && riskRewardRatio > 1.5
-                          ? `All checks passed (${passedChecks}/4). Good risk/reward ratio. Ideal conditions for selling.`
-                          : passedChecks >= 3
-                          ? `Passed ${passedChecks}/4 checks. ${!check1 ? 'IV too low (wait for spike to 15%+). ' : ''}${riskRewardRatio <= 1.5 ? 'Risk/reward unfavorable. ' : ''}`
-                          : `Only ${passedChecks}/4 checks passed. ${!check1 ? 'IV too low. ' : ''}${!check2 ? 'Theta/Premium too low. ' : ''}${!check3 ? 'Gamma too high. ' : ''}${!check4 ? 'DTE outside range. ' : ''}`}
-                      </p>
-                    </div>
-                  </>
-                );
-              })()}
-            </div>
           </div>
         )}
 
@@ -1093,18 +1301,38 @@ export default function GeekStrangleChartPage() {
           </div>
         )}
 
-        {!loading && !error && chartData.length > 0 && (
+        {!loading && !error && rawChartData.length > 0 && (
           <div className="bg-white rounded-lg shadow-md p-3 sm:p-4 md:p-6">
+            {/* Consolidated Info Box: DTE + IV + Premium (Above Chart) */}
+            {greeks && (
+              <div className="bg-gray-50 rounded px-3 py-2 border border-gray-200 text-xs font-mono mb-3">
+                <p className="text-gray-700">
+                  <span className="font-bold">DTE:</span> <span className="text-purple-600 font-bold">{greeks.daysToExpiry}</span>
+                  <span className="mx-3">|</span>
+                  <span className="font-bold">IV:</span> <span className="text-green-600 font-bold">{greeks.ceIV && greeks.peIV ? ((greeks.ceIV + greeks.peIV) / 2).toFixed(1) : 'N/A'}%</span>
+                  <span className="text-gray-500"> (C:{greeks.ceIV?.toFixed(1)}% P:{greeks.peIV?.toFixed(1)}%)</span>
+                  <span className="mx-3">|</span>
+                  <span className="font-bold">Premium:</span> <span className="text-blue-600 font-bold">{(latestCePrice + latestPePrice).toFixed(0)}</span>
+                  <span className="text-gray-500"> (C:{latestCePrice.toFixed(0)} P:{latestPePrice.toFixed(0)})</span>
+                  <span className="mx-3">|</span>
+                  <span className="font-bold">Spot:</span> <span className="text-orange-600 font-bold">{spotPrice.toFixed(0)}</span>
+                </p>
+              </div>
+            )}
+
             <div className="mb-3 md:mb-4">
               <h2 className="text-xl md:text-2xl font-bold text-gray-900">{displaySymbol} Strangle Premium</h2>
               <p className="text-xs sm:text-sm text-gray-600">
                 <strong>Price:</strong> CE (Higher Strike) + PE (Lower Strike) | <strong>Volume:</strong> CE + PE (Combined)
                 <span className="ml-2 sm:ml-4">Interval: <span className="font-semibold">{interval}</span></span>
-                <span className="ml-2 sm:ml-4">{chartData.length} candles</span>
+                <span className="ml-2 sm:ml-4">{rawChartData.length} candles</span>
+                <span className="ml-2 sm:ml-4 text-green-600 font-semibold">
+                  {tickStreamConnected ? '✓ Real-time tick updates' : '○ Historical data'}
+                </span>
               </p>
             </div>
             <AdvancedTradingChart
-              data={chartData}
+              data={filteredChartData}
               symbol={displaySymbol}
               interval={interval}
               indicators={indicators}
@@ -1116,7 +1344,7 @@ export default function GeekStrangleChartPage() {
         )}
 
         {/* Strategy Information */}
-        {!loading && !error && chartData.length > 0 && (
+        {!loading && !error && rawChartData.length > 0 && (
           <div className="mt-4 space-y-3">
             <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-200 p-3">
               <p className="text-xs text-gray-700 leading-relaxed">
@@ -1134,7 +1362,7 @@ export default function GeekStrangleChartPage() {
           </div>
         )}
 
-        {!loading && !error && chartData.length === 0 && (
+        {!loading && !error && rawChartData.length === 0 && (
           <div className="bg-gray-50 border border-gray-200 rounded-lg p-12 text-center">
             <p className="text-gray-600">No chart data available. Try a different symbol or timeframe.</p>
           </div>

@@ -140,22 +140,47 @@ export default function ChartPage() {
     const latestPrice = prices[symbol];
     const currentTime = Math.floor(new Date().getTime() / 1000);
 
+    // Calculate interval in seconds
+    const getIntervalSeconds = (intervalStr: string): number => {
+      if (intervalStr === 'day' || intervalStr === '1D') return 86400;
+      const match = intervalStr.match(/(\d+)/);
+      return match ? parseInt(match[1]) * 60 : 60;
+    };
+
+    const intervalSeconds = getIntervalSeconds(interval);
+
     // Update last candle or add new one
     setChartData((prevData) => {
       const newData = [...prevData];
       const lastCandle = newData[newData.length - 1];
 
-      // Update existing candle or create new one based on timeframe
       if (lastCandle) {
-        lastCandle.close = latestPrice.last_price;
-        lastCandle.high = Math.max(lastCandle.high, latestPrice.last_price);
-        lastCandle.low = Math.min(lastCandle.low, latestPrice.last_price);
-        // Note: Don't update volume - realtime feed has cumulative daily volume, not per-candle volume
+        // Calculate if we're in the same candle period
+        const lastCandleStartTime = Math.floor(lastCandle.time / intervalSeconds) * intervalSeconds;
+        const currentCandleStartTime = Math.floor(currentTime / intervalSeconds) * intervalSeconds;
+
+        if (lastCandleStartTime === currentCandleStartTime) {
+          // Same candle period - update the candle
+          lastCandle.close = latestPrice.last_price;
+          lastCandle.high = Math.max(lastCandle.high, latestPrice.last_price);
+          lastCandle.low = Math.min(lastCandle.low, latestPrice.last_price);
+          // Note: Don't update volume - realtime feed has cumulative daily volume, not per-candle volume
+        } else {
+          // New candle period started - create new candle
+          newData.push({
+            time: currentCandleStartTime,
+            open: latestPrice.last_price,
+            high: latestPrice.last_price,
+            low: latestPrice.last_price,
+            close: latestPrice.last_price,
+            volume: 0,
+          });
+        }
       }
 
       return newData;
     });
-  }, [prices, symbol]);
+  }, [prices, symbol, interval]);
 
   const handleSymbolSubmit = (e: React.FormEvent) => {
     e.preventDefault();

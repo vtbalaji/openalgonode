@@ -14,12 +14,10 @@
 
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { AdvancedTradingChart, ChartData, IndicatorConfig } from '@/components/AdvancedTradingChart';
 import { useRealtimePrice } from '@/hooks/useRealtimePrice';
-import { useOptionTickStream } from '@/hooks/useOptionTickStream';
-import { useTickToCandle } from '@/hooks/useTickToCandle';
 
 const TIMEFRAMES = [
   { label: '1m', value: 'minute' },
@@ -80,61 +78,19 @@ export default function StraddleChartPage() {
   // Helper function to calculate ATM strike
   const calculateAtmStrike = () => Math.round(spotPrice / 100) * 100;
 
-  // Stream option ticks for CE and PE
-  const { ticks: optionTicks, isConnected: tickStreamConnected } = useOptionTickStream({
-    symbol: baseSymbol,
-    expiry,
-    ceStrike: ceStrike || calculateAtmStrike(),
-    peStrike: peStrike || calculateAtmStrike(),
-    enabled: true,
-  });
+  // Note: Option tick streaming is not available for straddle charts on Fyers (no separate CE/PE quotes)
+  // The chart uses historical data polling instead for real-time updates
 
-  // Convert ticks to candles based on interval
-  let intervalMinutes = 60;
-  if (interval === 'minute') {
-    intervalMinutes = 1;
-  } else if (interval === 'day') {
-    intervalMinutes = 1440;
-  } else {
-    const match = interval.match(/^(\d+)minute$/);
-    if (match) {
-      intervalMinutes = parseInt(match[1]);
-    }
-  }
+  // Periodically refresh chart data (every 10 seconds for Fyers polling interval)
+  useEffect(() => {
+    if (!user || !chartData || chartData.length === 0) return;
 
-  // Memoize the transformed ticks to avoid unnecessary re-renders
-  const transformedTicks = useMemo(
-    () =>
-      optionTicks.map((tick) => ({
-        price: tick.cePrice + tick.pePrice, // Straddle premium = CE + PE
-        time: tick.time,
-      })),
-    [optionTicks]
-  );
+    const refreshInterval = setInterval(() => {
+      fetchChartData();
+    }, 10000); // Refresh every 10 seconds to match Fyers polling
 
-  const { currentCandle: latestTickCandle } = useTickToCandle(transformedTicks, {
-    intervalMinutes,
-    onCandleUpdate: (updatingCandle) => {
-      // Update the chart with the current incomplete candle
-      setChartData((prev) => {
-        if (prev.length === 0) return [updatingCandle as ChartData];
-
-        const updated = [...prev];
-        const lastIndex = updated.length - 1;
-
-        // Check if we should update the last candle or add a new one
-        if (updated[lastIndex].time === updatingCandle.time) {
-          // Same time period - update the last candle
-          updated[lastIndex] = updatingCandle as ChartData;
-        } else {
-          // New time period - add new candle
-          updated.push(updatingCandle as ChartData);
-        }
-
-        return updated;
-      });
-    },
-  });
+    return () => clearInterval(refreshInterval);
+  }, [user, chartData, interval, baseSymbol, expiry, lookbackDays]);
 
   // Set responsive chart height
   useEffect(() => {

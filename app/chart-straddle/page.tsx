@@ -32,7 +32,7 @@ const TIMEFRAMES = [
 export default function StraddleChartPage() {
   const { user } = useAuth();
   const [baseSymbol, setBaseSymbol] = useState('NIFTY');
-  const [expiry, setExpiry] = useState('13JAN'); // Tuesday - valid weekly expiry
+  const [expiry, setExpiry] = useState('JAN'); // Monthly expiry
   const [customSymbol, setCustomSymbol] = useState('');
   const [interval, setInterval] = useState('60minute');
   const [chartData, setChartData] = useState<ChartData[]>([]);
@@ -41,6 +41,8 @@ export default function StraddleChartPage() {
   const [chartHeight, setChartHeight] = useState(600);
   const [lookbackDays, setLookbackDays] = useState(25);
   const [spotPrice, setSpotPrice] = useState(25683);
+  const [ceStrike, setCeStrike] = useState<number | null>(null);
+  const [peStrike, setPeStrike] = useState<number | null>(null);
 
   const [indicators, setIndicators] = useState<IndicatorConfig>({
     sma: false,
@@ -179,8 +181,10 @@ export default function StraddleChartPage() {
     }));
   };
 
-  const atmStrike = Math.round(spotPrice / 100) * 100;
-  const displaySymbol = `${baseSymbol}${expiry}${atmStrike}`;
+  const calculateAtmStrike = () => Math.round(spotPrice / 100) * 100;
+  const displayCeStrike = ceStrike || calculateAtmStrike();
+  const displayPeStrike = peStrike || calculateAtmStrike();
+  const displaySymbol = `${baseSymbol}${expiry}(${displayCeStrike}CE/${displayPeStrike}PE)`;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-3 sm:p-4">
@@ -202,41 +206,25 @@ export default function StraddleChartPage() {
           </div>
         </div>
 
-        {/* Controls */}
+        {/* Controls - Compact Single Row */}
         <div className="bg-white rounded-lg shadow-md p-3 mb-3">
-          <div className="flex flex-wrap items-end gap-3">
-            {/* Base Symbol Input */}
-            <div className="flex-shrink-0">
-              <form onSubmit={handleSymbolSubmit} className="flex gap-2 items-center">
-                <input
-                  type="text"
-                  value={customSymbol}
-                  onChange={(e) => setCustomSymbol(e.target.value)}
-                  className="w-40 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm"
-                  placeholder="e.g., NIFTY, BANKNIFTY"
-                />
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm whitespace-nowrap"
-                >
-                  Load
-                </button>
-              </form>
-            </div>
-
+          <div className="flex flex-wrap items-center gap-3">
             {/* Expiry Selector */}
             <div className="flex-shrink-0">
               <select
                 value={expiry}
                 onChange={(e) => setExpiry(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm"
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm h-10"
               >
-                <option value="13JAN">13 JAN (Tuesday)</option>
-                <option value="15JAN">15 JAN (Thursday)</option>
-                <option value="20JAN">20 JAN (Tuesday)</option>
-                <option value="22JAN">22 JAN (Thursday)</option>
-                <option value="27JAN">27 JAN (Tuesday)</option>
-                <option value="29JAN">29 JAN (Thursday)</option>
+                <optgroup label="Weekly Expiries (Tuesdays)">
+                  <option value="13JAN">13 JAN (Tuesday)</option>
+                  <option value="20JAN">20 JAN (Tuesday)</option>
+                </optgroup>
+                <optgroup label="Monthly Expiries">
+                  <option value="JAN">JAN (Monthly)</option>
+                  <option value="FEB">FEB (Monthly)</option>
+                  <option value="MAR">MAR (Monthly)</option>
+                </optgroup>
               </select>
             </div>
 
@@ -245,7 +233,7 @@ export default function StraddleChartPage() {
               <select
                 value={interval}
                 onChange={(e) => setInterval(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm"
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm h-10"
               >
                 {TIMEFRAMES.map((tf) => (
                   <option key={tf.value} value={tf.value}>
@@ -255,11 +243,68 @@ export default function StraddleChartPage() {
               </select>
             </div>
 
-            {/* ATM Strike Display */}
-            <div className="flex-shrink-0 flex items-center gap-2">
-              <span className="text-xs text-gray-600 whitespace-nowrap font-semibold">ATM Strike:</span>
-              <span className="text-sm font-bold text-blue-600">{atmStrike}</span>
-              <span className="text-xs text-gray-500">(Spot: ₹{spotPrice.toFixed(0)})</span>
+            {/* CE Strike Selector */}
+            <div className="flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-600 whitespace-nowrap font-semibold">CE:</label>
+                <div className="flex items-center h-10 bg-white rounded-lg border border-gray-300 px-2">
+                  <button
+                    onClick={() => setCeStrike(prev => (prev ? prev - 100 : Math.round(spotPrice / 100) * 100 - 100))}
+                    className="px-2 py-0 text-red-600 hover:bg-red-50 rounded text-lg font-bold"
+                    title="Decrease CE strike by 100"
+                  >
+                    −
+                  </button>
+
+                  <input
+                    type="number"
+                    value={ceStrike || Math.round(spotPrice / 100) * 100}
+                    onChange={(e) => setCeStrike(e.target.value ? parseInt(e.target.value) : null)}
+                    step="100"
+                    className="w-20 text-center border-0 text-gray-900 text-sm font-semibold focus:outline-none bg-transparent"
+                  />
+
+                  <button
+                    onClick={() => setCeStrike(prev => (prev ? prev + 100 : Math.round(spotPrice / 100) * 100 + 100))}
+                    className="px-2 py-0 text-green-600 hover:bg-green-50 rounded text-lg font-bold"
+                    title="Increase CE strike by 100"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* PE Strike Selector */}
+            <div className="flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-600 whitespace-nowrap font-semibold">PE:</label>
+                <div className="flex items-center h-10 bg-white rounded-lg border border-gray-300 px-2">
+                  <button
+                    onClick={() => setPeStrike(prev => (prev ? prev - 100 : Math.round(spotPrice / 100) * 100 - 100))}
+                    className="px-2 py-0 text-red-600 hover:bg-red-50 rounded text-lg font-bold"
+                    title="Decrease PE strike by 100"
+                  >
+                    −
+                  </button>
+
+                  <input
+                    type="number"
+                    value={peStrike || Math.round(spotPrice / 100) * 100}
+                    onChange={(e) => setPeStrike(e.target.value ? parseInt(e.target.value) : null)}
+                    step="100"
+                    className="w-20 text-center border-0 text-gray-900 text-sm font-semibold focus:outline-none bg-transparent"
+                  />
+
+                  <button
+                    onClick={() => setPeStrike(prev => (prev ? prev + 100 : Math.round(spotPrice / 100) * 100 + 100))}
+                    className="px-2 py-0 text-green-600 hover:bg-green-50 rounded text-lg font-bold"
+                    title="Increase PE strike by 100"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* Lookback Days */}
@@ -271,7 +316,7 @@ export default function StraddleChartPage() {
                 max="100"
                 value={lookbackDays}
                 onChange={(e) => setLookbackDays(Math.max(1, Math.min(100, parseInt(e.target.value) || 50)))}
-                className="w-16 px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm"
+                className="w-16 px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm h-10"
               />
               <span className="text-xs text-gray-500">days</span>
             </div>

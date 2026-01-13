@@ -88,10 +88,10 @@ export function useOptionPriceStream({
       // Try monthly format: "JAN" (month only)
       const monthlyMatch = exp.match(/^([A-Z]{3})$/);
       if (monthlyMatch) {
-        const month = monthMap[monthlyMatch[1]] || '01';
+        const monthName = monthlyMatch[1];
         return {
-          numeric: `26${month}`, // e.g., "26JAN" - actually text, kept for compatibility
-          text: monthlyMatch[1], // e.g., "JAN"
+          numeric: `26${monthName}`, // e.g., "26JAN" for symbol building
+          text: monthName, // e.g., "JAN" for API call
         };
       }
 
@@ -106,80 +106,58 @@ export function useOptionPriceStream({
 
     console.log('[OPTION-PRICE-STREAM] Connecting to CE/PE prices:', { ceSymbol, peSymbol });
 
-    const url = `/api/stream/prices?symbols=${encodeURIComponent(symbolsParam)}&userId=${encodeURIComponent(user.uid)}`;
-    const eventSource = new EventSource(url);
-    eventSourceRef.current = eventSource;
-
-    eventSource.onopen = () => {
-      console.log('[OPTION-PRICE-STREAM] Connected to option price stream');
-      setIsConnected(true);
-      setError(null);
-    };
-
-    eventSource.onmessage = (event) => {
+    // Use direct polling instead of streaming for more reliability
+    // Poll /api/options/historical directly every 10 seconds for both CE and PE prices
+    const pollInterval = setInterval(async () => {
       try {
-        const message = JSON.parse(event.data);
+        const today = new Date();
+        const fromDate = new Date(today);
+        fromDate.setDate(fromDate.getDate() - 2);
 
-        if (message.type === 'connected') {
-          console.log('[OPTION-PRICE-STREAM] Connected to symbols:', message.symbols);
-        } else if (message.type === 'tick') {
-          const { symbol: tickSymbol, data } = message;
-          const lastPrice = data.last_price;
+        const fromStr = fromDate.toISOString().split('T')[0];
+        const toStr = today.toISOString().split('T')[0];
 
-          console.log(`[OPTION-PRICE-STREAM] Tick received for ${tickSymbol}: ${lastPrice}`);
+        console.log(`[OPTION-PRICE-STREAM] Polling for ${ceSymbol} and ${peSymbol}`);
 
-          // Update CE or PE price based on symbol
-          if (tickSymbol === ceSymbol) {
-            lastPricesRef.current.ce = lastPrice;
-            setCePrice(lastPrice);
-          } else if (tickSymbol === peSymbol) {
-            lastPricesRef.current.pe = lastPrice;
-            setPePrice(lastPrice);
+        const url = `/api/options/historical?symbol=${symbol}&expiry=${expiryFormats.text}&strike=${ceStrike || 25700}&spotPrice=25700&userId=${encodeURIComponent(user.uid)}&from=${fromStr}&to=${toStr}&interval=1`;
+
+        const response = await fetch(url);
+        if (response.ok) {
+          const result = await response.json();
+          const data = result.data || [];
+
+          if (data.length > 0) {
+            const latestCandle = data[data.length - 1];
+            const newCePrice = latestCandle.cePrice || 0;
+            const newPePrice = latestCandle.pePrice || 0;
+
+            if (lastPricesRef.current.ce !== newCePrice || lastPricesRef.current.pe !== newPePrice) {
+              lastPricesRef.current.ce = newCePrice;
+              lastPricesRef.current.pe = newPePrice;
+              setCePrice(newCePrice);
+              setPePrice(newPePrice);
+
+              const newPremium = newCePrice + newPePrice;
+              setPremium(newPremium);
+
+              console.log(`[OPTION-PRICE-STREAM] Updated - CE: ${newCePrice}, PE: ${newPePrice}, Premium: ${newPremium}`);
+            }
           }
-
-          // Update premium whenever either price changes
-          const newPremium = lastPricesRef.current.ce + lastPricesRef.current.pe;
-          setPremium(newPremium);
-
-          console.log(`[OPTION-PRICE-STREAM] Updated - CE: ${lastPricesRef.current.ce}, PE: ${lastPricesRef.current.pe}, Premium: ${newPremium}`);
-        } else if (message.type === 'heartbeat') {
-          // Keep-alive heartbeat - no action needed
+          setIsConnected(true);
+          setError(null);
+        } else {
+          console.warn('[OPTION-PRICE-STREAM] Failed to fetch option prices:', response.status);
+          setIsConnected(false);
         }
-      } catch (err) {
-        console.error('[OPTION-PRICE-STREAM] Error parsing message:', err);
+      } catch (err: any) {
+        console.error('[OPTION-PRICE-STREAM] Polling error:', err);
+        setError(err.message);
       }
-    };
-
-    eventSource.onerror = (err) => {
-      if (eventSource.readyState !== EventSource.OPEN) {
-        console.warn('[OPTION-PRICE-STREAM] Connection error - attempting reconnect');
-      }
-      setIsConnected(false);
-
-      let errorMsg = 'Connection error. Retrying...';
-      if (eventSource.readyState === EventSource.CLOSED) {
-        errorMsg = 'Server unavailable. Please check your internet connection.';
-      }
-
-      setError(errorMsg);
-
-      // Auto-reconnect after 5 seconds
-      if (typeof window !== 'undefined') {
-        setTimeout(() => {
-          if (eventSourceRef.current?.readyState === EventSource.CLOSED) {
-            console.log('[OPTION-PRICE-STREAM] Reconnecting to option price stream...');
-            eventSourceRef.current = new EventSource(url);
-          }
-        }, 5000);
-      }
-    };
+    }, 10000); // Poll every 10 seconds
 
     // Cleanup on unmount
     return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-      }
+      clearInterval(pollInterval);
     };
   }, [user, symbol, expiry, ceStrike, peStrike, enabled]);
 

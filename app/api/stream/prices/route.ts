@@ -253,7 +253,7 @@ export async function GET(request: NextRequest) {
                   }
                 }
 
-                url = `/api/options/historical?symbol=${baseSymbol}&expiry=${textExpiry}&strike=${strike}&spotPrice=25700&userId=${encodeURIComponent(userId)}&from=${fromStr}&to=${toStr}&interval=1`;
+                url = `/api/options/historical?symbol=${baseSymbol}&expiry=${textExpiry}&strike=${strike}&userId=${encodeURIComponent(userId)}&from=${fromStr}&to=${toStr}&interval=1`;
                 console.log(`[STREAM-PRICES] Option URL: ${url}`);
               } else {
                 // Regular equity/futures symbol
@@ -273,6 +273,8 @@ export async function GET(request: NextRequest) {
                   // Get the latest candle
                   const latestCandle = data[data.length - 1];
                   const close = latestCandle.close;
+
+                  console.log(`[STREAM-PRICES] ${symbol}: Got price ${close}`);
 
                   // Only send tick if price changed
                   if (!lastPrices[symbol] || lastPrices[symbol] !== close) {
@@ -296,9 +298,12 @@ export async function GET(request: NextRequest) {
                     })}\n\n`;
                     controller.enqueue(encoder.encode(tickMessage));
                   }
+                } else {
+                  console.warn(`[STREAM-PRICES] No data returned for ${symbol}`);
                 }
               } else {
-                console.warn(`[STREAM-PRICES] Failed to fetch ${symbol}: ${response.status}`);
+                const errorText = await response.text();
+                console.error(`[STREAM-PRICES] Failed to fetch ${symbol}: ${response.status}`, errorText);
               }
             }
           } catch (err) {

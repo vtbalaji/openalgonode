@@ -5,7 +5,7 @@ import VidyaTradingChart from '@/components/VidyaTradingChart';
 import { useRealtimePrice } from '@/hooks/useRealtimePrice';
 
 export default function VidyaChartPage() {
-  const [symbol, setSymbol] = useState('NIFTY26JANFUT');
+  const [symbol, setSymbol] = useState('NIFTY26FEBFUT');
   const [interval, setInterval] = useState('60minute');
   const [chartHeight, setChartHeight] = useState(600);
   const [lookbackDays, setLookbackDays] = useState(50);
@@ -60,16 +60,16 @@ export default function VidyaChartPage() {
     return () => window.removeEventListener('resize', updateChartHeight);
   }, []);
 
-  // Auto-refresh trigger - increments every 3 minutes
+  // Auto-refresh trigger - DISABLED (chart updates via real-time candle updates only)
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  useEffect(() => {
-    const interval = window.setInterval(() => {
-      setRefreshTrigger((prev) => prev + 1);
-    }, 3 * 60 * 1000); // 3 minutes in milliseconds
-
-    return () => window.clearInterval(interval);
-  }, []);
+  // useEffect(() => {
+  //   const interval = window.setInterval(() => {
+  //     setRefreshTrigger((prev) => prev + 1);
+  //   }, 3 * 60 * 1000); // 3 minutes in milliseconds
+  //
+  //   return () => window.clearInterval(interval);
+  // }, []);
 
   const toggleIndicator = (indicator: keyof typeof indicators) => {
     if (typeof indicators[indicator] === 'boolean') {
@@ -116,8 +116,12 @@ export default function VidyaChartPage() {
                 onChange={(e) => setSymbol(e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 text-gray-900"
               >
+                <option value="NIFTY26FEBFUT">NIFTY 26 Feb Futures</option>
+                <option value="NIFTY26MARFUT">NIFTY 26 Mar Futures</option>
                 <option value="NIFTY26JANFUT">NIFTY 26 Jan Futures</option>
                 <option value="NIFTY29JANFUT">NIFTY 29 Jan Futures</option>
+                <option value="BANKNIFTY26FEBFUT">BANK NIFTY 26 Feb Futures</option>
+                <option value="BANKNIFTY26MARFUT">BANK NIFTY 26 Mar Futures</option>
                 <option value="BANKNIFTY26JANFUT">BANK NIFTY 26 Jan Futures</option>
                 <option value="RELIANCE">RELIANCE</option>
                 <option value="TCS">TCS</option>
@@ -163,7 +167,7 @@ export default function VidyaChartPage() {
                 {isConnected ? '🟢 Live Data' : '🔴 Disconnected'}
               </div>
               <div className="px-3 py-1 rounded bg-blue-50 text-blue-700 text-xs font-medium">
-                🔄 Auto-refresh: 3 min
+                📊 Updates on candle change
               </div>
             </div>
           </div>

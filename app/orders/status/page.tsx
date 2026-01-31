@@ -523,7 +523,10 @@ export default function OrderStatusPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {positions.map((position, index) => (
-                    <tr key={`${position.tradingsymbol}-${position.exchange}-${index}`} className="hover:bg-gray-50">
+                    <tr
+                      key={`${position.tradingsymbol}-${position.exchange}-${index}`}
+                      className={`${position.quantity === 0 ? 'bg-gray-100 opacity-60' : ''} hover:bg-gray-50`}
+                    >
                       <td className="px-6 py-4 text-sm font-semibold text-gray-900">{position.tradingsymbol}</td>
                       <td className="px-6 py-4 text-sm text-gray-600">{position.exchange}</td>
                       <td className="px-6 py-4 text-sm font-semibold text-gray-900">{position.quantity}</td>

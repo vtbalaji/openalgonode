@@ -170,8 +170,8 @@ export default function VidyaTradingChart({
           rightOffset: 10, // Space on right side
           tickMarkFormatter: (time: any) => {
             // Format horizontal axis labels in IST
-            // Note: time is already in milliseconds from broker API
-            const date = new Date(time);
+            // Note: time is in Unix seconds, convert to milliseconds for Date object
+            const date = new Date(time * 1000);
             const timeStr = date.toLocaleTimeString('en-IN', {
               timeZone: 'Asia/Kolkata',
               hour: '2-digit',

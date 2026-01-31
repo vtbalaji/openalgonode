@@ -47,7 +47,7 @@ interface GreeksData {
 export default function GeekStraddleChartPage() {
   const { user } = useAuth();
   const baseSymbol = 'NIFTY'; // Fixed to NIFTY only
-  const [expiry, setExpiry] = useState('JAN');
+  const [expiry, setExpiry] = useState('FEB');
   const [interval, setInterval] = useState('60minute');
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [loading, setLoading] = useState(false);

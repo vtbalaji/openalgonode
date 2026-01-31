@@ -68,10 +68,31 @@ const SYMBOL_MAPPINGS: SymbolMap = {
     type: 'future',
   },
 
-  // Further ahead: Feb 26, 2026 expiry
-  NIFTY26FEBJFUT: {
-    zerodha: 'NIFTY26FEBJFUT',
-    fyers: 'NSE:NIFTY26FEBJFUT',
+  // Feb 26, 2026 expiry
+  NIFTY26FEBFUT: {
+    zerodha: 'NIFTY26FEBFUT',
+    fyers: 'NSE:NIFTY26FEBFUT',
+    type: 'future',
+  },
+
+  // Mar 26, 2026 expiry
+  NIFTY26MARFUT: {
+    zerodha: 'NIFTY26MARFUT',
+    fyers: 'NSE:NIFTY26MARFUT',
+    type: 'future',
+  },
+
+  // Bank NIFTY - Feb 26, 2026 expiry
+  BANKNIFTY26FEBFUT: {
+    zerodha: 'BANKNIFTY26FEBFUT',
+    fyers: 'NSE:BANKNIFTY26FEBFUT',
+    type: 'future',
+  },
+
+  // Bank NIFTY - Mar 26, 2026 expiry
+  BANKNIFTY26MARFUT: {
+    zerodha: 'BANKNIFTY26MARFUT',
+    fyers: 'NSE:BANKNIFTY26MARFUT',
     type: 'future',
   },
 };

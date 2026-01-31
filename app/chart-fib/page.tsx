@@ -84,6 +84,8 @@ export default function FibonacciChartPage() {
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900"
               >
                 <optgroup label="Futures Contracts">
+                  <option value="NIFTY26FEBFUT">NIFTY 26 Feb Futures</option>
+                  <option value="NIFTY26MARFUT">NIFTY 26 Mar Futures</option>
                   <option value="NIFTY26JANFUT">NIFTY 26 Jan Futures</option>
                   <option value="NIFTY29JANFUT">NIFTY 29 Jan Futures</option>
                 </optgroup>

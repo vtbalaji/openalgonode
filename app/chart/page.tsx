@@ -26,7 +26,7 @@ const TIMEFRAMES = [
 
 export default function ChartPage() {
   const { user } = useAuth();
-  const [symbol, setSymbol] = useState('NIFTY26JANFUT');
+  const [symbol, setSymbol] = useState('NIFTY26FEBFUT');
   const [customSymbol, setCustomSymbol] = useState('');
   const [interval, setInterval] = useState('60minute');
   const [chartData, setChartData] = useState<ChartData[]>([]);

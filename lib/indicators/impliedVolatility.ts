@@ -45,16 +45,16 @@ export interface IVSolverResult {
  * Default configuration for IV solver
  *
  * - maxIterations: 100 (usually converges in 5-10 iterations)
- * - tolerance: 0.0001 (0.01% price accuracy, very tight)
- * - initialGuess: 0.20 (20% volatility as starting point)
- * - minVolatility: 0.01 (1%, floor to prevent negative vol)
+ * - tolerance: 0.01 (relaxed to allow convergence, price accuracy in rupees)
+ * - initialGuess: 0.20 (20% volatility as starting point for NIFTY)
+ * - minVolatility: 0.05 (5%, floor to prevent unrealistic low vol)
  * - maxVolatility: 3.0 (300%, ceiling for extreme cases)
  */
 export const DEFAULT_IV_CONFIG: IVSolverConfig = {
   maxIterations: 100,
-  tolerance: 0.001, // Tighter tolerance for better accuracy (0.1% price difference)
-  initialGuess: 0.10, // Start at 10% for Indian index options
-  minVolatility: 0.01,
+  tolerance: 0.01, // Relaxed tolerance for convergence (allows 1 rupee price difference)
+  initialGuess: 0.20, // Start at 20% for Indian index options (more realistic)
+  minVolatility: 0.05, // 5% minimum
   maxVolatility: 3.0,
 };
 
@@ -170,15 +170,19 @@ export function solveImpliedVolatility(
 
     // Newton-Raphson update formula: σₙ₊₁ = σₙ - f(σₙ)/f'(σₙ)
     // where f(σ) = BS_Price(σ) - Market_Price
-    // and f'(σ) = dBS_Price/dσ = TRUE mathematical vega
+    // and f'(σ) = dBS_Price/dσ = vega
     //
-    // Our vega function returns: (S * N'(d1) * √T) / 100
-    // This is "per 1% change", meaning price changes by vegaValue when sigma changes by 1%
-    // For Newton-Raphson, we need TRUE derivative = vegaValue * 100
+    // Vega from Black-Scholes: S * N'(d1) * √T (this is per 1% vol change, in rupees)
+    // Our function divides by 100: vegaValue = (S * N'(d1) * √T) / 100
+    // So vegaValue * 100 gives us the true derivative for sigma in decimal form
     //
-    // However, raw Newton-Raphson can overshoot, so we add damping
-    // Damping factor = 0.5 means we take half steps (more stable convergence)
-    const dampingFactor = 0.5;
+    // For Newton-Raphson with sigma in decimal (0.20 = 20%):
+    // σ_step = priceDiff / (dPrice/dSigma) = priceDiff / (vega * 100)
+    //
+    // However, we divided vega by 100 in the function, so to get back the true derivative:
+    // True vega = vegaValue * 100
+    // σ_step = priceDiff / (vegaValue * 100) is CORRECT
+    const dampingFactor = 0.8;
     const rawStep = priceDiff / (vegaValue * 100);
     const dampedStep = rawStep * dampingFactor;
 

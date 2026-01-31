@@ -32,7 +32,7 @@ const TIMEFRAMES = [
 export default function StraddleChartPage() {
   const { user } = useAuth();
   const [baseSymbol, setBaseSymbol] = useState('NIFTY');
-  const [expiry, setExpiry] = useState('JAN'); // Monthly expiry
+  const [expiry, setExpiry] = useState('FEB'); // Monthly expiry
   const [customSymbol, setCustomSymbol] = useState('');
   const [interval, setInterval] = useState('60minute');
   const [chartData, setChartData] = useState<ChartData[]>([]);
@@ -75,7 +75,7 @@ export default function StraddleChartPage() {
 
   // Real-time price updates - for spot price display
   const { prices, isConnected } = useRealtimePrice({
-    symbols: [baseSymbol + '26JANFUT'], // Use futures to get spot price
+    symbols: [baseSymbol + '26FEBFUT'], // Use futures to get spot price
   });
 
   // Store latest CE/PE prices from chart data
@@ -178,7 +178,7 @@ export default function StraddleChartPage() {
 
   // Update spot price from real-time data
   useEffect(() => {
-    const futuresSymbol = baseSymbol + '26JANFUT';
+    const futuresSymbol = baseSymbol + '26FEBFUT';
     if (prices[futuresSymbol]?.last_price) {
       setSpotPrice(prices[futuresSymbol].last_price);
     }

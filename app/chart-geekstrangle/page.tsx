@@ -49,16 +49,25 @@ interface GreeksData {
 export default function GeekStrangleChartPage() {
   const { user } = useAuth();
   const baseSymbol = 'NIFTY'; // Fixed to NIFTY only
-  const [expiry, setExpiry] = useState('JAN');
+  const [expiry, setExpiry] = useState('FEB');
   const [interval, setInterval] = useState('60minute');
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [chartHeight, setChartHeight] = useState(600);
   const [lookbackDays, setLookbackDays] = useState(25);
-  const [spotPrice, setSpotPrice] = useState(25683);
-  const [ceStrike, setCeStrike] = useState<number | null>(25800);
-  const [peStrike, setPeStrike] = useState<number | null>(25800);
+  const [spotPrice, setSpotPrice] = useState(0); // Will be set by real-time price update
+  const [ceStrike, setCeStrike] = useState<number | null>(null);
+  const [peStrike, setPeStrike] = useState<number | null>(null);
+
+  // Auto-set ATM strikes when spotPrice changes (only if spotPrice is valid)
+  useEffect(() => {
+    if (spotPrice > 0 && (ceStrike === null || peStrike === null)) {
+      const atmStrike = Math.round(spotPrice / 100) * 100;
+      setCeStrike(atmStrike + 100);
+      setPeStrike(atmStrike - 100);
+    }
+  }, [spotPrice]);
   const [greeks, setGreeks] = useState<GreeksData | null>(null);
   const [ceGreeks, setCeGreeks] = useState<GreeksData | null>(null);
   const [peGreeks, setPeGreeks] = useState<GreeksData | null>(null);
@@ -756,7 +765,7 @@ export default function GeekStrangleChartPage() {
 
   // Load data on symbol or interval change (NOT on spotPrice - avoid constant refreshes)
   useEffect(() => {
-    if (!user || !expiry) return;
+    if (!user || !expiry || !ceStrike || !peStrike) return; // Wait for strikes to be set
 
     console.log('[GEEK-STRANGLE] useEffect triggered - fetching chart data');
     fetchChartData();

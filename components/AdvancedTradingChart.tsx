@@ -215,17 +215,19 @@ export function AdvancedTradingChart({
         borderColor: '#d1d4dc',
         visible: true,
         scaleMargins: {
-          top: 0.1,
-          bottom: 0.2,
+          top: 0.05,
+          bottom: 0.05,
         },
+        autoScale: true,
       },
       leftPriceScale: {
         borderColor: '#d1d4dc',
         visible: true,
         scaleMargins: {
-          top: 0.1,
-          bottom: 0.2,
+          top: 0.05,
+          bottom: 0.05,
         },
+        autoScale: true,
       },
       timeScale: {
         borderColor: '#d1d4dc',
@@ -269,32 +271,33 @@ export function AdvancedTradingChart({
     volumeSeriesRef.current = volumeSeries;
 
     mainChart.priceScale('').applyOptions({
-      scaleMargins: { top: 0.8, bottom: 0 },
+      scaleMargins: { top: 0.7, bottom: 0 },
+      autoScale: true,
     });
 
     // Configure custom price scales for Greeks (0-100 normalized values)
     mainChart.priceScale('theta-scale').applyOptions({
       autoScale: true,
       mode: 0,
-      scaleMargins: { top: 0.1, bottom: 0.2 },
+      scaleMargins: { top: 0.05, bottom: 0.05 },
     });
 
     mainChart.priceScale('vega-scale').applyOptions({
       autoScale: true,
       mode: 0,
-      scaleMargins: { top: 0.1, bottom: 0.2 },
+      scaleMargins: { top: 0.05, bottom: 0.05 },
     });
 
     mainChart.priceScale('gamma-scale').applyOptions({
       autoScale: true,
       mode: 0,
-      scaleMargins: { top: 0.1, bottom: 0.2 },
+      scaleMargins: { top: 0.05, bottom: 0.05 },
     });
 
     mainChart.priceScale('delta-scale').applyOptions({
       autoScale: true,
       mode: 0,
-      scaleMargins: { top: 0.1, bottom: 0.2 },
+      scaleMargins: { top: 0.05, bottom: 0.05 },
     });
 
     // RSI Chart
@@ -1263,9 +1266,13 @@ export function AdvancedTradingChart({
       }
     }
 
-    // Fit content
+    // Fit content and auto-scale price
     if (mainChartInstanceRef.current) {
       mainChartInstanceRef.current.timeScale().fitContent();
+      // Force price scale to auto-fit the data
+      mainChartInstanceRef.current.priceScale('right').applyOptions({
+        autoScale: true,
+      });
     }
   }, [data, indicators.showSignals, indicators.fastEma, indicators.slowEma, indicators.showConsolidation, indicators.volumeProfileVisible, volumeProfileVisibleData, consolidationBoxes, breakoutSignals, visibleRange, greeksData, showGreeks]);
 

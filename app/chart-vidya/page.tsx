@@ -3,9 +3,11 @@
 import { useState, useEffect } from 'react';
 import VidyaTradingChart from '@/components/VidyaTradingChart';
 import { useRealtimePrice } from '@/hooks/useRealtimePrice';
+import { useMarketConfig } from '@/hooks/useMarketConfig';
 
 export default function VidyaChartPage() {
-  const [symbol, setSymbol] = useState('NIFTY26FEBFUT');
+  const { config: marketConfig } = useMarketConfig();
+  const [symbol, setSymbol] = useState('NIFTY' + marketConfig.currentFuture);
   const [interval, setInterval] = useState('60minute');
   const [chartHeight, setChartHeight] = useState(600);
   const [lookbackDays, setLookbackDays] = useState(50);
@@ -116,16 +118,25 @@ export default function VidyaChartPage() {
                 onChange={(e) => setSymbol(e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 text-gray-900"
               >
-                <option value="NIFTY26FEBFUT">NIFTY 26 Feb Futures</option>
-                <option value="NIFTY26MARFUT">NIFTY 26 Mar Futures</option>
-                <option value="NIFTY26JANFUT">NIFTY 26 Jan Futures</option>
-                <option value="NIFTY29JANFUT">NIFTY 29 Jan Futures</option>
-                <option value="BANKNIFTY26FEBFUT">BANK NIFTY 26 Feb Futures</option>
-                <option value="BANKNIFTY26MARFUT">BANK NIFTY 26 Mar Futures</option>
-                <option value="BANKNIFTY26JANFUT">BANK NIFTY 26 Jan Futures</option>
-                <option value="RELIANCE">RELIANCE</option>
-                <option value="TCS">TCS</option>
-                <option value="INFY">INFY</option>
+                <optgroup label="NIFTY Futures (Current + Next 3 Months)">
+                  {marketConfig.monthlyExpiries.map((exp) => (
+                    <option key={`NIFTY-${exp.value}`} value={`NIFTY26${exp.value}FUT`}>
+                      NIFTY 26 {exp.value} Futures
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="BANKNIFTY Futures (Current + Next 3 Months)">
+                  {marketConfig.monthlyExpiries.map((exp) => (
+                    <option key={`BANKNIFTY-${exp.value}`} value={`BANKNIFTY26${exp.value}FUT`}>
+                      BANKNIFTY 26 {exp.value} Futures
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Stocks">
+                  <option value="RELIANCE">RELIANCE</option>
+                  <option value="TCS">TCS</option>
+                  <option value="INFY">INFY</option>
+                </optgroup>
               </select>
             </div>
 
@@ -304,9 +315,10 @@ export default function VidyaChartPage() {
             </div>
 
             <p className="mt-3 text-xs text-gray-600">
-              💡 <strong>VIDYA:</strong> Adaptive moving average using Chande Momentum Oscillator for dynamic smoothing.
-              <strong> CMO:</strong> Momentum measure (-100 to +100). <strong>ATR Bands:</strong> Volatility-based trend zones.
-              <strong> Signals:</strong> Buy when trend crosses above upper band with positive momentum.
+              💡 <strong>VIDYA (Volume-Weighted):</strong> Adaptive MA combining CMO (price momentum 70%) + Volume Delta (volume confirmation 30%).
+              <strong> Formula:</strong> Alpha = F × (0.7 × |CMO|/100 + 0.3 × VolumeFactor). Reacts faster when BOTH price AND volume confirm the move.
+              <strong> ATR Bands:</strong> Volatility zones for trend detection.
+              <strong> Signals:</strong> Buy when price crosses above upper band with strong volume confirmation.
             </p>
           </div>
         </div>

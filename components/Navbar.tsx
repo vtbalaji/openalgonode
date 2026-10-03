@@ -22,7 +22,7 @@ export function Navbar() {
   return (
     <nav className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
       <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-14 sm:h-16">
+        <div className="flex flex-wrap sm:flex-nowrap justify-between items-center min-h-14 sm:h-16 gap-y-1 py-2 sm:py-0">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2 sm:space-x-3 hover:opacity-80 transition-opacity min-w-0">
             <Image
@@ -38,9 +38,10 @@ export function Navbar() {
           </Link>
 
           {/* Auth Buttons */}
-          <div className="flex items-center gap-2 sm:gap-3 md:space-x-4 ml-4">
+          <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-3 md:space-x-4 w-full sm:w-auto sm:ml-4 min-h-11 shrink-0">
             {user ? (
               <>
+                <Link href="/gamma-exposure" className="text-xs sm:text-sm text-gray-700 hover:text-gray-900 font-medium">Gamma Exposure</Link>
                 <Link
                   href="/"
                   className="text-xs sm:text-sm md:text-base text-gray-700 hover:text-gray-900 font-medium transition-colors"

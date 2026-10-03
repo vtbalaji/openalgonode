@@ -82,6 +82,41 @@ const SYMBOL_MAPPINGS: SymbolMap = {
     type: 'future',
   },
 
+  // Apr 26, 2026 expiry
+  NIFTY26APRFUT: {
+    zerodha: 'NIFTY26APRFUT',
+    fyers: 'NSE:NIFTY26APRFUT',
+    type: 'future',
+  },
+
+  // May 26, 2026 expiry
+  NIFTY26MAYFUT: {
+    zerodha: 'NIFTY26MAYFUT',
+    fyers: 'NSE:NIFTY26MAYFUT',
+    type: 'future',
+  },
+
+  // Jun 26, 2026 expiry
+  NIFTY26JUNFUT: {
+    zerodha: 'NIFTY26JUNFUT',
+    fyers: 'NSE:NIFTY26JUNFUT',
+    type: 'future',
+  },
+
+  // Jul 26, 2026 expiry
+  NIFTY26JULFUT: {
+    zerodha: 'NIFTY26JULFUT',
+    fyers: 'NSE:NIFTY26JULFUT',
+    type: 'future',
+  },
+
+  // Aug 26, 2026 expiry
+  NIFTY26AUGFUT: {
+    zerodha: 'NIFTY26AUGFUT',
+    fyers: 'NSE:NIFTY26AUGFUT',
+    type: 'future',
+  },
+
   // Bank NIFTY - Feb 26, 2026 expiry
   BANKNIFTY26FEBFUT: {
     zerodha: 'BANKNIFTY26FEBFUT',
@@ -93,6 +128,41 @@ const SYMBOL_MAPPINGS: SymbolMap = {
   BANKNIFTY26MARFUT: {
     zerodha: 'BANKNIFTY26MARFUT',
     fyers: 'NSE:BANKNIFTY26MARFUT',
+    type: 'future',
+  },
+
+  // Bank NIFTY - Apr 26, 2026 expiry
+  BANKNIFTY26APRFUT: {
+    zerodha: 'BANKNIFTY26APRFUT',
+    fyers: 'NSE:BANKNIFTY26APRFUT',
+    type: 'future',
+  },
+
+  // Bank NIFTY - May 26, 2026 expiry
+  BANKNIFTY26MAYFUT: {
+    zerodha: 'BANKNIFTY26MAYFUT',
+    fyers: 'NSE:BANKNIFTY26MAYFUT',
+    type: 'future',
+  },
+
+  // Bank NIFTY - Jun 26, 2026 expiry
+  BANKNIFTY26JUNFUT: {
+    zerodha: 'BANKNIFTY26JUNFUT',
+    fyers: 'NSE:BANKNIFTY26JUNFUT',
+    type: 'future',
+  },
+
+  // Bank NIFTY - Jul 26, 2026 expiry
+  BANKNIFTY26JULFUT: {
+    zerodha: 'BANKNIFTY26JULFUT',
+    fyers: 'NSE:BANKNIFTY26JULFUT',
+    type: 'future',
+  },
+
+  // Bank NIFTY - Aug 26, 2026 expiry
+  BANKNIFTY26AUGFUT: {
+    zerodha: 'BANKNIFTY26AUGFUT',
+    fyers: 'NSE:BANKNIFTY26AUGFUT',
     type: 'future',
   },
 };

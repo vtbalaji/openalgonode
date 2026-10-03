@@ -3,13 +3,23 @@
 import { useState, useEffect } from 'react';
 import FibonacciTradingChart from '@/components/FibonacciTradingChart';
 import { useRealtimePrice } from '@/hooks/useRealtimePrice';
+import { useMarketConfig } from '@/hooks/useMarketConfig';
 
 export default function FibonacciChartPage() {
-  const [symbol, setSymbol] = useState('NIFTY26JANFUT');
+  const { config: marketConfig, loading: configLoading } = useMarketConfig();
+
+  const [symbol, setSymbol] = useState('NIFTY' + marketConfig.currentFuture);
   const [interval, setInterval] = useState('60minute');
   const [chartHeight, setChartHeight] = useState(600);
   const [lookbackDays, setLookbackDays] = useState(50);
   const userId = 'ZnT1kjZKElV6NJte2wgoDU5dF8j2';
+
+  // Update symbol when market config loads
+  useEffect(() => {
+    if (!configLoading && marketConfig.currentFuture) {
+      setSymbol('NIFTY' + marketConfig.currentFuture);
+    }
+  }, [configLoading, marketConfig.currentFuture]);
 
   const [indicators, setIndicators] = useState({
     // Fibonacci Tools
@@ -63,13 +73,34 @@ export default function FibonacciChartPage() {
     }));
   };
 
+  if (configLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4 flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent"></div>
+          <p className="mt-4 text-gray-600">Loading market configuration...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">Fibonacci Trading Chart</h1>
-          <p className="text-gray-600">Advanced Fibonacci retracement & extension analysis with real-time data</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-800 mb-2">Fibonacci Trading Chart</h1>
+              <p className="text-gray-600">
+                Advanced Fibonacci retracement & extension analysis with real-time data
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Using: {marketConfig.currentFuture} |
+                <a href="/broker/config" className="ml-1 text-blue-600 hover:underline">⚙️ Manage Config</a>
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* Controls */}
@@ -83,11 +114,17 @@ export default function FibonacciChartPage() {
                 onChange={(e) => setSymbol(e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900"
               >
-                <optgroup label="Futures Contracts">
-                  <option value="NIFTY26FEBFUT">NIFTY 26 Feb Futures</option>
-                  <option value="NIFTY26MARFUT">NIFTY 26 Mar Futures</option>
-                  <option value="NIFTY26JANFUT">NIFTY 26 Jan Futures</option>
-                  <option value="NIFTY29JANFUT">NIFTY 29 Jan Futures</option>
+                <optgroup label="Current Futures (from config)">
+                  <option value={'NIFTY' + marketConfig.currentFuture}>
+                    NIFTY {marketConfig.currentFuture} (Current)
+                  </option>
+                </optgroup>
+                <optgroup label="Futures Contracts (Next 3 Months)">
+                  {marketConfig.monthlyExpiries.map((exp) => (
+                    <option key={exp.value} value={`NIFTY26${exp.value}FUT`}>
+                      NIFTY 26 {exp.value} Futures
+                    </option>
+                  ))}
                 </optgroup>
                 <optgroup label="Stocks">
                   <option value="RELIANCE">RELIANCE</option>

@@ -13,6 +13,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { AdvancedTradingChart, ChartData, IndicatorConfig } from '@/components/AdvancedTradingChart';
 import { useRealtimePrice } from '@/hooks/useRealtimePrice';
+import { useMarketConfig } from '@/hooks/useMarketConfig';
 
 const TIMEFRAMES = [
   { label: '1m', value: 'minute' },
@@ -26,7 +27,8 @@ const TIMEFRAMES = [
 
 export default function ChartPage() {
   const { user } = useAuth();
-  const [symbol, setSymbol] = useState('NIFTY26FEBFUT');
+  const { config: marketConfig, loading: configLoading } = useMarketConfig();
+  const [symbol, setSymbol] = useState('NIFTY' + (marketConfig.currentFuture || '27FEBFUT'));
   const [customSymbol, setCustomSymbol] = useState('');
   const [interval, setInterval] = useState('60minute');
   const [chartData, setChartData] = useState<ChartData[]>([]);

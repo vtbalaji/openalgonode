@@ -106,10 +106,10 @@ function calculateATR(data: ChartData[], period: number = 14): ATRData {
 }
 
 /**
- * Calculate VIDYA (Variable Index Dynamic Average)
- * Uses dynamic alpha based on CMO momentum
- * Alpha = F × |CMO| / 100, where F = 2 / (period + 1)
- * This gives more weight when momentum is strong
+ * Calculate Volume-Weighted VIDYA (Variable Index Dynamic Average)
+ * Combines CMO (price momentum) + Volume Delta (volume momentum)
+ * Alpha = F × (0.7 × |CMO|/100 + 0.3 × VolumeFactor)
+ * This gives more weight when BOTH price momentum AND volume confirm the move
  */
 function calculateVIDYA(
   data: ChartData[],
@@ -123,13 +123,21 @@ function calculateVIDYA(
 
   const cmo = calculateCMO(data, period);
 
+  // Calculate volume delta for the same period
+  const { buyVolume, sellVolume, netDelta } = calculateVolumeDelta(data, period);
+  const totalVolume = buyVolume + sellVolume;
+
+  // Volume Factor: Normalized volume delta (0 to 1)
+  // Higher when volume confirms the price direction
+  const volumeFactor = totalVolume > 0 ? Math.abs(netDelta) / totalVolume : 0;
+
   // F = 2 / (period + 1) is the standard EMA smoothing factor
   const F = 2 / (period + 1);
 
-  // Alpha = F × |CMO| / 100
-  // CMO is -100 to +100, so |CMO|/100 is 0 to 1
-  // Alpha ranges from 0 (no momentum) to F (maximum momentum)
-  const alpha = F * (Math.abs(cmo) / 100);
+  // Combined Alpha: 70% price momentum (CMO) + 30% volume confirmation
+  // This ensures VIDYA reacts faster when BOTH price AND volume confirm the trend
+  const cmoFactor = Math.abs(cmo) / 100; // 0 to 1
+  const alpha = F * (0.7 * cmoFactor + 0.3 * volumeFactor);
 
   const currentClose = data[data.length - 1].close;
 
@@ -143,7 +151,7 @@ function calculateVIDYA(
   }
 
   // VIDYA = previousVIDYA + alpha * (close - previousVIDYA)
-  // This is equivalent to: VIDYA = close * alpha + previousVIDYA * (1 - alpha)
+  // Higher alpha = faster response to price changes
   const vidya = previousVIDYA + alpha * (currentClose - previousVIDYA);
 
   return { vidya, cmo, alpha };

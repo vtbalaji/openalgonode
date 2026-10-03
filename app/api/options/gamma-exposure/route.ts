@@ -1,0 +1,31 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { adminAuth } from '@/lib/firebaseAdmin';
+import { getCachedBrokerConfig } from '@/lib/brokerConfigUtils';
+import { decryptData } from '@/lib/encryptionUtils';
+import { fetchFyersGammaChain } from '@/lib/marketData/fyersGammaChain';
+import { calculateGammaExposure, type GammaSnapshot } from '@/lib/gammaExposure';
+
+const cache = new Map<string, { until: number; value: GammaSnapshot }>();
+export async function GET(request: NextRequest) {
+  const token = request.headers.get('authorization')?.match(/^Bearer (.+)$/)?.[1];
+  if (!token) return NextResponse.json({ error: 'Please sign in.' }, { status: 401 });
+  let uid: string;
+  try { uid = (await adminAuth.verifyIdToken(token)).uid; }
+  catch { return NextResponse.json({ error: 'Your session expired. Please sign in again.' }, { status: 401 }); }
+  const expiry = request.nextUrl.searchParams.get('expiry') ?? '';
+  if (expiry && !/^\d{10}$/.test(expiry)) return NextResponse.json({ error: 'Invalid expiry.' }, { status: 400 });
+  const key = `${uid}:${expiry}`;
+  const cached = cache.get(key);
+  if (cached && cached.until > Date.now()) return NextResponse.json(cached.value, { headers: { 'Cache-Control': 'no-store' } });
+  try {
+    const config = await getCachedBrokerConfig(uid, 'fyers');
+    if (!config?.accessToken) return NextResponse.json({ error: 'Connect FYERS in Broker Settings to load NIFTY gamma exposure.' }, { status: 409 });
+    const chain = await fetchFyersGammaChain(`${decryptData(config.apiKey)}:${decryptData(config.accessToken)}`, expiry);
+    const value: GammaSnapshot = { ...calculateGammaExposure(chain.legs, chain.spot, chain.expiryMs), spot: chain.spot, expiry: chain.expiry, expiries: chain.expiries, fetchedAt: new Date().toISOString() };
+    for (const [k, v] of cache) if (v.until <= Date.now()) cache.delete(k);
+    cache.set(key, { until: Date.now() + 60000, value });
+    return NextResponse.json(value, { headers: { 'Cache-Control': 'no-store' } });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unable to load gamma exposure.' }, { status: 502 });
+  }
+}

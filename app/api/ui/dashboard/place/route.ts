@@ -72,13 +72,21 @@ export async function POST(request: NextRequest) {
     // Transform field names for Fyers if needed
     if (broker === 'fyers') {
       // Fyers uses different field names: side (not action), qty (not quantity), type (not pricetype), productType (not product)
+      // Product type mapping: MIS -> INTRADAY, NRML -> MARGIN, CNC -> CNC
+      let fyersProductType = order.product;
+      if (order.product === 'MIS') {
+        fyersProductType = 'INTRADAY';
+      } else if (order.product === 'NRML') {
+        fyersProductType = 'MARGIN';
+      }
+
       brokerPayload = {
         userId,
         symbol: order.symbol,
         side: order.action,  // BUY/SELL
         qty: order.quantity,
         type: order.pricetype,  // MARKET/LIMIT
-        productType: order.product === 'MIS' ? 'INTRADAY' : order.product,  // Convert MIS to INTRADAY for Fyers
+        productType: fyersProductType,
         price: order.price,
         stopPrice: order.trigger_price,
         symboltoken: order.symboltoken,

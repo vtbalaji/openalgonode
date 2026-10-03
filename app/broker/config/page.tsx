@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getAllBrokers, getBrokerConfig } from '@/lib/brokerConfig';
 import { BrokerAuthStatus } from '@/components/BrokerAuthStatus';
+import { MarketConfigSection } from '@/components/MarketConfigSection';
 
 export default function BrokerConfigPage() {
   const { user, loading } = useAuth();
@@ -24,6 +25,7 @@ export default function BrokerConfigPage() {
   const [isFetching, setIsFetching] = useState(true);
   const [credentialsExist, setCredentialsExist] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  const [activeTab, setActiveTab] = useState<'broker' | 'market'>('broker');
 
   const brokerConfig = selectedBroker ? getBrokerConfig(selectedBroker) : null;
   const allBrokers = getAllBrokers();
@@ -349,7 +351,36 @@ export default function BrokerConfigPage() {
       </header>
 
       {/* Main Content */}
-      <main className="mx-auto max-w-2xl px-4 py-12 sm:px-6 lg:px-8">
+      <main className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:px-8">
+        {/* Tabs */}
+        <div className="mb-6 border-b border-gray-200">
+          <nav className="-mb-px flex space-x-8">
+            <button
+              onClick={() => setActiveTab('broker')}
+              className={`whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium ${
+                activeTab === 'broker'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+              }`}
+            >
+              🔐 Broker Authentication
+            </button>
+            <button
+              onClick={() => setActiveTab('market')}
+              className={`whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium ${
+                activeTab === 'market'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+              }`}
+            >
+              📊 Market Configuration
+            </button>
+          </nav>
+        </div>
+
+        {/* Broker Authentication Tab */}
+        {activeTab === 'broker' && (
+          <div>
         {/* Status Card (Green Box) */}
         {selectedBroker && (
           <div className="mb-8">
@@ -586,6 +617,13 @@ export default function BrokerConfigPage() {
               </form>
             </details>
           </div>
+        )}
+        </div>
+        )}
+
+        {/* Market Configuration Tab */}
+        {activeTab === 'market' && (
+          <MarketConfigSection />
         )}
       </main>
     </div>

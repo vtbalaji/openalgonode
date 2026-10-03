@@ -23,6 +23,7 @@ import { useRealtimePrice } from '@/hooks/useRealtimePrice';
 import { useOptionTickStream, type OptionTick } from '@/hooks/useOptionTickStream';
 import { useTickToCandle, type Candle } from '@/hooks/useTickToCandle';
 import { calculateStrangleGreeks, calculateOptionsGreeks, type OptionsGreeksInput } from '@/lib/indicators/optionsGreeks';
+import { useMarketConfig } from '@/hooks/useMarketConfig';
 
 const TIMEFRAMES = [
   { label: '1m', value: 'minute' },
@@ -48,26 +49,40 @@ interface GreeksData {
 
 export default function GeekStrangleChartPage() {
   const { user } = useAuth();
+  const { config: marketConfig, loading: configLoading } = useMarketConfig();
+
   const baseSymbol = 'NIFTY'; // Fixed to NIFTY only
-  const [expiry, setExpiry] = useState('FEB');
+  const [expiry, setExpiry] = useState(marketConfig.defaultExpiry);
   const [interval, setInterval] = useState('60minute');
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [chartHeight, setChartHeight] = useState(600);
   const [lookbackDays, setLookbackDays] = useState(25);
-  const [spotPrice, setSpotPrice] = useState(0); // Will be set by real-time price update
-  const [ceStrike, setCeStrike] = useState<number | null>(null);
-  const [peStrike, setPeStrike] = useState<number | null>(null);
+  const [spotPrice, setSpotPrice] = useState(marketConfig.defaultSpotPrice);
+  const [ceStrike, setCeStrike] = useState<number | null>(
+    Math.round(marketConfig.defaultSpotPrice / 100) * 100 + marketConfig.defaultCeOffset
+  );
+  const [peStrike, setPeStrike] = useState<number | null>(
+    Math.round(marketConfig.defaultSpotPrice / 100) * 100 + marketConfig.defaultPeOffset
+  );
 
-  // Auto-set ATM strikes when spotPrice changes (only if spotPrice is valid)
+  // Auto-update strikes when spotPrice changes significantly
   useEffect(() => {
-    if (spotPrice > 0 && (ceStrike === null || peStrike === null)) {
-      const atmStrike = Math.round(spotPrice / 100) * 100;
-      setCeStrike(atmStrike + 100);
-      setPeStrike(atmStrike - 100);
+    if (spotPrice > 0 && spotPrice !== marketConfig.defaultSpotPrice) {
+      const atmStrike = Math.round(spotPrice / marketConfig.strikeStep) * marketConfig.strikeStep;
+      const defaultCe = Math.round(marketConfig.defaultSpotPrice / 100) * 100 + marketConfig.defaultCeOffset;
+      const defaultPe = Math.round(marketConfig.defaultSpotPrice / 100) * 100 + marketConfig.defaultPeOffset;
+
+      // Only auto-update if strikes are still at default or very far from ATM
+      if (ceStrike === defaultCe || peStrike === defaultPe ||
+          (ceStrike && Math.abs(ceStrike - atmStrike) > 1000) ||
+          (peStrike && Math.abs(peStrike - atmStrike) > 1000)) {
+        setCeStrike(atmStrike + marketConfig.defaultCeOffset);
+        setPeStrike(atmStrike + marketConfig.defaultPeOffset);
+      }
     }
-  }, [spotPrice]);
+  }, [spotPrice, marketConfig]);
   const [greeks, setGreeks] = useState<GreeksData | null>(null);
   const [ceGreeks, setCeGreeks] = useState<GreeksData | null>(null);
   const [peGreeks, setPeGreeks] = useState<GreeksData | null>(null);
@@ -104,7 +119,10 @@ export default function GeekStrangleChartPage() {
     vega: false,
     gamma: false,
     delta: false,
+    iv: false, // Implied Volatility overlay
   });
+
+  const [ivDetailsExpanded, setIvDetailsExpanded] = useState(false); // IV details expansion state
 
   const [spotPriceHistory, setSpotPriceHistory] = useState<number[]>([]);
   const [showCE, setShowCE] = useState(true);
@@ -117,7 +135,7 @@ export default function GeekStrangleChartPage() {
 
   // Real-time price updates - for spot price display
   const { prices, isConnected } = useRealtimePrice({
-    symbols: [baseSymbol + '26JANFUT'], // Use futures to get spot price
+    symbols: [baseSymbol + marketConfig.currentFuture],
   });
 
   // Stream option ticks for both CE and PE
@@ -191,11 +209,11 @@ export default function GeekStrangleChartPage() {
 
   // Update spot price from real-time data
   useEffect(() => {
-    const futuresSymbol = baseSymbol + '26JANFUT';
+    const futuresSymbol = baseSymbol + marketConfig.currentFuture;
     if (prices[futuresSymbol]?.last_price) {
       setSpotPrice(prices[futuresSymbol].last_price);
     }
-  }, [prices, baseSymbol]);
+  }, [prices, baseSymbol, marketConfig.currentFuture]);
 
   // Filter chart data based on CE/PE visibility
   const filteredChartData = useMemo(() => {
@@ -448,6 +466,28 @@ export default function GeekStrangleChartPage() {
     setError(null);
 
     try {
+      // Fetch historical spot prices for IV calculation (200 days)
+      const idToken = await user.getIdToken();
+      let historicalSpotPrices: number[] = [];
+
+      try {
+        const spotHistoryResponse = await fetch(`/api/options/spot-history?symbol=NIFTY50&days=200`, {
+          headers: {
+            'Authorization': `Bearer ${idToken}`,
+          },
+        });
+
+        if (spotHistoryResponse.ok) {
+          const spotHistoryData = await spotHistoryResponse.json();
+          historicalSpotPrices = spotHistoryData.closingPrices || [];
+          console.log(`[GEEK-STRANGLE] Fetched ${historicalSpotPrices.length} days of historical spot prices for IV calculation`);
+        } else {
+          console.warn('[GEEK-STRANGLE] Failed to fetch historical spot prices, IV calculation will use defaults');
+        }
+      } catch (error) {
+        console.warn('[GEEK-STRANGLE] Error fetching historical spot prices:', error);
+      }
+
       // Use UTC dates to avoid timezone issues
       const today = new Date();
       // Convert to UTC date string (YYYY-MM-DD)
@@ -467,6 +507,12 @@ export default function GeekStrangleChartPage() {
       const ceStrikeValue = ceStrike || atmStrike;
       const peStrikeValue = peStrike || atmStrike;
 
+      // Validate strikes using config
+      if (ceStrikeValue < marketConfig.validStrikeMin || ceStrikeValue > marketConfig.validStrikeMax ||
+          peStrikeValue < marketConfig.validStrikeMin || peStrikeValue > marketConfig.validStrikeMax) {
+        throw new Error(`Invalid strikes: CE=${ceStrikeValue}, PE=${peStrikeValue}. Valid range: ${marketConfig.validStrikeMin}-${marketConfig.validStrikeMax}. Current spot: ${spotPrice}`);
+      }
+
       // For strangle, we need to fetch combined data at each strike
       // Then extract individual CE/PE prices
       // Fetch combined data for CE strike (contains both CE and PE at this strike)
@@ -482,6 +528,7 @@ export default function GeekStrangleChartPage() {
 
       const ceStrikeFetchUrl = '/api/options/historical?' + ceStrikeParams.toString();
       console.log('[GEEK-STRANGLE] Fetching CE strike data:', ceStrikeFetchUrl);
+      console.log('[GEEK-STRANGLE] Parameters:', { symbol: baseSymbol, expiry, ceStrike: ceStrikeValue, peStrike: peStrikeValue, spotPrice });
 
       let ceStrikeResult, peStrikeResult;
 
@@ -517,9 +564,19 @@ export default function GeekStrangleChartPage() {
         ]);
 
         if (!ceStrikeResponse.ok || !peStrikeResponse.ok) {
-          const ceError = ceStrikeResponse.ok ? null : await ceStrikeResponse.json();
-          const peError = peStrikeResponse.ok ? null : await peStrikeResponse.json();
-          throw new Error(`CE Strike Data: ${ceError?.error || 'OK'}, PE Strike Data: ${peError?.error || 'OK'}`);
+          let ceError, peError;
+          try {
+            ceError = ceStrikeResponse.ok ? null : await ceStrikeResponse.json();
+          } catch {
+            ceError = { error: `HTTP ${ceStrikeResponse.status}` };
+          }
+          try {
+            peError = peStrikeResponse.ok ? null : await peStrikeResponse.json();
+          } catch {
+            peError = { error: `HTTP ${peStrikeResponse.status}` };
+          }
+          console.error('[GEEK-STRANGLE] API Error:', { ceError, peError, ceUrl: ceStrikeFetchUrl, peUrl: peStrikeFetchUrl });
+          throw new Error(`Option data fetch failed. CE (${ceStrikeValue}): ${ceError?.error || ceStrikeResponse.statusText}, PE (${peStrikeValue}): ${peError?.error || peStrikeResponse.statusText}`);
         }
 
         ceStrikeResult = await ceStrikeResponse.json();
@@ -610,9 +667,8 @@ export default function GeekStrangleChartPage() {
           setSpotPrice(apiSpotPrice);
         }
 
-        // Build spot price history
-        const spotHistory = chartDataArray.map(() => apiSpotPrice);
-        setSpotPriceHistory(spotHistory);
+        // Use historical spot prices for IV calculation (instead of flat array)
+        setSpotPriceHistory(historicalSpotPrices.length > 0 ? historicalSpotPrices : [apiSpotPrice]);
 
         // Store CE and PE prices for each candle for individual Greeks calculation
         const ceDataMap = new Map();
@@ -887,14 +943,31 @@ export default function GeekStrangleChartPage() {
     }
   };
 
+  if (configLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4 flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent"></div>
+          <p className="mt-4 text-gray-600">Loading market configuration...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-3 sm:p-4">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-2 flex items-center justify-between">
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
-            Geek Strangle (CE + PE with Greeks)
-          </h1>
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
+              Geek Strangle (CE + PE with Greeks)
+            </h1>
+            <p className="text-xs text-gray-500">
+              Using: {marketConfig.currentFuture} |
+              <a href="/config/market" className="ml-1 text-blue-600 hover:underline">⚙️ Manage Config</a>
+            </p>
+          </div>
           {/* Real-time Status - Show both spot and option tick streams */}
           <div className="flex items-center gap-3">
             {/* Spot Price Stream */}
@@ -933,14 +1006,19 @@ export default function GeekStrangleChartPage() {
                 }}
                 className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm h-10"
               >
-                <optgroup label="Weekly Expiries (Tuesdays)">
-                  <option value="13JAN">13 JAN (Tuesday)</option>
-                  <option value="20JAN">20 JAN (Tuesday)</option>
+                <optgroup label="Weekly Expiries">
+                  {marketConfig.weeklyExpiries.map((exp) => (
+                    <option key={exp.value} value={exp.value}>
+                      {exp.label}
+                    </option>
+                  ))}
                 </optgroup>
                 <optgroup label="Monthly Expiries">
-                  <option value="JAN">JAN (Monthly)</option>
-                  <option value="FEB">FEB (Monthly)</option>
-                  <option value="MAR">MAR (Monthly)</option>
+                  {marketConfig.monthlyExpiries.map((exp) => (
+                    <option key={exp.value} value={exp.value}>
+                      {exp.label}
+                    </option>
+                  ))}
                 </optgroup>
               </select>
             </div>
@@ -964,31 +1042,22 @@ export default function GeekStrangleChartPage() {
             <div className="flex-shrink-0">
               <div className="flex items-center gap-2">
                 <label className="text-xs text-gray-600 whitespace-nowrap font-semibold">CE:</label>
-                <div className="flex items-center h-10 bg-white rounded-lg border border-gray-300 px-2">
-                  <button
-                    onClick={() => setCeStrike(prev => (prev ? prev - 100 : ceStrikeValue - 100))}
-                    className="px-2 py-0 text-red-600 hover:bg-red-50 rounded text-lg font-bold"
-                    title="Decrease CE strike by 100"
-                  >
-                    −
-                  </button>
-
-                  <input
-                    type="number"
-                    value={ceStrike || ceStrikeValue}
-                    onChange={(e) => setCeStrike(e.target.value ? parseInt(e.target.value) : null)}
-                    step="100"
-                    className="w-20 text-center border-0 text-gray-900 text-sm font-semibold focus:outline-none bg-transparent"
-                  />
-
-                  <button
-                    onClick={() => setCeStrike(prev => (prev ? prev + 100 : ceStrikeValue + 100))}
-                    className="px-2 py-0 text-green-600 hover:bg-green-50 rounded text-lg font-bold"
-                    title="Increase CE strike by 100"
-                  >
-                    +
-                  </button>
-                </div>
+                <select
+                  value={ceStrike || ceStrikeValue}
+                  onChange={(e) => setCeStrike(parseInt(e.target.value))}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm h-10 font-semibold"
+                >
+                  {Array.from({ length: marketConfig.strikeRange }, (_, i) => {
+                    const atmStrike = Math.round(spotPrice / marketConfig.strikeStep) * marketConfig.strikeStep;
+                    const offset = (i - Math.floor(marketConfig.strikeRange / 2)) * marketConfig.strikeStep;
+                    const strike = atmStrike + offset;
+                    return (
+                      <option key={strike} value={strike}>
+                        {strike} {strike === atmStrike ? '(ATM)' : ''}
+                      </option>
+                    );
+                  })}
+                </select>
               </div>
             </div>
 
@@ -996,31 +1065,22 @@ export default function GeekStrangleChartPage() {
             <div className="flex-shrink-0">
               <div className="flex items-center gap-2">
                 <label className="text-xs text-gray-600 whitespace-nowrap font-semibold">PE:</label>
-                <div className="flex items-center h-10 bg-white rounded-lg border border-gray-300 px-2">
-                  <button
-                    onClick={() => setPeStrike(prev => (prev ? prev - 100 : peStrikeValue - 100))}
-                    className="px-2 py-0 text-red-600 hover:bg-red-50 rounded text-lg font-bold"
-                    title="Decrease PE strike by 100"
-                  >
-                    −
-                  </button>
-
-                  <input
-                    type="number"
-                    value={peStrike || peStrikeValue}
-                    onChange={(e) => setPeStrike(e.target.value ? parseInt(e.target.value) : null)}
-                    step="100"
-                    className="w-20 text-center border-0 text-gray-900 text-sm font-semibold focus:outline-none bg-transparent"
-                  />
-
-                  <button
-                    onClick={() => setPeStrike(prev => (prev ? prev + 100 : peStrikeValue + 100))}
-                    className="px-2 py-0 text-green-600 hover:bg-green-50 rounded text-lg font-bold"
-                    title="Increase PE strike by 100"
-                  >
-                    +
-                  </button>
-                </div>
+                <select
+                  value={peStrike || peStrikeValue}
+                  onChange={(e) => setPeStrike(parseInt(e.target.value))}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm h-10 font-semibold"
+                >
+                  {Array.from({ length: marketConfig.strikeRange }, (_, i) => {
+                    const atmStrike = Math.round(spotPrice / marketConfig.strikeStep) * marketConfig.strikeStep;
+                    const offset = (i - Math.floor(marketConfig.strikeRange / 2)) * marketConfig.strikeStep;
+                    const strike = atmStrike + offset;
+                    return (
+                      <option key={strike} value={strike}>
+                        {strike} {strike === atmStrike ? '(ATM)' : ''}
+                      </option>
+                    );
+                  })}
+                </select>
               </div>
             </div>
 
@@ -1235,7 +1295,107 @@ export default function GeekStrangleChartPage() {
                 <p className="text-xs text-gray-500 mt-1">Neutral (~0)</p>
               </div>
 
+              {/* IV Box with Checkbox */}
+              <div className="bg-white rounded p-3 border border-gray-200">
+                <div className="flex items-center gap-2 mb-2">
+                  <input
+                    type="checkbox"
+                    id="overlayIV"
+                    checked={showGreeks.iv}
+                    onChange={() => setShowGreeks(prev => ({ ...prev, iv: !prev.iv }))}
+                    className="w-4 h-4 text-indigo-600 rounded cursor-pointer"
+                  />
+                  <label htmlFor="overlayIV" className="text-xs font-semibold cursor-pointer" style={{ color: '#6366F1' }}>
+                    σ IV
+                  </label>
+                </div>
+                <p className="text-lg font-bold text-indigo-600">
+                  {greeks.ceIV && greeks.peIV ? ((greeks.ceIV + greeks.peIV) / 2).toFixed(1) : 'N/A'}%
+                </p>
+                {ceGreeks && peGreeks && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    (CE: {ceGreeks.ceIV?.toFixed(1)}%, PE: {peGreeks.peIV?.toFixed(1)}%)
+                  </p>
+                )}
+                <p className="text-xs text-gray-500 mt-1">Market Volatility</p>
+              </div>
+
             </div>
+
+            {/* IV Calculation Details - Collapsible */}
+            {showGreeks.iv && greeks.ceIV && greeks.peIV && (
+              <div className="mt-4 rounded-lg bg-indigo-50 border border-indigo-200">
+                {/* Header - Always Visible */}
+                <button
+                  onClick={() => setIvDetailsExpanded(!ivDetailsExpanded)}
+                  className="w-full p-4 flex items-center justify-between hover:bg-indigo-100 transition-colors rounded-lg"
+                >
+                  <h3 className="text-sm font-bold text-indigo-900">
+                    📊 Implied Volatility (IV) Calculation
+                  </h3>
+                  <div className="flex items-center gap-3">
+                    <span className="text-lg font-bold text-indigo-700">
+                      {((greeks.ceIV + greeks.peIV) / 2).toFixed(1)}%
+                    </span>
+                    <svg
+                      className={`w-5 h-5 text-indigo-700 transition-transform ${ivDetailsExpanded ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </button>
+
+                {/* Expandable Content */}
+                {ivDetailsExpanded && (
+                  <div className="px-4 pb-4 text-xs text-gray-700 space-y-2">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="bg-white p-2 rounded border border-indigo-100">
+                        <p className="font-semibold text-indigo-700">CE IV: {greeks.ceIV.toFixed(2)}%</p>
+                        <p className="text-xs text-gray-600 mt-1">
+                          Strike: {ceStrikeValue} | Premium: ₹{latestCePrice.toFixed(0)}
+                        </p>
+                      </div>
+                      <div className="bg-white p-2 rounded border border-indigo-100">
+                        <p className="font-semibold text-indigo-700">PE IV: {greeks.peIV.toFixed(2)}%</p>
+                        <p className="text-xs text-gray-600 mt-1">
+                          Strike: {peStrikeValue} | Premium: ₹{latestPePrice.toFixed(0)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-3 rounded border border-indigo-100 mt-2">
+                      <p className="font-semibold text-indigo-800 mb-2">How IV is Calculated:</p>
+                      <ol className="list-decimal list-inside space-y-1 text-xs">
+                        <li><strong>Newton-Raphson Method</strong>: Solves Market Price = Black-Scholes Price</li>
+                        <li><strong>Formula</strong>: σ(n+1) = σ(n) - [BS_Price(σ) - Market_Price] / Vega</li>
+                        <li><strong>Starting Guess</strong>: 20% volatility (NIFTY typical)</li>
+                        <li><strong>Converges in</strong>: 5-10 iterations (if market data is clean)</li>
+                        <li><strong>Fallback</strong>: If Newton-Raphson fails → Uses 30-day Historical Volatility</li>
+                        <li><strong>Final Fallback</strong>: If no HV data → Uses 20% default</li>
+                      </ol>
+                    </div>
+
+                    <div className="bg-white p-3 rounded border border-indigo-100 mt-2">
+                      <p className="font-semibold text-indigo-800 mb-2">What IV Tells You:</p>
+                      <div className="space-y-1 text-xs">
+                        <p><strong>Low IV (&lt;15%)</strong>: Market expects calm, premiums cheap → Not ideal for selling</p>
+                        <p><strong>Medium IV (15-25%)</strong>: Normal volatility → Good for selling if other Greeks align</p>
+                        <p><strong>High IV (&gt;25%)</strong>: Market expects big moves, premiums expensive → Ideal for selling</p>
+                        <p className="mt-2 text-indigo-700 font-semibold">
+                          Current Avg IV: {((greeks.ceIV + greeks.peIV) / 2).toFixed(1)}% →
+                          {((greeks.ceIV + greeks.peIV) / 2) > 25 ? ' High (Great for selling!)' :
+                           ((greeks.ceIV + greeks.peIV) / 2) > 15 ? ' Medium (Okay to sell)' :
+                           ' Low (Wait for higher IV)'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Strategy Hint - Professional Sell Signal Formula (Compact) */}
             {(() => {

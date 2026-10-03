@@ -18,6 +18,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { AdvancedTradingChart, ChartData, IndicatorConfig } from '@/components/AdvancedTradingChart';
 import { useRealtimePrice } from '@/hooks/useRealtimePrice';
+import { useMarketConfig } from '@/hooks/useMarketConfig';
 
 const TIMEFRAMES = [
   { label: '1m', value: 'minute' },
@@ -31,8 +32,9 @@ const TIMEFRAMES = [
 
 export default function StraddleChartPage() {
   const { user } = useAuth();
+  const { config: marketConfig, loading: configLoading } = useMarketConfig();
   const [baseSymbol, setBaseSymbol] = useState('NIFTY');
-  const [expiry, setExpiry] = useState('FEB'); // Monthly expiry
+  const [expiry, setExpiry] = useState(marketConfig.defaultExpiry);
   const [customSymbol, setCustomSymbol] = useState('');
   const [interval, setInterval] = useState('60minute');
   const [chartData, setChartData] = useState<ChartData[]>([]);
@@ -75,7 +77,7 @@ export default function StraddleChartPage() {
 
   // Real-time price updates - for spot price display
   const { prices, isConnected } = useRealtimePrice({
-    symbols: [baseSymbol + '26FEBFUT'], // Use futures to get spot price
+    symbols: [baseSymbol + marketConfig.currentFuture],
   });
 
   // Store latest CE/PE prices from chart data
@@ -178,11 +180,11 @@ export default function StraddleChartPage() {
 
   // Update spot price from real-time data
   useEffect(() => {
-    const futuresSymbol = baseSymbol + '26FEBFUT';
+    const futuresSymbol = baseSymbol + marketConfig.currentFuture;
     if (prices[futuresSymbol]?.last_price) {
       setSpotPrice(prices[futuresSymbol].last_price);
     }
-  }, [prices, baseSymbol]);
+  }, [prices, baseSymbol, marketConfig.currentFuture]);
 
 
   // Load data on symbol or interval change
@@ -281,14 +283,19 @@ export default function StraddleChartPage() {
                 onChange={(e) => setExpiry(e.target.value)}
                 className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 text-sm h-10"
               >
-                <optgroup label="Weekly Expiries (Tuesdays)">
-                  <option value="13JAN">13 JAN (Tuesday)</option>
-                  <option value="20JAN">20 JAN (Tuesday)</option>
+                <optgroup label="Weekly Expiries">
+                  {marketConfig.weeklyExpiries.map((exp) => (
+                    <option key={exp.value} value={exp.value}>
+                      {exp.label}
+                    </option>
+                  ))}
                 </optgroup>
                 <optgroup label="Monthly Expiries">
-                  <option value="JAN">JAN (Monthly)</option>
-                  <option value="FEB">FEB (Monthly)</option>
-                  <option value="MAR">MAR (Monthly)</option>
+                  {marketConfig.monthlyExpiries.map((exp) => (
+                    <option key={exp.value} value={exp.value}>
+                      {exp.label}
+                    </option>
+                  ))}
                 </optgroup>
               </select>
             </div>

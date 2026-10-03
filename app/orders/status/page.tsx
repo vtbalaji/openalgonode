@@ -557,6 +557,36 @@ export default function OrderStatusPage() {
                     </tr>
                   ))}
                 </tbody>
+                <tfoot className="border-t-2 border-gray-300 bg-gray-50">
+                  <tr>
+                    <td colSpan={5} className="px-6 py-4 text-right text-sm font-bold text-gray-900">
+                      Total P&L:
+                    </td>
+                    <td className="px-6 py-4 text-sm font-bold">
+                      <span className={`${
+                        positions.reduce((sum, pos) => sum + (pos.pnl || 0), 0) >= 0
+                          ? 'text-green-600'
+                          : 'text-red-600'
+                      }`}>
+                        ₹{positions.reduce((sum, pos) => sum + (pos.pnl || 0), 0).toFixed(2)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm font-bold">
+                      <span className={`inline-block rounded-full px-3 py-1 text-xs ${
+                        positions.reduce((sum, pos) => sum + (pos.pnl || 0), 0) >= 0
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-red-100 text-red-800'
+                      }`}>
+                        {(() => {
+                          const totalPnl = positions.reduce((sum, pos) => sum + (pos.pnl || 0), 0);
+                          const totalInvested = positions.reduce((sum, pos) =>
+                            sum + Math.abs(pos.quantity) * (pos.average_price || 0), 0);
+                          return totalInvested > 0 ? ((totalPnl / totalInvested) * 100).toFixed(2) : '0.00';
+                        })()}%
+                      </span>
+                    </td>
+                  </tr>
+                </tfoot>
               </table>
             )}
           </div>

@@ -96,7 +96,7 @@ export default function GeekStraddleChartPage() {
 
   // Real-time price updates - for spot price display
   const { prices, isConnected } = useRealtimePrice({
-    symbols: [baseSymbol + '26JANFUT'], // Use futures to get spot price
+    symbols: [baseSymbol + marketConfig.currentFuture], // Use current month futures to get spot price
   });
 
   // Set responsive chart height
@@ -121,11 +121,11 @@ export default function GeekStraddleChartPage() {
 
   // Update spot price from real-time data
   useEffect(() => {
-    const futuresSymbol = baseSymbol + '26JANFUT';
+    const futuresSymbol = baseSymbol + marketConfig.currentFuture;
     if (prices[futuresSymbol]?.last_price) {
       setSpotPrice(prices[futuresSymbol].last_price);
     }
-  }, [prices, baseSymbol]);
+  }, [prices, baseSymbol, marketConfig.currentFuture]);
 
   /**
    * Get color based on Greek value signal (Buy/Hold/Sell)

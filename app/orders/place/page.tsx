@@ -4,21 +4,37 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useMarketConfig } from '@/hooks/useMarketConfig';
 
 export default function PlaceOrderPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const { config: marketConfig, loading: configLoading } = useMarketConfig();
 
   // Form state
   const [symbol, setSymbol] = useState('');
   const [exchange, setExchange] = useState('NSE');
   const [action, setAction] = useState('BUY');
   const [quantity, setQuantity] = useState('1');
-  const [product, setProduct] = useState('MIS');
+  const [product, setProduct] = useState('CNC');
   const [pricetype, setPricetype] = useState('MARKET');
   const [price, setPrice] = useState('');
   const [triggerPrice, setTriggerPrice] = useState('');
   const [symboltoken, setSymboltoken] = useState('');
+
+  // Option builder state
+  const [useOptionBuilder, setUseOptionBuilder] = useState(false);
+  const [baseSymbol, setBaseSymbol] = useState<'NIFTY' | 'BANKNIFTY' | 'FINNIFTY' | 'MIDCPNIFTY'>('NIFTY');
+  const [optionType, setOptionType] = useState<'CE' | 'PE'>('CE');
+  const [strike, setStrike] = useState<number>(
+    Math.round(marketConfig.defaultSpotPrice / marketConfig.strikeStep) * marketConfig.strikeStep
+  );
+  const [expiry, setExpiry] = useState(marketConfig.defaultExpiry);
+  const [lots, setLots] = useState<number>(1);
+  const [marketPrice, setMarketPrice] = useState<number | null>(null);
+  const [fetchingPrice, setFetchingPrice] = useState(false);
+  const [spotPrice, setSpotPrice] = useState<number>(marketConfig.defaultSpotPrice);
+  const [fetchingSpot, setFetchingSpot] = useState(false);
 
   // UI state
   const [error, setError] = useState('');
@@ -28,6 +44,143 @@ export default function PlaceOrderPage() {
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [brokerNotAuthenticated, setBrokerNotAuthenticated] = useState(false);
   const [selectedBroker, setSelectedBroker] = useState<string | null>(null);
+
+  // Build option symbol from components
+  const buildOptionSymbol = () => {
+    // Format for Fyers: NSE:NIFTY26FEB23500CE or NSE:NIFTY2611323500CE
+    // Year is always prefixed (26 = 2026)
+    // Weekly: NIFTY26113 (YYMDD where M is 1-9,O,N,D) + strike + CE/PE
+    // Monthly: NIFTY26FEB + strike + CE/PE
+
+    // The convertToBrokerSymbol in symbolMapping.ts will add NSE: prefix
+    // We just need to build: NIFTY + numericExpiry + strike + type
+
+    const year = '26'; // 2026
+    const monthMap: { [key: string]: string } = {
+      'JAN': '1', 'FEB': '2', 'MAR': '3', 'APR': '4',
+      'MAY': '5', 'JUN': '6', 'JUL': '7', 'AUG': '8',
+      'SEP': '9', 'OCT': 'O', 'NOV': 'N', 'DEC': 'D'
+    };
+
+    // Check if expiry has a date (weekly) or just month (monthly)
+    const weeklyMatch = expiry.match(/^(\d{1,2})([A-Z]{3})$/); // e.g., "13JAN"
+    const monthlyMatch = expiry.match(/^([A-Z]{3})$/); // e.g., "FEB"
+
+    let numericExpiry = '';
+
+    if (weeklyMatch) {
+      // Weekly: 13JAN → 26113 (YYMDD)
+      const day = weeklyMatch[1].padStart(2, '0');
+      const month = monthMap[weeklyMatch[2]];
+      numericExpiry = `${year}${month}${day}`;
+    } else if (monthlyMatch) {
+      // Monthly: FEB → 26FEB (YYMMM)
+      numericExpiry = `${year}${monthlyMatch[1]}`;
+    } else {
+      // Fallback: use as-is
+      numericExpiry = `${year}${expiry}`;
+    }
+
+    return `${baseSymbol}${numericExpiry}${strike}${optionType}`;
+  };
+
+  // Fetch real-time spot price for ATM calculation
+  const fetchSpotPrice = async () => {
+    if (!user || !useOptionBuilder) return;
+
+    setFetchingSpot(true);
+
+    try {
+      const idToken = await user.getIdToken();
+      // Fetch spot price for the base symbol (e.g., NIFTY50 or BANKNIFTY)
+      const spotSymbol = baseSymbol === 'NIFTY' ? 'NIFTY50' :
+                         baseSymbol === 'BANKNIFTY' ? 'NIFTYBANK' :
+                         baseSymbol === 'FINNIFTY' ? 'FINNIFTY' : 'MIDCPNIFTY';
+
+      const response = await fetch(`/api/options/spot?symbol=${encodeURIComponent(spotSymbol)}`, {
+        headers: {
+          'Authorization': `Bearer ${idToken}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.price) {
+          setSpotPrice(data.price);
+          console.log(`[PLACE-ORDER] Updated spot price for ${spotSymbol}: ${data.price}`);
+        }
+      } else {
+        console.error('[PLACE-ORDER] Failed to fetch spot price:', response.statusText);
+      }
+    } catch (error: any) {
+      console.error('[PLACE-ORDER] Error fetching spot price:', error.message);
+    } finally {
+      setFetchingSpot(false);
+    }
+  };
+
+  // Fetch market price for the selected option
+  const fetchMarketPrice = async () => {
+    if (!user || !useOptionBuilder) return;
+
+    setFetchingPrice(true);
+    setMarketPrice(null);
+
+    try {
+      const idToken = await user.getIdToken();
+      const optionSymbol = buildOptionSymbol();
+
+      // Call backend API to get market price
+      const response = await fetch(`/api/options/quote?symbol=${encodeURIComponent(optionSymbol)}`, {
+        headers: {
+          'Authorization': `Bearer ${idToken}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.price) {
+          setMarketPrice(data.price);
+        }
+      } else {
+        console.error('[PLACE-ORDER] Failed to fetch market price:', response.statusText);
+      }
+    } catch (error: any) {
+      console.error('[PLACE-ORDER] Error fetching market price:', error.message);
+    } finally {
+      setFetchingPrice(false);
+    }
+  };
+
+  // Fetch spot price when option builder is enabled or base symbol changes
+  useEffect(() => {
+    if (useOptionBuilder && user) {
+      fetchSpotPrice();
+    }
+  }, [useOptionBuilder, baseSymbol, user]);
+
+  // Update strike to ATM when spot price changes
+  useEffect(() => {
+    if (spotPrice && spotPrice !== marketConfig.defaultSpotPrice) {
+      const atmStrike = Math.round(spotPrice / marketConfig.strikeStep) * marketConfig.strikeStep;
+      setStrike(atmStrike);
+      console.log(`[PLACE-ORDER] Updated strike to ATM: ${atmStrike} (spot: ${spotPrice})`);
+    }
+  }, [spotPrice, marketConfig.strikeStep]);
+
+  // Update symbol and quantity when option builder values change
+  useEffect(() => {
+    if (useOptionBuilder && marketConfig.lotSizes) {
+      setSymbol(buildOptionSymbol());
+      setExchange('NFO'); // Options are always NFO
+      // Auto-calculate quantity from lots
+      const lotSize = marketConfig.lotSizes[baseSymbol] || 25;
+      setQuantity((lots * lotSize).toString());
+
+      // Fetch market price for the selected option
+      fetchMarketPrice();
+    }
+  }, [useOptionBuilder, baseSymbol, expiry, strike, optionType, lots, marketConfig.lotSizes]);
 
   useEffect(() => {
     if (!user && !loading) {
@@ -239,6 +392,26 @@ export default function PlaceOrderPage() {
         </div>
       </header>
 
+      {/* Tab Navigation */}
+      <div className="border-b border-gray-200 bg-white">
+        <div className="mx-auto max-w-2xl px-4 sm:px-6 lg:px-8">
+          <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+            <Link
+              href="/orders/place"
+              className="border-b-2 border-blue-500 py-4 px-1 text-sm font-medium text-blue-600"
+            >
+              Single Order
+            </Link>
+            <Link
+              href="/orders/strategies"
+              className="border-b-2 border-transparent py-4 px-1 text-sm font-medium text-gray-500 hover:border-gray-300 hover:text-gray-700"
+            >
+              Option Strategies
+            </Link>
+          </nav>
+        </div>
+      </div>
+
       {/* Main Content */}
       <main className="mx-auto max-w-2xl px-4 py-12 sm:px-6 lg:px-8">
         {/* Broker Not Authenticated Warning */}
@@ -296,15 +469,175 @@ export default function PlaceOrderPage() {
         {/* Order Form */}
         <div className="rounded-lg bg-white p-6 shadow">
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Symbol */}
+            {/* Option Builder Toggle */}
+            <div className="flex items-center gap-3 pb-4 border-b">
+              <input
+                type="checkbox"
+                id="useOptionBuilder"
+                checked={useOptionBuilder}
+                onChange={(e) => setUseOptionBuilder(e.target.checked)}
+                className="w-4 h-4 text-blue-600 rounded focus:ring-2"
+              />
+              <label htmlFor="useOptionBuilder" className="text-sm font-semibold text-gray-700 cursor-pointer">
+                📊 Use Option Builder (NFO)
+              </label>
+            </div>
+
+            {/* Option Builder Section */}
+            {useOptionBuilder && (
+              <div className="bg-blue-50 rounded-lg p-4 space-y-4 border border-blue-200">
+                <h3 className="text-sm font-semibold text-blue-900 mb-3">Build Option Symbol</h3>
+
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  {/* Base Symbol */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Base Symbol</label>
+                    <select
+                      value={baseSymbol}
+                      onChange={(e) => setBaseSymbol(e.target.value as 'NIFTY' | 'BANKNIFTY' | 'FINNIFTY' | 'MIDCPNIFTY')}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 text-sm"
+                    >
+                      <option value="NIFTY">NIFTY (Lot: {marketConfig.lotSizes?.NIFTY || 65})</option>
+                      <option value="BANKNIFTY">BANKNIFTY (Lot: {marketConfig.lotSizes?.BANKNIFTY || 15})</option>
+                      <option value="FINNIFTY">FINNIFTY (Lot: {marketConfig.lotSizes?.FINNIFTY || 25})</option>
+                      <option value="MIDCPNIFTY">MIDCPNIFTY (Lot: {marketConfig.lotSizes?.MIDCPNIFTY || 50})</option>
+                    </select>
+                  </div>
+
+                  {/* Option Type */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Type</label>
+                    <select
+                      value={optionType}
+                      onChange={(e) => setOptionType(e.target.value as 'CE' | 'PE')}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 text-sm"
+                    >
+                      <option value="CE">CE (Call)</option>
+                      <option value="PE">PE (Put)</option>
+                    </select>
+                  </div>
+
+                  {/* Lots */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Lots</label>
+                    <input
+                      type="number"
+                      value={lots}
+                      onChange={(e) => setLots(parseInt(e.target.value) || 1)}
+                      min="1"
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 text-sm"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      = {lots * (marketConfig.lotSizes?.[baseSymbol] || 25)} qty
+                    </p>
+                  </div>
+
+                  {/* Expiry */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Expiry</label>
+                    <select
+                      value={expiry}
+                      onChange={(e) => setExpiry(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 text-sm"
+                    >
+                      <optgroup label="Weekly">
+                        {marketConfig.weeklyExpiries.map((exp) => (
+                          <option key={exp.value} value={exp.value}>{exp.label}</option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Monthly">
+                        {marketConfig.monthlyExpiries.map((exp) => (
+                          <option key={exp.value} value={exp.value}>{exp.label}</option>
+                        ))}
+                      </optgroup>
+                    </select>
+                  </div>
+
+                  {/* Strike */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Strike {fetchingSpot && <span className="text-blue-600 text-xs">(updating...)</span>}
+                    </label>
+                    <select
+                      value={strike}
+                      onChange={(e) => setStrike(parseInt(e.target.value))}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 text-sm"
+                    >
+                      {Array.from({ length: marketConfig.strikeRange }, (_, i) => {
+                        const atmStrike = Math.round(spotPrice / marketConfig.strikeStep) * marketConfig.strikeStep;
+                        const offset = (i - Math.floor(marketConfig.strikeRange / 2)) * marketConfig.strikeStep;
+                        const strikeValue = atmStrike + offset;
+                        return (
+                          <option key={strikeValue} value={strikeValue}>
+                            {strikeValue} {strikeValue === atmStrike ? '(ATM)' : ''}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Spot: ₹{spotPrice.toFixed(2)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Generated Symbol Preview */}
+                <div className="bg-white rounded-lg p-3 border border-blue-300">
+                  <p className="text-xs text-gray-600 mb-1">Generated Symbol:</p>
+                  <p className="text-lg font-mono font-bold text-blue-900">{buildOptionSymbol()}</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Format: {baseSymbol}{expiry}26{strike}{optionType}
+                  </p>
+
+                  {/* Market Price Display */}
+                  <div className="mt-3 pt-3 border-t border-gray-200">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-medium text-gray-700">Market Price (LTP):</span>
+                      <div className="flex items-center gap-2">
+                        {fetchingPrice ? (
+                          <span className="text-sm text-blue-600 animate-pulse">Loading...</span>
+                        ) : marketPrice !== null ? (
+                          <span className="text-lg font-bold text-green-600">₹{marketPrice.toFixed(2)}</span>
+                        ) : (
+                          <span className="text-sm text-gray-400">Not available</span>
+                        )}
+                        <button
+                          onClick={fetchMarketPrice}
+                          disabled={fetchingPrice}
+                          className="text-xs px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Refresh price"
+                        >
+                          🔄
+                        </button>
+                      </div>
+                    </div>
+                    {marketPrice !== null && lots > 0 && (
+                      <p className="text-xs text-gray-500">
+                        Premium for {lots} lot{lots > 1 ? 's' : ''}: ₹{(marketPrice * lots * (marketConfig.lotSizes?.[baseSymbol] || 25)).toFixed(2)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="text-xs text-blue-800 bg-blue-100 rounded p-2">
+                  💡 Tip: Exchange will be automatically set to NFO for options
+                </div>
+              </div>
+            )}
+
+            {/* Symbol (Manual Entry or from Option Builder) */}
             <div>
-              <label className="block text-sm font-medium text-gray-700">Symbol *</label>
+              <label className="block text-sm font-medium text-gray-700">
+                Symbol * {useOptionBuilder && <span className="text-blue-600">(auto-generated)</span>}
+              </label>
               <input
                 type="text"
                 value={symbol}
                 onChange={(e) => setSymbol(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-blue-500 focus:outline-none"
-                placeholder="e.g., RELIANCE, INFY, TCS"
+                disabled={useOptionBuilder}
+                className={`mt-1 w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-blue-500 focus:outline-none ${
+                  useOptionBuilder ? 'bg-gray-100 cursor-not-allowed' : ''
+                }`}
+                placeholder={useOptionBuilder ? 'Symbol generated from option builder' : 'e.g., RELIANCE, INFY, TCS'}
                 required
               />
             </div>
@@ -356,16 +689,26 @@ export default function PlaceOrderPage() {
             {/* Quantity and Product */}
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <label className="block text-sm font-medium text-gray-700">Quantity *</label>
+                <label className="block text-sm font-medium text-gray-700">
+                  Quantity * {useOptionBuilder && <span className="text-blue-600">(auto-calculated from lots)</span>}
+                </label>
                 <input
                   type="number"
                   value={quantity}
                   onChange={(e) => setQuantity(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-blue-500 focus:outline-none"
+                  disabled={useOptionBuilder}
+                  className={`mt-1 w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-blue-500 focus:outline-none ${
+                    useOptionBuilder ? 'bg-gray-100 cursor-not-allowed' : ''
+                  }`}
                   placeholder="1"
                   min="1"
                   required
                 />
+                {useOptionBuilder && (
+                  <p className="text-xs text-blue-600 mt-1">
+                    {lots} lot(s) × {marketConfig.lotSizes?.[baseSymbol] || 25} = {quantity} qty
+                  </p>
+                )}
               </div>
 
               <div>

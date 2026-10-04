@@ -62,12 +62,25 @@ export default function GammaExposurePage() {
   const W = chartWidth, H = mobile ? 380 : 470, L = mobile ? 55 : 105, R = W - (mobile ? 55 : 110), top = 65, bottom = H - 65, zero = (top + bottom) / 2;
   const axisLabel = (n: number) => mobile ? (n / 1e7).toFixed(1) : compact(n);
   const profile = data?.profile ?? [];
-  const fullLo = profile[0]?.price ?? Math.min(data?.rows[0]?.strike ?? 0, (data?.spot ?? 1) * 0.98);
-  const fullHi = profile[profile.length - 1]?.price ?? Math.max(data?.rows[data.rows.length - 1]?.strike ?? 1, (data?.spot ?? 1) * 1.02);
+  const strikesPerSide = mobile ? 10 : 15;
+  const allRows = data?.rows ?? [];
+  const spot = data?.spot ?? 0;
+  // Limit only rendering; the server's full-chain totals, walls and profile remain intact.
+  const nearbyRows = [
+    ...allRows.filter(r => r.strike < spot).slice(-strikesPerSide),
+    ...allRows.filter(r => r.strike >= spot).slice(0, strikesPerSide),
+  ];
+  const padding = nearbyRows.length > 1 ? (nearbyRows[1].strike - nearbyRows[0].strike) / 2 : 25;
+  const firstStrike = Math.min(nearbyRows[0]?.strike ?? spot, data?.putWall ?? spot);
+  const lastStrike = Math.max(nearbyRows[nearbyRows.length - 1]?.strike ?? spot, data?.callWall ?? spot);
+  const displayRows = allRows.filter(r => r.strike >= firstStrike && r.strike <= lastStrike);
+  const fullLo = firstStrike - padding;
+  const fullHi = lastStrike + padding;
   const mid = (fullLo + fullHi) / 2, half = (fullHi - fullLo) / (2 * zoom);
-  const lo = mid - half, hi = mid + half;
+  const lo = Math.min(mid - half, (data?.putWall ?? spot) - padding);
+  const hi = Math.max(mid + half, (data?.callWall ?? spot) + padding);
   const x = (price: number) => L + (price - lo) / (hi - lo) * (R - L);
-  const rows = (data?.rows ?? []).filter(r => r.strike >= lo && r.strike <= hi);
+  const rows = displayRows.filter(r => r.strike >= lo && r.strike <= hi);
   const barMax = Math.max(1, ...rows.flatMap(r => [r.call, -r.put, Math.abs(r.net)])) * 1.2;
   const lineMax = Math.max(1, ...profile.map(p => Math.abs(p.gex))) * 1.12;
   const y = (v: number, max = barMax) => zero - v / max * (bottom - top) / 2;
@@ -109,7 +122,7 @@ export default function GammaExposurePage() {
     </form>
     {loading || busy ? <div className={styles.state} role="status">Loading NIFTY option chain...</div> : !user ? <div className={styles.state}><Link href="/login">Sign in to load your FYERS data</Link></div> : error ? <div className={styles.state} role="alert"><p>{error}</p><Link href="/broker/config">Broker Settings</Link></div> : data && <>
       <div className={styles.metrics}>
-        {[["Last Price", number(data.spot)], [data.excluded ? "FYERS Partial GEX / 1%" : "FYERS Net GEX / 1%", compact(data.net)], [data.modelExcluded ? "Modeled Flip (Partial)" : "Modeled Gamma Flip", !data.valuationTime ? 'Time required' : data.modeledNet === null ? 'Unavailable' : flip === null ? 'No crossing in range' : number(flip)], ["FYERS Call Wall", data.callWall ? number(data.callWall) : 'Unavailable'], ["FYERS Put Wall", data.putWall ? number(data.putWall) : 'Unavailable']].map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}
+        {[["Last Price", number(data.spot)], [data.excluded ? "FYERS Partial GEX / 1%" : "FYERS Net GEX / 1%", compact(data.net)], [data.modelExcluded ? "Modeled Flip (Partial)" : "Modeled Gamma Flip", !data.valuationTime ? 'Time required' : data.modeledNet === null ? 'Unavailable' : flip === null ? 'No crossing in range' : number(flip)], ["FYERS Put Wall", data.putWall ? number(data.putWall) : 'Unavailable'], ["FYERS Call Wall", data.callWall ? number(data.callWall) : 'Unavailable']].map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}
       </div>
       <div className={styles.coverage} role="status">
         <span>FYERS gamma: {data.contracts} legs / {data.excluded} unavailable / {data.reportedZero} reported zero</span>
@@ -135,10 +148,10 @@ export default function GammaExposurePage() {
             {detail && <g pointerEvents="none"><line x1={x(detail.strike)} x2={x(detail.strike)} y1={top} y2={bottom} stroke="#364152" strokeDasharray="3 4" />{visible['Aggregate GEX'] && detail.modeledGex !== null && <circle cx={x(detail.strike)} cy={y(detail.modeledGex, lineMax)} r="5" fill={colors['Aggregate GEX']} stroke="white" strokeWidth="2" />}</g>}
           </g>
           {visible['Last Price'] && data.spot >= lo && data.spot <= hi && <text x={x(data.spot)} y={top - 10} textAnchor="middle" fill={colors['Last Price']} fontSize="14">{number(data.spot)}</text>}
-          {!mobile && [[data.callWall, 'Call Wall', colors.Call], [data.putWall, 'Put Wall', colors.Put]].map(([strike, label, color]) => {
+          {[[data.putWall, 'Put Wall', colors.Put], [data.callWall, 'Call Wall', colors.Call]].map(([strike, label, color]) => {
             const r = rows.find(row => row.strike === strike); if (!r) return null;
             const call = label === 'Call Wall';
-            return <text key={label} x={Math.max(L + 75, Math.min(R - 75, x(Number(strike))))} y={y(call ? r.call : r.put) + (call ? -12 : 24)} textAnchor="middle" fontSize="14" fill={String(color)}>{label} {number(Number(strike))}</text>;
+            return <text key={label} x={mobile ? (call ? R : L) : Math.max(L + 75, Math.min(R - 75, x(Number(strike))))} y={y(call ? r.call : r.put) + (call ? -12 : 24)} textAnchor={mobile ? (call ? 'end' : 'start') : 'middle'} fontSize={mobile ? '11' : '14'} fill={String(color)}>{label} {number(Number(strike))}</text>;
           })}
           {Array.from({ length: mobile ? 3 : 7 }, (_, i) => lo + (hi - lo) * i / (mobile ? 2 : 6)).map(p => <text key={p} x={x(p)} y={bottom + 27} textAnchor="middle" fontSize="12" fill="#697079">{Math.round(p).toLocaleString('en-IN')}</text>)}
           <text x={W / 2} y={H - 8} textAnchor="middle" fontSize="12" fill="#697079">Strike / Hypothetical NIFTY Price</text>

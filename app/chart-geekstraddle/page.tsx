@@ -20,6 +20,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { AdvancedTradingChart, ChartData, IndicatorConfig } from '@/components/AdvancedTradingChart';
 import { useRealtimePrice } from '@/hooks/useRealtimePrice';
+import { useMarketConfig } from '@/hooks/useMarketConfig';
 import { calculateStraddleGreeks, type OptionsGreeksInput } from '@/lib/indicators/optionsGreeks';
 
 const TIMEFRAMES = [
@@ -46,6 +47,7 @@ interface GreeksData {
 
 export default function GeekStraddleChartPage() {
   const { user } = useAuth();
+  const { config: marketConfig } = useMarketConfig();
   const baseSymbol = 'NIFTY'; // Fixed to NIFTY only
   const [expiry, setExpiry] = useState('FEB');
   const [interval, setInterval] = useState('60minute');

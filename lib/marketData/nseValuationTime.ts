@@ -29,3 +29,29 @@ export function defaultNseValuationTime(now = Date.now()): string | null {
   }
   return null;
 }
+
+const SESSION_OPEN = 555, SESSION_CLOSE = 930; // 09:15-15:30 IST, in minutes
+export const TRADING_MINUTES_PER_YEAR = 252 * (SESSION_CLOSE - SESSION_OPEN);
+
+// Outside the 2026 calendar, weekdays are assumed to be trading days.
+export function isNseTradingDay(date: string): boolean {
+  const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
+  return weekday !== 0 && weekday !== 6 && !holidays2026.has(date);
+}
+
+// Time to expiry in trading years: regular-session minutes only, so nights, weekends and holidays carry no time.
+export function nseTradingYears(fromMs: number, toMs: number): number {
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || toMs <= fromMs) return 0;
+  const day = new Date(fromMs + IST_OFFSET);
+  day.setUTCHours(0, 0, 0, 0);
+  let minutes = 0;
+  for (let guard = 0; guard < 4000 && day.getTime() - IST_OFFSET < toMs; guard++) {
+    const date = day.toISOString().slice(0, 10);
+    if (isNseTradingDay(date)) {
+      const open = day.getTime() - IST_OFFSET + SESSION_OPEN * 60000, close = day.getTime() - IST_OFFSET + SESSION_CLOSE * 60000;
+      minutes += Math.max(0, Math.min(close, toMs) - Math.max(open, fromMs)) / 60000;
+    }
+    day.setUTCDate(day.getUTCDate() + 1);
+  }
+  return minutes / TRADING_MINUTES_PER_YEAR;
+}

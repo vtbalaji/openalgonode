@@ -14,14 +14,20 @@ export async function GET(request: NextRequest) {
   catch { return NextResponse.json({ error: 'Your session expired. Please sign in again.' }, { status: 401 }); }
   const expiry = request.nextUrl.searchParams.get('expiry') ?? '';
   if (expiry && !/^\d{10}$/.test(expiry)) return NextResponse.json({ error: 'Invalid expiry.' }, { status: 400 });
-  const key = `${uid}:${expiry}`;
+  const valuation = request.nextUrl.searchParams.get('valuation');
+  const valuationMs = valuation ? Date.parse(valuation) : null;
+  if (valuation && (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(valuation) || !Number.isFinite(valuationMs) || new Date(valuationMs!).toISOString() !== valuation)) {
+    return NextResponse.json({ error: 'Invalid valuation date/time.' }, { status: 400 });
+  }
+  const key = `${uid}:${expiry}:${valuation ?? 'snapshot'}`;
   const cached = cache.get(key);
   if (cached && cached.until > Date.now()) return NextResponse.json(cached.value, { headers: { 'Cache-Control': 'no-store' } });
   try {
     const config = await getCachedBrokerConfig(uid, 'fyers');
     if (!config?.accessToken) return NextResponse.json({ error: 'Connect FYERS in Broker Settings to load NIFTY gamma exposure.' }, { status: 409 });
     const chain = await fetchFyersGammaChain(`${decryptData(config.apiKey)}:${decryptData(config.accessToken)}`, expiry);
-    const value: GammaSnapshot = { ...calculateGammaExposure(chain.legs, chain.spot, chain.expiryMs), spot: chain.spot, expiry: chain.expiry, expiries: chain.expiries, fetchedAt: new Date().toISOString() };
+    if (valuationMs !== null && valuationMs >= chain.expiryMs) return NextResponse.json({ error: 'Valuation time must be before expiry at 15:30 IST.' }, { status: 400 });
+    const value: GammaSnapshot = { ...calculateGammaExposure(chain.legs, chain.spot, chain.expiryMs, valuationMs), spot: chain.spot, expiry: chain.expiry, expiries: chain.expiries, fetchedAt: new Date().toISOString() };
     for (const [k, v] of cache) if (v.until <= Date.now()) cache.delete(k);
     cache.set(key, { until: Date.now() + 60000, value });
     return NextResponse.json(value, { headers: { 'Cache-Control': 'no-store' } });

@@ -14,6 +14,11 @@
 .metrics span { display: block; font-size: 12px; color: #737c86; margin-bottom: 6px; }
 .metrics strong { font-size: 20px; font-weight: 550; overflow-wrap: anywhere; }
 .coverage { display: flex; flex-wrap: wrap; gap: 8px 24px; padding: 12px 0; font-size: 12px; line-height: 1.6; color: #606a75; }
+.valuation { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin-bottom: 20px; font-size: 13px; }
+.valuation label { display: grid; gap: 6px; min-width: 0; max-width: 100%; }
+.valuation input { min-width: 0; max-width: 100%; font-size: 16px; }
+.valuation input, .valuation select, .valuation button { min-height: 44px; padding: 8px; border: 1px solid #d9dfe4; border-radius: 4px; background: white; }
+.valuation button:disabled { opacity: .45; }
 .chart { margin-top: 28px; width: 100%; min-width: 0; position: relative; }
 .strikePanel { position: absolute; top: 42px; width: 330px; max-width: 100%; padding: 14px; border: 1px solid #d9dfe4; border-radius: 6px; background: white; box-shadow: 0 3px 14px #00000018; z-index: 2; font-size: 13px; }
 .strikePanel header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

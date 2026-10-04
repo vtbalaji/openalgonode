@@ -16,8 +16,8 @@
  * Accuracy: Maximum error < 7.5 × 10^-8
  *
  * Formula for x ≥ 0:
- *   Φ(x) = 1 - φ(x) * (a₁*k + a₂*k² + a₃*k³ + a₄*k⁴ + a₅*k⁵)
- *   where k = 1 / (1 + γ*x)
+ *   Φ(x) = 1 - 0.5 * exp(-x²/2) * (a₁*k + a₂*k² + a₃*k³ + a₄*k⁴ + a₅*k⁵)
+ *   where k = 1 / (1 + γ*x/√2)
  *
  * For x < 0:
  *   Φ(x) = 1 - Φ(-x)
@@ -36,13 +36,13 @@ export function normalCDF(x: number): number {
 
   // Handle the sign of x
   const sign = x < 0 ? -1 : 1;
-  const absX = Math.abs(x);
+  const absX = Math.abs(x) / Math.SQRT2;
 
   // Calculate k
   const k = 1.0 / (1.0 + gamma * absX);
 
-  // Get PDF value at |x|
-  const pdfValue = normalPDF(absX);
+  // These coefficients approximate erf; convert its tail to a normal CDF.
+  const exponential = Math.exp(-absX * absX);
 
   // Polynomial approximation
   const poly =
@@ -53,7 +53,7 @@ export function normalCDF(x: number): number {
     a5 * Math.pow(k, 5);
 
   // CDF value for positive x
-  let cdf = 1.0 - pdfValue * poly;
+  let cdf = 1.0 - 0.5 * exponential * poly;
 
   // Apply sign
   if (sign < 0) {

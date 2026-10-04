@@ -4,16 +4,23 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/AuthContext';
 import type { GammaSnapshot } from '@/lib/gammaExposure';
+import { defaultNseValuationTime, toIstInput } from '@/lib/marketData/nseValuationTime';
 import styles from './page.module.css';
 
 const number = (n: number) => n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
 const compact = (n: number) => `${n < 0 ? '-' : ''}${(Math.abs(n) / 1e7).toFixed(2)} Cr`;
+const rowExposure = (row: GammaSnapshot['rows'][number], side: 'call' | 'put' | 'net') =>
+  (side === 'net' ? row.missing > 0 : !row[side === 'call' ? 'callAvailable' : 'putAvailable']) ? 'Unavailable' : compact(row[side]);
 const colors = { Call: '#0ca678', Put: '#e34566', Net: '#8b9991', 'Aggregate GEX': '#507ee7', 'Gamma Flip': '#ee8b34', 'Last Price': '#65758a' };
 
 export default function GammaExposurePage() {
   const { user, loading } = useAuth();
   const [data, setData] = useState<GammaSnapshot | null>(null);
   const [expiry, setExpiry] = useState('');
+  const [valuationDraft, setValuationDraft] = useState('');
+  const [valuation, setValuation] = useState('');
+  const [automaticValuation, setAutomaticValuation] = useState(true);
+  const [expiries, setExpiries] = useState<GammaSnapshot['expiries']>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [zoom, setZoom] = useState(1);
@@ -36,13 +43,19 @@ export default function GammaExposurePage() {
     const current = new AbortController(); controller.current = current;
     setBusy(true); setError(''); setData(null); setHover(null); setPinnedStrike(null);
     try {
-      const response = await fetch(`/api/options/gamma-exposure?expiry=${expiry}`, { headers: { Authorization: `Bearer ${await user.getIdToken()}` }, signal: current.signal });
+      const params = new URLSearchParams({ expiry });
+      const effectiveValuation = automaticValuation ? defaultNseValuationTime() : valuation;
+      if (effectiveValuation) params.set('valuation', effectiveValuation);
+      const response = await fetch(`/api/options/gamma-exposure?${params}`, { headers: { Authorization: `Bearer ${await user.getIdToken()}` }, signal: current.signal });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? 'Unable to load NIFTY data.');
-      if (!current.signal.aborted) setData(result);
+      if (!current.signal.aborted) {
+        setData(result); setExpiries(result.expiries);
+        if (automaticValuation) setValuationDraft(result.valuationTime ? toIstInput(result.valuationTime) : '');
+      }
     } catch (e) { if (!current.signal.aborted) setError(e instanceof Error ? e.message : 'Unable to load data.'); }
     finally { if (!current.signal.aborted) setBusy(false); }
-  }, [user, expiry]);
+  }, [user, expiry, valuation, automaticValuation]);
   useEffect(() => { void load(); return () => controller.current?.abort(); }, [load]);
 
   const mobile = chartWidth < 600;
@@ -70,9 +83,9 @@ export default function GammaExposurePage() {
   return <main ref={container} className={styles.page}>
     <header className={styles.heading}><div><p>NIFTY 50 / NSE</p><h1>Gamma Exposure</h1></div><span className={styles.source}>FYERS · Snapshot</span></header>
     <div className={styles.toolbar}>
-      <label>Expiry Date <select aria-label="Expiry date" value={expiry || data?.expiry || ''} onChange={e => { setExpiry(e.target.value); setZoom(1); }} disabled={busy || !data}>
-        {!data && <option value={expiry}>{busy ? 'Loading expiries...' : 'Select expiry'}</option>}
-        {data?.expiries.map(e => <option key={e.value} value={e.value}>{e.label}</option>)}
+      <label>Expiry Date <select aria-label="Expiry date" value={expiry || data?.expiry || ''} onChange={e => { setExpiry(e.target.value); setZoom(1); }} disabled={busy || !expiries.length}>
+        {!expiries.length && <option value={expiry}>{busy ? 'Loading expiries...' : 'Select expiry'}</option>}
+        {expiries.map(e => <option key={e.value} value={e.value}>{e.label}</option>)}
       </select></label>
       <div className={styles.tools}>
         <button onClick={() => void load()} disabled={busy || !user}>{busy ? 'Loading...' : 'Refresh'}</button>
@@ -81,14 +94,29 @@ export default function GammaExposurePage() {
         <button onClick={() => setZoom(1)} disabled={zoom === 1}>Reset</button>
       </div>
     </div>
+    <form className={styles.valuation} onSubmit={e => {
+      e.preventDefault();
+      const timestamp = Date.parse(`${valuationDraft}+05:30`);
+      if (Number.isFinite(timestamp)) { setValuation(new Date(timestamp).toISOString()); setAutomaticValuation(false); }
+    }}>
+      <label><span>Valuation mode</span><select aria-label="Valuation mode" value={automaticValuation ? 'automatic' : 'manual'} onChange={e => {
+        if (e.target.value === 'automatic') setAutomaticValuation(true);
+        else { setValuation(data?.valuationTime ?? ''); setAutomaticValuation(false); }
+      }}><option value="automatic">Automatic (NSE session)</option><option value="manual">Manual</option></select></label>
+      <label>Model valuation (IST)<input aria-label="Model valuation (IST)" type="datetime-local" step="1" required value={valuationDraft} onChange={e => setValuationDraft(e.target.value)} /></label>
+      <button disabled={busy || !valuationDraft}>Apply</button>
+      <button type="button" disabled={busy || (!valuation && !automaticValuation)} onClick={() => { setAutomaticValuation(false); setValuation(''); setValuationDraft(''); }}>Clear</button>
+    </form>
     {loading || busy ? <div className={styles.state} role="status">Loading NIFTY option chain...</div> : !user ? <div className={styles.state}><Link href="/login">Sign in to load your FYERS data</Link></div> : error ? <div className={styles.state} role="alert"><p>{error}</p><Link href="/broker/config">Broker Settings</Link></div> : data && <>
       <div className={styles.metrics}>
-        {[["Last Price", number(data.spot)], ["FYERS Net GEX / 1%", compact(data.net)], ["Modeled Gamma Flip", !data.modelContracts ? 'Unavailable' : flip === null ? 'No crossing' : number(flip)], ["FYERS Call Wall", data.callWall ? number(data.callWall) : 'Unavailable'], ["FYERS Put Wall", data.putWall ? number(data.putWall) : 'Unavailable']].map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}
+        {[["Last Price", number(data.spot)], [data.excluded ? "FYERS Partial GEX / 1%" : "FYERS Net GEX / 1%", compact(data.net)], [data.modelExcluded ? "Modeled Flip (Partial)" : "Modeled Gamma Flip", !data.valuationTime ? 'Time required' : data.modeledNet === null ? 'Unavailable' : flip === null ? 'No crossing in range' : number(flip)], ["FYERS Call Wall", data.callWall ? number(data.callWall) : 'Unavailable'], ["FYERS Put Wall", data.putWall ? number(data.putWall) : 'Unavailable']].map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}
       </div>
       <div className={styles.coverage} role="status">
         <span>FYERS gamma: {data.contracts} legs / {data.excluded} unavailable / {data.reportedZero} reported zero</span>
         <span>Model IV: {data.modelContracts} legs / {data.modelExcluded} excluded</span>
         <span>Modeled net at spot: {data.modeledNet === null ? 'Unavailable' : `${compact(data.modeledNet)} / 1%`}</span>
+        <span>Valuation: {data.valuationTime ? `${new Date(data.valuationTime).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST (${automaticValuation ? 'NSE session default' : 'manual'})` : automaticValuation ? 'Calendar unavailable; set a manual time' : 'Not set'}</span>
+        <span>Selected time applies to the model only; OI and IV remain the fetched snapshot.</span>
       </div>
       <div className={styles.chart} onKeyDown={e => { if (e.key === 'Escape') dismissDetail(); }}>
         <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`NIFTY gamma exposure for ${selected?.label}. Last price ${number(data.spot)}. Call wall ${data.callWall}, put wall ${data.putWall}.`}>
@@ -100,7 +128,7 @@ export default function GammaExposurePage() {
           </g>
           {[-1, -0.5, 0, 0.5, 1].map(t => <g key={t}><line x1={L} x2={R} y1={y(t * barMax)} y2={y(t * barMax)} stroke={t === 0 ? '#9ca3af' : '#e7e9eb'} /><text x={L - 7} y={y(t * barMax) + 5} textAnchor="end" fontSize="11" fill="#697079">{axisLabel(t * barMax)}</text><text x={R + 7} y={y(t * barMax) + 5} fontSize="11" fill="#697079">{axisLabel(t * lineMax)}</text></g>)}
           <g clipPath="url(#gex-area)">
-            {rows.map(r => <g key={r.strike}>{(['Call', 'Put', 'Net'] as const).map((name, i) => { const val = r[name.toLowerCase() as 'call' | 'put' | 'net']; return visible[name] && <rect key={name} x={x(r.strike) + (i - 1) * width} y={Math.min(zero, y(val))} width={width * 0.8} height={Math.abs(y(val) - zero)} fill={colors[name]} />; })}</g>)}
+            {rows.map(r => <g key={r.strike}>{(['Call', 'Put', 'Net'] as const).map((name, i) => { const side = name.toLowerCase() as 'call' | 'put' | 'net'; const val = r[side]; return visible[name] && rowExposure(r, side) !== 'Unavailable' && <rect key={name} x={x(r.strike) + (i - 1) * width} y={Math.min(zero, y(val))} width={width * 0.8} height={Math.abs(y(val) - zero)} fill={colors[name]} />; })}</g>)}
             {visible['Aggregate GEX'] && <path d={line} fill="none" stroke={colors['Aggregate GEX']} strokeWidth="2" />}
             {visible['Gamma Flip'] && data.flips.map(f => <line key={f} x1={x(f)} x2={x(f)} y1={top} y2={bottom} stroke={colors['Gamma Flip']} strokeWidth="1.5" />)}
             {visible['Last Price'] && <line x1={x(data.spot)} x2={x(data.spot)} y1={top} y2={bottom} stroke={colors['Last Price']} strokeDasharray="6 5" />}
@@ -131,7 +159,7 @@ export default function GammaExposurePage() {
           <header><strong>Strike: {number(detail.strike)}</strong><button type="button" aria-label="Close strike details" title="Close strike details" onClick={dismissDetail}>×</button></header>
           <p>{selected?.label}</p>
           <dl>
-            <div><dt>FYERS net GEX</dt><dd>{compact(detail.net)} / 1%</dd></div>
+            <div><dt>FYERS net GEX / 1%</dt><dd>{rowExposure(detail, 'net')}</dd></div>
             <div><dt>Modeled aggregate GEX</dt><dd>{detail.modeledGex === null ? 'Unavailable' : `${compact(detail.modeledGex)} / 1%`}</dd></div>
             <div><dt>Call OI (units)</dt><dd>{quantity(detail.callOi)}</dd></div>
             <div><dt>Put OI (units)</dt><dd>{quantity(detail.putOi)}</dd></div>
@@ -143,7 +171,7 @@ export default function GammaExposurePage() {
         </section>}
       </div>
       <label className={styles.strikeSelect}>Strike details <select aria-label="Strike details" value={pinnedStrike ?? ''} onChange={e => setPinnedStrike(e.target.value ? Number(e.target.value) : null)}><option value="">Select strike</option>{data.rows.map(r => <option key={r.strike} value={r.strike}>{number(r.strike)}</option>)}</select></label>
-      <div className={styles.readout} aria-live="polite">{hovered ? `${number(hovered.strike)} | Call ${compact(hovered.call)} | Put ${compact(hovered.put)} | Net ${compact(hovered.net)} | ${hovered.missing} unavailable / ${hovered.reportedZero} reported zero` : `${selected?.label} | Snapshot bars: FYERS gamma | Curve: modeled gamma`}</div>
+      <div className={styles.readout} aria-live="polite">{hovered ? `${number(hovered.strike)} | Call ${rowExposure(hovered, 'call')} | Put ${rowExposure(hovered, 'put')} | Net ${rowExposure(hovered, 'net')} | ${hovered.missing} unavailable / ${hovered.reportedZero} reported zero` : `${selected?.label} | Snapshot bars: FYERS gamma | Curve: modeled gamma`}</div>
       <div className={styles.legend}>{Object.entries(colors).map(([name, color]) => <label key={name}><input type="checkbox" checked={visible[name]} onChange={e => setVisible(v => ({ ...v, [name]: e.target.checked }))} style={{ accentColor: color }} /><span style={{ color }}>{name === 'Aggregate GEX' || name === 'Gamma Flip' ? `Modeled ${name}` : name}</span></label>)}</div>
       <section className={styles.gammaNotes} aria-label="Gamma interpretation">
         <div><span className={styles.positiveSwatch} aria-hidden="true" /><p><strong>Positive Gamma:</strong> Green shading marks prices where modeled aggregate GEX is positive. If hedgers are net long gamma and rebalance to stay delta-neutral, they tend to buy as prices fall and sell as prices rise, which can dampen price swings.</p></div>
@@ -151,8 +179,8 @@ export default function GammaExposurePage() {
         <p className={styles.gammaCaveat}>Gamma flips are zero crossings of the modeled curve. Positive gamma is not necessarily above a flip, and multiple flips can occur. This OI-based estimate does not identify actual dealer positions or guarantee support, resistance, or price direction.</p>
       </section>
       <footer className={styles.footer}><span>Fetched {new Date(data.fetchedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST</span><span>Exchange quote time unavailable</span></footer>
-      <details className={styles.details}><summary>Model &amp; Data Coverage</summary><p>Estimated exposure per 1% NIFTY move, in INR crores. Calls positive, puts negative; actual dealer positioning is unknown. Bars, snapshot net and walls use FYERS-reported gamma directly. Unavailable gamma or OI is omitted, with no model fallback. Reported zero gamma is preserved but may represent rounding or unavailable broker calculations; it does not establish an absence of exposure.</p><p>The curve and flip use a separate Black-Scholes model with positive FYERS IV, a 7% rate, zero dividend yield, and current time to expiry at 15:30 IST. IV and OI stay fixed across hypothetical prices. Invalid IV is excluded from this model only. The modeled net at spot may differ from the broker-gamma net. Missing IV can materially change the curve and flip.</p><p>FYERS OI is underlying quantity, without an additional lot multiplier. Maximum coverage is 50 strikes either side of ATM for the selected expiry. Walls are the largest reported call and put gamma exposures in this range, not guaranteed price barriers. All detected model zero crossings are marked; the summary shows the nearest. Broker prices and Greeks may be from a previous session; exchange quote time is unavailable.</p></details>
-      <details className={styles.details}><summary>Strike Data</summary><div className={styles.tableWrap}><table><thead><tr><th>Strike</th><th>Call GEX (Cr)</th><th>Put GEX (Cr)</th><th>Net GEX (Cr)</th><th>Coverage</th></tr></thead><tbody>{data.rows.map(r => <tr key={r.strike}><td>{number(r.strike)}</td><td>{compact(r.call)}</td><td>{compact(r.put)}</td><td>{compact(r.net)}</td><td>{r.missing ? `${r.missing} unavailable; partial` : r.reportedZero ? `${r.reportedZero} reported zero` : 'Available'}</td></tr>)}</tbody></table></div></details>
+      <details className={styles.details}><summary>Model &amp; Data Coverage</summary><p>Estimated exposure per 1% NIFTY move, in INR crores. Calls positive, puts negative; actual dealer positioning is unknown. Bars, snapshot net and walls use FYERS-reported gamma directly. Unavailable gamma or OI is omitted, with no model fallback. Reported zero gamma is preserved but may represent rounding or unavailable broker calculations; it does not establish an absence of exposure.</p><p>The curve and flip use a separate Black-Scholes model with positive FYERS IV, a 7% rate, zero dividend yield, and the displayed valuation time to expiry at 15:30 IST. Automatic mode uses current IST during regular trading hours, otherwise the latest scheduled regular-session close at 15:30 IST, using the supported NSE calendar. Manual mode overrides this default. Selecting an earlier time does not fetch historical OI or IV. IV and OI stay fixed across hypothetical prices. Invalid IV is excluded from this model only. The modeled net at spot may differ from the broker-gamma net. Missing IV can materially change the curve and flip.</p><p>FYERS OI is underlying quantity, without an additional lot multiplier. Maximum coverage is 50 strikes either side of ATM for the selected expiry. The call wall is the largest reported call gamma exposure strictly above spot; the put wall is the largest put gamma exposure magnitude strictly below spot, within the fetched range. A wall is unavailable if no qualifying nonzero exposure exists. These are not guaranteed price barriers. All detected model zero crossings are marked; the summary shows the nearest. Broker prices and Greeks may be from a previous session; exchange quote time is unavailable.</p></details>
+      <details className={styles.details}><summary>Strike Data</summary><div className={styles.tableWrap}><table><thead><tr><th>Strike</th><th>Call GEX (Cr)</th><th>Put GEX (Cr)</th><th>Net GEX (Cr)</th><th>Coverage</th></tr></thead><tbody>{data.rows.map(r => <tr key={r.strike}><td>{number(r.strike)}</td><td>{rowExposure(r, 'call')}</td><td>{rowExposure(r, 'put')}</td><td>{rowExposure(r, 'net')}</td><td>{r.missing ? `${r.missing} unavailable; partial` : r.reportedZero ? `${r.reportedZero} reported zero` : 'Available'}</td></tr>)}</tbody></table></div></details>
     </>}
   </main>;
 }

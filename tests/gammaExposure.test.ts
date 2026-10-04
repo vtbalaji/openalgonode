@@ -6,6 +6,49 @@ const now = Date.UTC(2026, 9, 3);
 const expiry = now + 4 * 86400000;
 const leg: GammaLeg = { symbol: 'test', strike: 22500, type: 'call', oiQuantity: 65000, iv: 0.15, brokerGamma: 0.0012 };
 
+test('walls select largest gamma only on the requested side of spot', () => {
+  const legs: GammaLeg[] = [
+    { ...leg, strike: 22000, brokerGamma: 0.01 },
+    { ...leg, strike: 22000, type: 'put', brokerGamma: 0.002 },
+    { ...leg, strike: 22400, type: 'put', brokerGamma: 0.001 },
+    { ...leg, strike: 22500, brokerGamma: 0.02 },
+    { ...leg, strike: 22500, type: 'put', brokerGamma: 0.02 },
+    { ...leg, strike: 23000, brokerGamma: 0.002 },
+    { ...leg, strike: 23000, type: 'put', brokerGamma: 0.01 },
+    { ...leg, strike: 23500, brokerGamma: 0.001 },
+  ];
+  const r = calculateGammaExposure(legs, 22500, expiry, now);
+  assert.equal(r.callWall, 23000);
+  assert.equal(r.putWall, 22000);
+});
+
+test('walls never fall back to ATM, wrong-side or zero exposure', () => {
+  for (const legs of [
+    [leg, { ...leg, type: 'put' as const }],
+    [{ ...leg, strike: 22000 }, { ...leg, strike: 23000, type: 'put' as const }],
+    [{ ...leg, strike: 23000, brokerGamma: 0 }, { ...leg, strike: 22000, type: 'put' as const, brokerGamma: 0 }],
+  ]) {
+    const r = calculateGammaExposure(legs, 22500, expiry, now);
+    assert.equal(r.callWall, null);
+    assert.equal(r.putWall, null);
+  }
+});
+
+test('model is absent unless a valuation time is explicitly supplied', () => {
+  const r = calculateGammaExposure([leg], 22500, expiry);
+  assert.equal(r.valuationTime, null);
+  assert.equal(r.modeledNet, null);
+  assert.equal(r.rows[0].modeledGex, null);
+  assert.deepEqual(r.profile, []);
+  assert.deepEqual(r.flips, []);
+  assert.ok(r.net > 0);
+  const valued = calculateGammaExposure([leg], 22500, expiry, now);
+  assert.equal(valued.valuationTime, new Date(now).toISOString());
+  assert.ok(valued.profile.length > 0);
+  assert.equal(valued.net, r.net);
+  assert.throws(() => calculateGammaExposure([leg], 22500, expiry, NaN));
+});
+
 test('strike details retain raw quantities and distinguish unavailable volume from zero', () => {
   const result = calculateGammaExposure([leg, { ...leg, type: 'put', volume: 0, oiQuantity: 130000 }], 22500, expiry, now);
   const row = result.rows[0];
@@ -34,7 +77,7 @@ test('quantity scales exposure once; call-only chain has no flip', () => {
 });
 
 test('invalid IV affects only the model; broker bars do not require IV', () => {
-  const result = calculateGammaExposure([leg, { ...leg, iv: NaN }], 22500, expiry, now);
+  const result = calculateGammaExposure([leg, { ...leg, type: 'put', iv: NaN }], 22500, expiry, now);
   assert.equal(result.excluded, 0);
   assert.equal(result.contracts, 2);
   assert.equal(result.modelExcluded, 1);
@@ -67,10 +110,20 @@ test('zero gamma remains reported zero; absent gamma is not replaced by model ga
   ], 22500, expiry, now);
   assert.equal(result.net, 0);
   assert.equal(result.reportedZero, 1);
-  assert.equal(result.excluded, 1);
-  assert.equal(result.rows[1].missing, 1);
+  assert.equal(result.excluded, 3);
+  assert.equal(result.rows[1].missing, 2);
   assert.equal(result.modeledNet, null);
   assert.deepEqual(result.profile, []);
   assert.deepEqual(result.flips, []);
   assert.equal(result.callWall, null);
+});
+
+test('absent put is unavailable, not a verified zero', () => {
+  const r = calculateGammaExposure([leg], 22500, expiry, now);
+  assert.equal(r.excluded, 1);
+  assert.equal(r.modelExcluded, 1);
+  assert.equal(r.rows[0].missing, 1);
+  assert.equal(r.rows[0].putAvailable, false);
+  assert.equal(r.rows[0].callAvailable, true);
+  assert.throws(() => calculateGammaExposure([leg, leg], 22500, expiry, now), /Duplicate/);
 });

@@ -1,5 +1,4 @@
 import { normalPDF } from './indicators/normalDistribution';
-import { nseTradingYears } from './marketData/nseValuationTime';
 import { ASSUMED_POSITIONING, type ParticipantPositioning } from './marketData/nseParticipantOi';
 
 export interface GammaLeg {
@@ -73,18 +72,18 @@ export function impliedCarry(legs: GammaLeg[], spot: number, T: number) {
 
 export function calculateGammaExposure(legs: GammaLeg[], spot: number, expiryMs: number, now: number | null = null,
   positioning: ParticipantPositioning = ASSUMED_POSITIONING) {
-  // Trading-time convention: only regular NSE session minutes count, annualized over 252 sessions.
-  const T = now === null ? 0 : nseTradingYears(now, expiryMs);
+  // Keep calendar-year time with the supplied annualized IV; trading-time IV would need recalibration.
+  const T = now === null ? 0 : (expiryMs - now) / (365 * 86400000);
   if (!Number.isFinite(spot) || !(spot > 0) || !Number.isFinite(expiryMs) || (now !== null && (!Number.isFinite(now) || !(T > 0)))) throw new Error('A valid spot and valuation time before expiry are required.');
   const validOi = (l: GammaLeg) => Number.isFinite(l.oiQuantity) && l.oiQuantity >= 0 && Number.isFinite(l.strike) && l.strike > 0;
   const hasBroker = (l: GammaLeg) => Number.isFinite(l.brokerGamma) && l.brokerGamma! >= 0;
   const hasIv = (l: GammaLeg) => Number.isFinite(l.iv) && l.iv > 0;
   const modeled = legs.filter(l => validOi(l) && hasIv(l));
   const modelEnabled = now !== null && modeled.length > 0;
-  const useModel = (l: GammaLeg) => modelEnabled && hasIv(l);
-  const usable = legs.filter(l => validOi(l) && (useModel(l) || hasBroker(l)));
+  const isUsable = (l: GammaLeg) => validOi(l) && (modelEnabled ? hasIv(l) : hasBroker(l));
+  const usable = legs.filter(isUsable);
   if (!usable.length) throw new Error('No usable gamma and open interest returned for this expiry.');
-  // OI is underlying quantity (the adapter multiplies contracts by lot size).
+  // OI is underlying quantity, passed through unchanged by the FYERS adapter.
   // Standard dealer convention: long calls (+), short puts (-). Participant positioning is reported alongside, not applied,
   // because NSE's figure is one net across all index options, strikes and expiries.
   const weight = (l: GammaLeg) => l.type === 'call' ? 1 : -1;
@@ -106,9 +105,9 @@ export function calculateGammaExposure(legs: GammaLeg[], spot: number, expiryMs:
       callOi: null, putOi: null, callVolume: null, putVolume: null, modeledGex: null };
     row[l.type === 'call' ? 'callOi' : 'putOi'] = Number.isFinite(l.oiQuantity) && l.oiQuantity >= 0 ? l.oiQuantity : null;
     row[l.type === 'call' ? 'callVolume' : 'putVolume'] = Number.isFinite(l.volume) && l.volume! >= 0 ? l.volume! : null;
-    if (validOi(l) && (useModel(l) || hasBroker(l))) {
-      // Black-Scholes gamma from FYERS IV; broker gamma only when IV or valuation time is unavailable.
-      if (useModel(l)) { row[l.type] += exposure(l, spot); gammaSource.model++; }
+    if (isUsable(l)) {
+      // Never mix broker-only legs into bars when the modeled curve cannot include them.
+      if (modelEnabled) { row[l.type] += exposure(l, spot); gammaSource.model++; }
       else {
         row[l.type] += brokerExposure(l); gammaSource.broker++;
         if (l.brokerGamma === 0) { row.reportedZero++; reportedZero++; }

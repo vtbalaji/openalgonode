@@ -81,11 +81,13 @@ test('quantity scales exposure once; call-only chain has no flip', () => {
   assert.ok(Math.abs(a.rows[0].net - a.net) < 1e-8);
 });
 
-test('invalid IV falls back to broker gamma for bars and is excluded from the model', () => {
+test('invalid IV is excluded consistently from modeled bars and curve', () => {
   const result = calculateGammaExposure([leg, { ...leg, type: 'put', iv: NaN }], 22500, expiry, now);
-  assert.equal(result.excluded, 0);
-  assert.equal(result.contracts, 2);
-  assert.deepEqual(result.gammaSource, { model: 1, broker: 1 });
+  assert.equal(result.excluded, 1);
+  assert.equal(result.contracts, 1);
+  assert.deepEqual(result.gammaSource, { model: 1, broker: 0 });
+  assert.equal(result.rows[0].putAvailable, false);
+  assert.equal(result.net, result.modeledNet);
   assert.equal(result.modelExcluded, 1);
   assert.equal(result.modelContracts, 1);
   assert.throws(() => calculateGammaExposure([leg], 22500, now, now));
@@ -101,9 +103,9 @@ test('flip is a zero of repriced aggregate gamma, independent of strike accumula
   assert.equal(result.putWall, 22000);
 });
 
-test('bars use Black-Scholes gamma at spot with trading-time expiry', () => {
+test('bars use Black-Scholes gamma with calendar time including weekends', () => {
   const a = calculateGammaExposure([leg], 22500, expiry, now);
-  const T = nseTradingYears(now, expiry);
+  const T = 4 / 365;
   const expected = bsmGamma(22500, 22500, T, 0.06, 0.012, 0.15) * 65000 * 22500 * 22500 * 0.01;
   assert.equal(a.carry.source, 'default');
   assert.ok(Math.abs(a.net - expected) < 1e-6);

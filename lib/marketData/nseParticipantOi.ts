@@ -35,14 +35,17 @@ export function parseParticipantOi(csv: string, asOf: string): ParticipantPositi
 // Latest published NSE participant-wise OI (previous sessions; published after market close).
 export async function fetchParticipantPositioning(now = Date.now()): Promise<ParticipantPositioning> {
   if (cached && cached.until > now) return cached.value;
+  // Optional context gets one shared budget, including response bodies and all earlier dates.
+  const signal = AbortSignal.timeout(2000);
   const day = new Date(now + IST_OFFSET);
   for (let back = 0; back < 10; back++, day.setUTCDate(day.getUTCDate() - 1)) {
+    if (signal.aborted) break;
     const date = day.toISOString().slice(0, 10);
     if (!isNseTradingDay(date)) continue;
     const [y, m, d] = date.split('-');
     try {
       const response = await fetch(`https://archives.nseindia.com/content/nsccl/fao_participant_oi_${d}${m}${y}.csv`, {
-        headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'text/csv' }, cache: 'no-store', signal: AbortSignal.timeout(10000),
+        headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'text/csv' }, cache: 'no-store', signal,
       });
       const text = await response.text();
       if (!response.ok || !text.includes('Client Type')) continue;

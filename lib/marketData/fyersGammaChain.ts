@@ -1,7 +1,11 @@
 import type { GammaLeg } from '../gammaExposure';
 
 interface FyersLeg { symbol: string; option_type: string; strike_price: number; ltp: number; oi: number; volume?: number; greeks?: { iv?: number; gamma?: number } }
-// FYERS reports option OI in contracts (lots); NIFTY lot size is 65.
+// Verified FYERS OI is underlying quantity; divide by 65 only when displaying lots.
+// Checked 2026-10-04 against NSE's 2026-10-06 expiry, strike 22400:
+// CE: 54,828 lots * 65 = FYERS 3,563,820; PE: 65,164 * 65 = FYERS 4,235,660.
+// Do not multiply raw oi by lot size again. Divisibility alone is not a unit check:
+// at strike 22500, FYERS differed from screenshot lots * 65 by 5 units per side.
 export const NIFTY_LOT_SIZE = 65;
 
 interface FyersExpiry { expiry: string; date: string; expiry_flag?: string }
@@ -25,7 +29,7 @@ export async function fetchFyersGammaChain(authorization: string, expiry: string
   if (!Number.isFinite(expiryMs)) throw new Error('Invalid expiry returned by FYERS.');
   const legs: GammaLeg[] = chain.filter(l => l.option_type === 'CE' || l.option_type === 'PE').map(l => ({
     symbol: l.symbol, strike: l.strike_price, type: l.option_type === 'CE' ? 'call' : 'put',
-    oiQuantity: l.oi * NIFTY_LOT_SIZE, iv: (l.greeks?.iv ?? NaN) / 100, ltp: l.ltp,
+    oiQuantity: l.oi, iv: (l.greeks?.iv ?? NaN) / 100, ltp: l.ltp,
     brokerGamma: l.greeks?.gamma,
     volume: l.volume,
   }));

@@ -141,6 +141,7 @@ export default function GammaExposurePage() {
   );
   return <main ref={container} className={styles.page}>
     <header className={styles.heading}><h1>Gamma Exposure</h1><span className={styles.source}>NIFTY 50 · NSE · FYERS snapshot</span></header>
+    <nav className={styles.viewTabs} aria-label="Gamma view"><Link href="/gamma-exposure" aria-current="page">Snapshot</Link><Link href="/gamma-exposure/history">History</Link></nav>
     <div className={styles.toolbar}>
       <div className={styles.expiryField}><span id="expiry-label">Expiry Date</span><ExpiryPicker
         options={expiries} value={expiry || data?.expiry || ''} disabled={busy || !expiries.length}

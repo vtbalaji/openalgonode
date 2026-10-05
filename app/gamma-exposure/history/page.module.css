@@ -1,0 +1,36 @@
+.toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 16px; margin: 20px 0; }
+.toolbar label { display: grid; gap: 6px; color: #5f6873; font-size: 13px; min-width: 0; }
+.toolbar input, .toolbar select, .toolbar button { height: 40px; padding: 8px 12px; background: white; color: #1b2027; border: 1px solid #d9dfe4; border-radius: 6px; font: inherit; min-width: 0; max-width: 100%; }
+.toolbar button { cursor: pointer; margin-left: auto; }
+.toolbar button:disabled { opacity: .5; cursor: default; }
+.status { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; color: #5f6873; font-size: 13px; margin: 18px 0 12px; }
+.status strong { color: #1b2027; }
+.plot { width: 100%; min-width: 0; background: #111518; color: #e1e7ed; }
+.legend { display: flex; flex-wrap: wrap; gap: 12px 24px; padding: 16px 18px 10px; font-size: 13px; }
+.legend label { display: flex; align-items: center; gap: 7px; cursor: pointer; min-height: 28px; }
+.legend input { margin: 0; }
+.readout { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; padding: 6px 18px 16px; min-height: 66px; }
+.readout span { display: block; color: #98a5b1; font-size: 11px; margin-bottom: 5px; }
+.readout strong { font-size: 17px; font-weight: 550; overflow-wrap: anywhere; }
+.canvas { height: 500px; width: 100%; min-width: 0; }
+.chartTools { display: flex; align-items: center; justify-content: flex-end; gap: 6px; padding: 0 12px 8px; }
+.chartTools span { margin-right: auto; color: #98a5b1; font-size: 12px; }
+.chartTools button { background: #1e262c; color: #d4dde5 !important; border: 1px solid #343d45; border-radius: 4px; width: 34px; height: 32px; font-size: 19px !important; cursor: pointer; }
+.chartTools button:hover { background: #303b44; }
+.caption, .notice { font-size: 12px; line-height: 1.6; color: #5f6873; margin: 12px 0; }
+.notice { color: #765b18; }
+.footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 12px 0; border-bottom: 1px solid #e3e7eb; color: #737c86; font-size: 12px; }
+.footer a { text-decoration: underline; }
+@media (max-width: 700px) {
+  .toolbar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+  .toolbar input, .toolbar select, .toolbar button { width: 100%; height: 44px; font-size: 16px; }
+  .toolbar button { grid-column: 1 / -1; margin: 0; }
+  .legend { gap: 4px 16px; padding: 10px 12px; }
+  .legend label { min-height: 36px; }
+  .legend input { width: 16px; height: 16px; }
+  .readout { padding: 6px 12px 12px; gap: 8px; grid-template-columns: repeat(3, minmax(0, 1fr)); min-height: 116px; }
+  .readout div:first-child { grid-column: span 2; }
+  .readout strong { font-size: 15px; }
+  .canvas { height: 380px; }
+  .chartTools button { width: 42px; height: 40px; }
+}

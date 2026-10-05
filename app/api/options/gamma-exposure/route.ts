@@ -5,6 +5,7 @@ import { decryptData } from '@/lib/encryptionUtils';
 import { fetchFyersGammaChain } from '@/lib/marketData/fyersGammaChain';
 import { fetchParticipantPositioning } from '@/lib/marketData/nseParticipantOi';
 import { calculateGammaExposure, type GammaSnapshot } from '@/lib/gammaExposure';
+import { storeGammaHistory } from '@/lib/marketData/gammaHistory';
 
 const cache = new Map<string, { until: number; value: GammaSnapshot }>();
 export async function GET(request: NextRequest) {
@@ -32,6 +33,7 @@ export async function GET(request: NextRequest) {
     ]);
     if (valuationMs !== null && valuationMs >= chain.expiryMs) return NextResponse.json({ error: 'Valuation time must be before expiry at 15:30 IST.' }, { status: 400 });
     const value: GammaSnapshot = { ...calculateGammaExposure(chain.legs, chain.spot, chain.expiryMs, valuationMs, positioning), spot: chain.spot, expiry: chain.expiry, expiries: chain.expiries, fetchedAt: new Date().toISOString() };
+    await storeGammaHistory(value);
     for (const [k, v] of cache) if (v.until <= Date.now()) cache.delete(k);
     cache.set(key, { until: Date.now() + 60000, value });
     return NextResponse.json(value, { headers: { 'Cache-Control': 'no-store' } });

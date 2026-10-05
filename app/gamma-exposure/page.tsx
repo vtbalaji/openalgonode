@@ -8,6 +8,7 @@ import { defaultNseValuationTime, toIstInput } from '@/lib/marketData/nseValuati
 import styles from './page.module.css';
 
 const number = (n: number) => n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+const roundedPrice = (n: number) => Math.round(n).toLocaleString('en-IN');
 const compact = (n: number) => `${n < 0 ? '-' : ''}${(Math.abs(n) / 1e7).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Cr`;
 const rowExposure = (row: GammaSnapshot['rows'][number], side: 'call' | 'put' | 'net') =>
   (side === 'net' ? row.missing > 0 : !row[side === 'call' ? 'callAvailable' : 'putAvailable']) ? 'Unavailable' : compact(row[side]);
@@ -157,12 +158,12 @@ export default function GammaExposurePage() {
     </div>
     {loading || busy ? <div className={styles.state} role="status">Loading NIFTY option chain...</div> : !user ? <div className={styles.state}><Link href="/login">Sign in to load your FYERS data</Link></div> : error ? <div className={styles.state} role="alert"><p>{error}</p><Link href="/broker/config">Broker Settings</Link></div> : data && <>
       <div className={styles.metrics}>
-        {[["Last Price", number(data.spot)], [data.excluded ? "Partial Net GEX / 1%" : "Net GEX / 1%", compact(data.net)], [data.modelExcluded ? "Modeled Flip (Partial)" : "Modeled Gamma Flip", !data.valuationTime ? 'Time required' : data.modeledNet === null ? 'Unavailable' : flip === null ? 'No crossing in range' : number(flip)], ["Put Wall", data.putWall ? number(data.putWall) : 'Unavailable'], ["Call Wall", data.callWall ? number(data.callWall) : 'Unavailable']].map(([label, value]) => <div key={label} className={label === 'Last Price' && spotGex !== null ? (spotGex >= 0 ? styles.positiveZone : styles.negativeZone) : undefined}><span>{label}</span><strong>{value}</strong>{label === 'Last Price' && spotGex !== null && <em>{spotGex >= 0 ? 'Positive' : 'Negative'} modeled gamma</em>}</div>)}
+        {[["Last Price", roundedPrice(data.spot)], [data.excluded ? "Partial Net GEX / 1%" : "Net GEX / 1%", compact(data.net)], ["Gamma Flip", !data.valuationTime ? 'Time required' : data.modeledNet === null ? 'Unavailable' : flip === null ? 'No crossing in range' : roundedPrice(flip)], ["Put Wall", data.putWall ? number(data.putWall) : 'Unavailable'], ["Call Wall", data.callWall ? number(data.callWall) : 'Unavailable']].map(([label, value]) => <div key={label} className={label === 'Last Price' && spotGex !== null ? (spotGex >= 0 ? styles.positiveZone : styles.negativeZone) : undefined}><span>{label}</span><strong>{value}</strong>{label === 'Last Price' && spotGex !== null && <em>{spotGex >= 0 ? 'Positive' : 'Negative'} modeled gamma</em>}</div>)}
       </div>
       
       <div className={styles.legend}>{Object.entries(colors).map(([name, color]) => <label key={name}><input type="checkbox" checked={visible[name]} onChange={e => setVisible(v => ({ ...v, [name]: e.target.checked }))} style={{ accentColor: color }} /><span style={{ color }}>{name === 'Aggregate GEX' || name === 'Gamma Flip' ? `Modeled ${name}` : name}</span></label>)}</div>
       <div className={styles.chart} onKeyDown={e => { if (e.key === 'Escape') dismissDetail(); }}>
-        <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`NIFTY gamma exposure for ${selected?.label}. Last price ${number(data.spot)}. Call wall ${data.callWall}, put wall ${data.putWall}.`}>
+        <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`NIFTY gamma exposure for ${selected?.label}. Last price ${roundedPrice(data.spot)}. Call wall ${data.callWall}, put wall ${data.putWall}.`}>
           <defs><clipPath id="gex-area"><rect x={L} y={top} width={R - L} height={bottom - top} /></clipPath></defs>
           <text x={mobile ? 0 : L} y={18} fill="#667085" fontSize="12">{mobile ? 'Strike GEX' : 'Strike GEX (INR Cr / 1%)'}</text><text x={mobile ? W : R} y={18} textAnchor="end" fill="#667085" fontSize="12">{mobile ? 'Modeled GEX' : 'Modeled Aggregate GEX (INR Cr / 1%)'}</text>
           {mobile && <text x={W / 2} y={35} textAnchor="middle" fill="#667085" fontSize="11">INR Cr / 1%</text>}
@@ -177,7 +178,7 @@ export default function GammaExposurePage() {
             {visible['Last Price'] && <line x1={x(data.spot)} x2={x(data.spot)} y1={top} y2={bottom} stroke={colors['Last Price']} strokeDasharray="6 5" />}
             {detail && <g pointerEvents="none"><line x1={x(detail.strike)} x2={x(detail.strike)} y1={top} y2={bottom} stroke="#364152" strokeDasharray="3 4" />{visible['Aggregate GEX'] && detail.modeledGex !== null && <circle cx={x(detail.strike)} cy={y(detail.modeledGex, lineMax)} r="5" fill={colors['Aggregate GEX']} stroke="white" strokeWidth="2" />}</g>}
           </g>
-          {visible['Last Price'] && data.spot >= lo && data.spot <= hi && <text x={x(data.spot)} y={top - 10} textAnchor="middle" fill={colors['Last Price']} fontSize="14">{number(data.spot)}</text>}
+          {visible['Last Price'] && data.spot >= lo && data.spot <= hi && <text x={x(data.spot)} y={top - 10} textAnchor="middle" fill={colors['Last Price']} fontSize="14">{roundedPrice(data.spot)}</text>}
           {[[data.putWall, 'Put Wall', colors.Put], [data.callWall, 'Call Wall', colors.Call]].map(([strike, label, color]) => {
             const r = rows.find(row => row.strike === strike); if (!r) return null;
             const call = label === 'Call Wall';

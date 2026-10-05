@@ -8,6 +8,15 @@ const holidays2026 = new Set([
 ]);
 const IST_OFFSET = 330 * 60000;
 
+export function isNseRegularTradingTime(now: number): boolean {
+  if (!Number.isFinite(now)) return false;
+  const local = new Date(now + IST_OFFSET);
+  const date = local.toISOString().slice(0, 10);
+  const minutes = local.getUTCHours() * 60 + local.getUTCMinutes();
+  return local.getUTCFullYear() === 2026 && date !== '2026-11-08'
+    && isNseTradingDay(date) && minutes >= 555 && minutes < 930;
+}
+
 export function toIstInput(timestamp: string): string {
   return new Date(Date.parse(timestamp) + IST_OFFSET).toISOString().slice(0, 19);
 }

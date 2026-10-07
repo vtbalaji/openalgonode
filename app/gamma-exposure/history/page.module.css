@@ -3,6 +3,8 @@
 .toolbar input, .toolbar select, .toolbar button { height: 40px; padding: 8px 12px; background: white; color: #1b2027; border: 1px solid #d9dfe4; border-radius: 6px; font: inherit; min-width: 0; max-width: 100%; }
 .toolbar button { cursor: pointer; margin-left: auto; }
 .toolbar button:disabled { opacity: .5; cursor: default; }
+.autoRefresh { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #5f6873; min-height: 40px; }
+.autoRefresh input { flex-shrink: 0; width: 16px; height: 16px; accent-color: #2f5fd0; }
 .status { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; color: #5f6873; font-size: 13px; margin: 18px 0 12px; }
 .status strong { color: #1b2027; }
 .plot { width: 100%; min-width: 0; background: #111518; color: #e1e7ed; }

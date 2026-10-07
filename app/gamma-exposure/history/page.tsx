@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ColorType, CrosshairMode, LineStyle, LineType, createChart, type IChartApi, type ISeriesApi, type Time, type UTCTimestamp } from 'lightweight-charts';
 import { useAuth } from '@/lib/AuthContext';
 import { istDate, levelSegments, type GammaHistoryResponse } from '@/lib/marketData/gammaHistoryView';
+import { isNseRegularTradingTime } from '@/lib/marketData/nseValuationTime';
 import pageStyles from '../page.module.css';
 import styles from './page.module.css';
 
@@ -99,19 +100,47 @@ export default function GammaHistoryPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [refresh, setRefresh] = useState(0);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [saveError, setSaveError] = useState('');
   const [hoverTime, setHoverTime] = useState<number | null>(null);
   const [visible, setVisible] = useState<Record<Layer, boolean>>({ price: true, callWall: true, putWall: true, gammaFlip: true });
   const onTime = useCallback((time: number | null) => setHoverTime(time), []);
   useEffect(() => {
+    if (!user || !autoRefresh || busy) return;
+    const timer = setInterval(() => {
+      const now = Date.now();
+      if (date === istDate(now) && isNseRegularTradingTime(now)
+        && (!expiry || istDate(Number(expiry) * 1000) >= date)) setRefresh(n => n + 1);
+    }, 5 * 60000);
+    return () => clearInterval(timer);
+  }, [user, autoRefresh, busy, date, expiry]);
+  useEffect(() => {
     if (!user || !date) return;
     const controller = new AbortController();
-    setBusy(true); setError(''); setData(null); setHoverTime(null);
+    setBusy(true); setError(''); setSaveError(''); setHoverTime(null);
+    setData(previous => previous?.date === date && (!expiry || previous.expiry === expiry) ? previous : null);
     (async () => {
       try {
         const params = new URLSearchParams({ date });
         if (expiry) params.set('expiry', expiry);
+        const headers = { Authorization: `Bearer ${await user.getIdToken()}` };
+        const now = Date.now();
+        if (date === istDate(now) && isNseRegularTradingTime(now)
+          && (!expiry || istDate(Number(expiry) * 1000) >= date)) {
+          try {
+            const liveParams = new URLSearchParams({ expiry, valuation: new Date(now).toISOString() });
+            const saved = await fetch(`/api/options/gamma-exposure?${liveParams}`, { headers, signal: controller.signal });
+            const snapshot = await saved.json();
+            if (!saved.ok) throw new Error(snapshot.error ?? 'Unable to save a fresh gamma snapshot.');
+            // Use the same default expiry that was just collected.
+            params.set('expiry', snapshot.expiry);
+          } catch (e) {
+            if (controller.signal.aborted) return;
+            setSaveError(e instanceof Error ? e.message : 'Unable to save a fresh gamma snapshot.');
+          }
+        }
         const response = await fetch(`/api/options/gamma-history?${params}`, {
-          headers: { Authorization: `Bearer ${await user.getIdToken()}` }, signal: controller.signal,
+          headers, signal: controller.signal,
         });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error ?? 'Unable to load saved gamma history.');
@@ -138,7 +167,9 @@ export default function GammaHistoryPage() {
       </select></label>
       <button type="button" disabled={busy || !user} onClick={() => setRefresh(n => n + 1)}>{busy ? 'Loading...' : 'Refresh'}</button>
     </div>
-    {loading || busy ? <div className={pageStyles.state} role="status">Loading saved gamma history...</div>
+    <label className={styles.autoRefresh}><input type="checkbox" checked={autoRefresh} onChange={e => setAutoRefresh(e.target.checked)} />Auto-refresh every 5 minutes · NSE trading hours</label>
+    {saveError && <p className={styles.notice} role="alert">Snapshot not saved: {saveError}</p>}
+    {loading || (busy && !data) ? <div className={pageStyles.state} role="status">Loading saved gamma history...</div>
       : !user ? <div className={pageStyles.state}><Link href="/login">Sign in to view shared history</Link></div>
       : error ? <div className={pageStyles.state} role="alert">{error}</div>
       : data && <>
@@ -146,7 +177,7 @@ export default function GammaHistoryPage() {
           <span><strong>{data.snapshots.length}</strong> saved snapshots{data.snapshots.length > 0 ? ` · ${formatTime(data.snapshots[0].time)}–${formatTime(last!.time)} IST` : ''}</span>
           <span>{data.candles.length} minute candles</span>
         </div>
-        {!data.snapshots.length && <p className={styles.notice}>No gamma snapshots saved for this expiry on {date}. Levels are recorded when the snapshot page loads during trading hours.</p>}
+        {!data.snapshots.length && <p className={styles.notice}>No gamma snapshots saved for this expiry on {date}. Levels are recorded on refresh during trading hours.</p>}
         {data.candleMessage && <p className={styles.notice}>{data.candleMessage}</p>}
         {hasChart && <>
           <div className={styles.plot}>

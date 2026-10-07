@@ -1,7 +1,7 @@
 import type { GammaSnapshot } from '../gammaExposure';
 import { isNseRegularTradingTime } from './nseValuationTime';
 
-export const GAMMA_HISTORY_VERSION = 1;
+export const GAMMA_HISTORY_VERSION = 2; // 2: missing IV filled (same strike, else from price)
 
 export function gammaHistoryRecord(snapshot: GammaSnapshot) {
   const fetchedMs = Date.parse(snapshot.fetchedAt);

@@ -1,4 +1,4 @@
-import { normalPDF } from './indicators/normalDistribution';
+import { normalCDF, normalPDF } from './indicators/normalDistribution';
 import { ASSUMED_POSITIONING, type ParticipantPositioning } from './marketData/nseParticipantOi';
 
 export interface GammaLeg {
@@ -29,6 +29,7 @@ export interface GammaSnapshot {
   positioning: ParticipantPositioning;
   timeToExpiryYears: number | null;
   carry: { rate: number; dividendYield: number; forward: number | null; source: 'put-call-parity' | 'default' };
+  ivSource: { broker: number; sameStrike: number; fromPrice: number } | null;
   excluded: number;
   contracts: number;
   reportedZero: number;
@@ -48,6 +49,40 @@ export function bsmGamma(S: number, K: number, T: number, r: number, q: number, 
   const sqrtT = Math.sqrt(T);
   const d1 = (Math.log(S / K) + (r - q + 0.5 * sigma * sigma) * T) / (sigma * sqrtT);
   return Math.exp(-q * T) * normalPDF(d1) / (S * sigma * sqrtT);
+}
+
+function bsmPrice(S: number, K: number, T: number, r: number, q: number, sigma: number, type: 'call' | 'put') {
+  const sqrtT = Math.sqrt(T);
+  const d1 = (Math.log(S / K) + (r - q + 0.5 * sigma * sigma) * T) / (sigma * sqrtT), d2 = d1 - sigma * sqrtT;
+  return type === 'call'
+    ? S * Math.exp(-q * T) * normalCDF(d1) - K * Math.exp(-r * T) * normalCDF(d2)
+    : K * Math.exp(-r * T) * normalCDF(-d2) - S * Math.exp(-q * T) * normalCDF(-d1);
+}
+
+// Implied volatility from an option price by bisection; null when the price is outside the no-arbitrage range.
+export function impliedVol(price: number, S: number, K: number, T: number, r: number, q: number, type: 'call' | 'put') {
+  if (!(price > 0) || !(T > 0)) return null;
+  let lo = 0.005, hi = 3;
+  if (price <= bsmPrice(S, K, T, r, q, lo, type) || price >= bsmPrice(S, K, T, r, q, hi, type)) return null;
+  for (let i = 0; i < 60; i++) { const mid = (lo + hi) / 2; if (bsmPrice(S, K, T, r, q, mid, type) < price) lo = mid; else hi = mid; }
+  return (lo + hi) / 2;
+}
+
+// Fill legs FYERS returns without IV (typically in-the-money legs): use the same strike's other leg IV,
+// as put-call parity implies one IV per strike, else solve IV from the leg's own price.
+export function fillMissingIv(legs: GammaLeg[], spot: number, T: number, r: number, q: number) {
+  const ivAt = new Map<string, number>();
+  for (const l of legs) if (Number.isFinite(l.iv) && l.iv > 0) ivAt.set(`${l.strike}:${l.type}`, l.iv);
+  const source = { broker: 0, sameStrike: 0, fromPrice: 0 };
+  const filled = legs.map(l => {
+    if (Number.isFinite(l.iv) && l.iv > 0) { source.broker++; return l; }
+    const other = ivAt.get(`${l.strike}:${l.type === 'call' ? 'put' : 'call'}`);
+    if (other) { source.sameStrike++; return { ...l, iv: other }; }
+    const solved = T > 0 && Number.isFinite(l.ltp) ? impliedVol(l.ltp!, spot, l.strike, T, r, q, l.type) : null;
+    if (solved) { source.fromPrice++; return { ...l, iv: solved }; }
+    return l;
+  });
+  return { legs: filled, source };
 }
 
 // Forward implied by put-call parity, F = K + (C - P) * e^(rT), median of the three strikes nearest spot.
@@ -70,11 +105,13 @@ export function impliedCarry(legs: GammaLeg[], spot: number, T: number) {
   return { rate: carry + NIFTY_DIVIDEND_YIELD, dividendYield: NIFTY_DIVIDEND_YIELD, forward, source: 'put-call-parity' as const };
 }
 
-export function calculateGammaExposure(legs: GammaLeg[], spot: number, expiryMs: number, now: number | null = null,
+export function calculateGammaExposure(rawLegs: GammaLeg[], spot: number, expiryMs: number, now: number | null = null,
   positioning: ParticipantPositioning = ASSUMED_POSITIONING) {
   // Keep calendar-year time with the supplied annualized IV; trading-time IV would need recalibration.
   const T = now === null ? 0 : (expiryMs - now) / (365 * 86400000);
   if (!Number.isFinite(spot) || !(spot > 0) || !Number.isFinite(expiryMs) || (now !== null && (!Number.isFinite(now) || !(T > 0)))) throw new Error('A valid spot and valuation time before expiry are required.');
+  const carry = impliedCarry(rawLegs, spot, T);
+  const { legs, source: ivSource } = now === null ? { legs: rawLegs, source: null } : fillMissingIv(rawLegs, spot, T, carry.rate, carry.dividendYield);
   const validOi = (l: GammaLeg) => Number.isFinite(l.oiQuantity) && l.oiQuantity >= 0 && Number.isFinite(l.strike) && l.strike > 0;
   const hasBroker = (l: GammaLeg) => Number.isFinite(l.brokerGamma) && l.brokerGamma! >= 0;
   const hasIv = (l: GammaLeg) => Number.isFinite(l.iv) && l.iv > 0;
@@ -87,7 +124,6 @@ export function calculateGammaExposure(legs: GammaLeg[], spot: number, expiryMs:
   // Standard dealer convention: long calls (+), short puts (-). Participant positioning is reported alongside, not applied,
   // because NSE's figure is one net across all index options, strikes and expiries.
   const weight = (l: GammaLeg) => l.type === 'call' ? 1 : -1;
-  const carry = impliedCarry(legs, spot, T);
   const modelGamma = (l: GammaLeg, S: number) => bsmGamma(S, l.strike, T, carry.rate, carry.dividendYield, l.iv);
   const exposure = (l: GammaLeg, S: number) => modelGamma(l, S) * l.oiQuantity * S * S * 0.01 * weight(l);
   const brokerExposure = (l: GammaLeg) => l.brokerGamma! * l.oiQuantity * spot * spot * 0.01 * weight(l);
@@ -141,7 +177,7 @@ export function calculateGammaExposure(legs: GammaLeg[], spot: number, expiryMs:
   return { rows, profile, flips, callWall: call?.strike ?? null, putWall: put?.strike ?? null,
     net: rows.reduce((n, r) => n + r.net, 0),
     brokerNet: brokerLegs.length ? brokerLegs.reduce((n, l) => n + brokerExposure(l), 0) : null,
-    gammaSource, positioning, timeToExpiryYears: now === null ? null : T, carry,
+    gammaSource, positioning, timeToExpiryYears: now === null ? null : T, carry, ivSource,
     excluded: rows.reduce((n, r) => n + r.missing, 0), contracts: usable.length,
     reportedZero,
     modelContracts: modeled.length, modelExcluded: rows.length * 2 - modeled.length,

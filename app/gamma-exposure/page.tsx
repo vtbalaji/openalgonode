@@ -177,6 +177,15 @@ export default function GammaExposurePage() {
             {visible['Aggregate GEX'] && <path d={line} fill="none" stroke={colors['Aggregate GEX']} strokeWidth="2" />}
             {visible['Gamma Flip'] && data.flips.map(f => <line key={f} x1={x(f)} x2={x(f)} y1={top} y2={bottom} stroke={colors['Gamma Flip']} strokeWidth="1.5" />)}
             {visible['Last Price'] && <line x1={x(data.spot)} x2={x(data.spot)} y1={top} y2={bottom} stroke={colors['Last Price']} strokeDasharray="6 5" />}
+            {(['Call', 'Put'] as const).map(name => {
+              const side = name === 'Call' ? 'call' : 'put';
+              const wall = name === 'Call' ? data.callWall : data.putWall;
+              const row = rows.find(r => r.strike === wall);
+              if (!visible[name] || !row || rowExposure(row, side) === 'Unavailable') return null;
+              return <circle key={`${side}-wall`} cx={x(row.strike) + (name === 'Call' ? -0.6 : 0.4) * width}
+                cy={y(row[side])} r={Math.max(2.5, width * 0.4 + 1.5)} fill={colors[name]}
+                stroke="white" strokeWidth="1.5" pointerEvents="none" aria-hidden="true" />;
+            })}
             {detail && <g pointerEvents="none"><line x1={x(detail.strike)} x2={x(detail.strike)} y1={top} y2={bottom} stroke="#364152" strokeDasharray="3 4" />{visible['Aggregate GEX'] && detail.modeledGex !== null && <circle cx={x(detail.strike)} cy={y(detail.modeledGex, lineMax)} r="5" fill={colors['Aggregate GEX']} stroke="white" strokeWidth="2" />}</g>}
           </g>
           {visible['Last Price'] && data.spot >= lo && data.spot <= hi && <text x={x(data.spot)} y={top - 10} textAnchor="middle" fill={colors['Last Price']} fontSize="14">{roundedPrice(data.spot)}</text>}
@@ -223,6 +232,7 @@ export default function GammaExposurePage() {
       <details className={styles.coverage}><summary>Data &amp; model details</summary>
         <span>Gamma: {data.gammaSource.model} Black-Scholes / {data.gammaSource.broker} FYERS fallback / {data.excluded} unavailable{data.reportedZero ? ` / ${data.reportedZero} reported zero` : ''}</span>
         <span>Model IV: {data.modelContracts} legs / {data.modelExcluded} excluded</span>
+        {data.ivSource && <span>IV source: {data.ivSource.broker} FYERS / {data.ivSource.sameStrike} same-strike / {data.ivSource.fromPrice} solved from price</span>}
         <span>Carry: {data.carry.source === 'put-call-parity' ? `forward ${number(data.carry.forward!)} from put-call parity, rate ${(data.carry.rate * 100).toFixed(2)}% with ${(data.carry.dividendYield * 100).toFixed(1)}% dividend yield` : `default rate ${(data.carry.rate * 100).toFixed(1)}%, dividend yield ${(data.carry.dividendYield * 100).toFixed(1)}% (forward unavailable)`}</span>
         <span>FYERS-gamma cross-check: {data.brokerNet === null ? 'Unavailable' : `${compact(data.brokerNet)} / 1%`}</span>
         <span>{data.positioning.source === 'nse-participant-oi' ? `${data.positioning.hedgers.join(' + ')} (NSE ${data.positioning.asOf}): net ${data.positioning.callWeight >= 0 ? 'long' : 'short'} calls ${(Math.abs(data.positioning.callWeight) * 100).toFixed(1)}%, net ${data.positioning.putWeight >= 0 ? 'long' : 'short'} puts ${(Math.abs(data.positioning.putWeight) * 100).toFixed(1)}% of index option OI` : 'NSE participant OI unavailable'}</span>

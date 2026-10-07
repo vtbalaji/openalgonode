@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { calculateGammaExposure, bsmGamma, impliedCarry, type GammaLeg } from '../lib/gammaExposure';
+import { calculateGammaExposure, bsmGamma, impliedCarry, impliedVol, fillMissingIv, type GammaLeg } from '../lib/gammaExposure';
 import { gamma } from '../lib/indicators/blackScholes';
 import { parseParticipantOi } from '../lib/marketData/nseParticipantOi';
 import { nseTradingYears } from '../lib/marketData/nseValuationTime';
@@ -82,13 +82,13 @@ test('quantity scales exposure once; call-only chain has no flip', () => {
 });
 
 test('invalid IV is excluded consistently from modeled bars and curve', () => {
-  const result = calculateGammaExposure([leg, { ...leg, type: 'put', iv: NaN }], 22500, expiry, now);
-  assert.equal(result.excluded, 1);
+  const result = calculateGammaExposure([leg, { ...leg, strike: 22600, type: 'put', iv: NaN }], 22500, expiry, now);
+  assert.equal(result.excluded, 3);
   assert.equal(result.contracts, 1);
   assert.deepEqual(result.gammaSource, { model: 1, broker: 0 });
-  assert.equal(result.rows[0].putAvailable, false);
+  assert.equal(result.rows[1].putAvailable, false);
   assert.equal(result.net, result.modeledNet);
-  assert.equal(result.modelExcluded, 1);
+  assert.equal(result.modelExcluded, 3);
   assert.equal(result.modelContracts, 1);
   assert.throws(() => calculateGammaExposure([leg], 22500, now, now));
 });
@@ -195,4 +195,30 @@ test('absent put is unavailable, not a verified zero', () => {
   assert.equal(r.rows[0].putAvailable, false);
   assert.equal(r.rows[0].callAvailable, true);
   assert.throws(() => calculateGammaExposure([leg, leg], 22500, expiry, now), /Duplicate/);
+});
+
+test('missing IV is filled from the same strike, else solved from price', () => {
+  const T = 1 / 365;
+  const { legs, source } = fillMissingIv([
+    { ...leg, strike: 22400, iv: 0.12 }, { ...leg, strike: 22400, type: 'put', iv: NaN },
+    { ...leg, strike: 22600, type: 'put', iv: 0, ltp: 160 },
+  ], 22450, T, 0.06, 0.012);
+  assert.equal(legs[1].iv, 0.12);
+  assert.ok(legs[2].iv > 0);
+  assert.deepEqual(source, { broker: 1, sameStrike: 1, fromPrice: 1 });
+  const sigma = impliedVol(160, 22450, 22600, T, 0.06, 0.012, 'put')!;
+  assert.equal(legs[2].iv, sigma);
+  assert.equal(impliedVol(100, 22450, 22600, T, 0.06, 0.012, 'put'), null); // below intrinsic
+});
+
+test('in-the-money legs without IV still count toward the flip', () => {
+  // ITM put above spot carries heavy OI but FYERS gives no IV; it must pull the curve negative near spot.
+  const legs: GammaLeg[] = [
+    { ...leg, strike: 22400, type: 'put', oiQuantity: 3e6, iv: 0.12 },
+    { ...leg, strike: 22500, type: 'call', oiQuantity: 3e6, iv: 0.12 },
+    { ...leg, strike: 22500, type: 'put', oiQuantity: 4e6, iv: NaN },
+  ];
+  const r = calculateGammaExposure(legs, 22450, expiry, now);
+  assert.equal(r.modelContracts, 3);
+  assert.ok(r.rows.find(x => x.strike === 22500)!.put < 0);
 });
